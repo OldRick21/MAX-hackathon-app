@@ -23,7 +23,11 @@ const botLink = `https://max.ru/${me.username}`;
 
 async function showApp(ctx) {
   const keyboard = Keyboard.inlineKeyboard([
-    [Keyboard.button.openApp('Открыть приложение', botLink)],
+    [Keyboard.button.openApp(
+      'Открыть приложение',
+      botLink,
+      me.user_id
+    )],
   ]);
 
   await ctx.reply('Привет! Нажми кнопку, чтобы открыть приложение.', {
