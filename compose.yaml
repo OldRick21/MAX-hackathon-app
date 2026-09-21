@@ -6,14 +6,29 @@ services:
     env_file:
       - .env
 
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
   web:
+    depends_on:
+      backend:
+        condition: service_healthy
     image: nginx:stable-alpine
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./web/templates:/usr/share/nginx/html:ro
+      - ./frontend/templates:/usr/share/nginx/html:ro
+      - ./frontend/static:/usr/share/nginx/html/static:ro
       - ./web/configs/docker-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /var/lib/max-miniapp/acme:/var/www/acme:ro
       - /var/lib/max-miniapp/letsencrypt:/etc/letsencrypt:ro
