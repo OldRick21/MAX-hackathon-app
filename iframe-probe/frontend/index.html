@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Проверка клиентов сервисов</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/static/css/iframe-test.css">
+  <script src="/static/js/iframe-test.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Проверка iframe</h1>
+  <p>Добавляй клиенты, открывай их и нажимай кнопку внутри. Это техническая проверка с демонстрационными данными.</p>
+  <p id="catalog-status" role="status">Запрашиваем каталог у backend…</p>
+  <div class="controls">
+    <button id="add" disabled>Добавить клиент</button>
+    <button id="add-five" disabled>Добавить 5 клиентов</button>
+    <button id="clear">Удалить все</button>
+    <button id="report">Показать отчёт</button>
+  </div>
+  <p id="totals" aria-live="polite"></p>
+  <section id="clients" aria-label="Клиенты сервисов"></section>
+  <textarea id="result" rows="12" readonly hidden aria-label="Отчёт для копирования"></textarea>
+</main>
+</body>
+</html>
