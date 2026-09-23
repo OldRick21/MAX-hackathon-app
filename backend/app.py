@@ -1,10 +1,7 @@
-"""Минимальная заглушка API платформы."""
+from fastapi import FastAPI
 
-from flask import Flask
+app = FastAPI()
 
-app = Flask(__name__, static_folder=None)
-
-
-@app.get("/api/health")
+@app.get("/api/v1/health")
 def health():
-    return {"status": "ok", "service": "backend", "mode": "placeholder"}
+	return {"status": "ok"}
