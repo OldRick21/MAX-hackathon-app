@@ -2,7 +2,7 @@
 
 Дата: 24 сентября 2026. Статус: предложение для согласования и последующей реализации.
 
-Основание: [SPEC_MANIFEST.md](SPEC_MANIFEST.md), весь исходный код `MAX-hackathon-app/backend`, его `Dockerfile`, `.dockerignore` и `requirements.txt`. В запросе имя манифеста было написано как `SPEC_MAINFEST.md`; фактически файл называется `SPEC_MANIFEST.md` и находится в `maxhack/docs`. `docs/slop` и код остальных компонентов не использовались.
+Основание: [SPEC_MANIFEST.md](../SPEC_MANIFEST.md), весь исходный код `MAX-hackathon-app/backend`, его `Dockerfile`, `.dockerignore` и `requirements.txt`. В запросе имя манифеста было написано как `SPEC_MAINFEST.md`; фактически файл называется `SPEC_MANIFEST.md` и находится в `maxhack/docs`. `docs/slop` и код остальных компонентов не использовались.
 
 Результат: [CORE_API_OPENAPI.yaml](CORE_API_OPENAPI.yaml) — HTTP-контракт; [CORE_API_SPEC.md](CORE_API_SPEC.md) — правила безопасности, жизненные циклы и хранение. Это целевое API, а не описание уже работающего сервера. Код приложения не изменён.
 

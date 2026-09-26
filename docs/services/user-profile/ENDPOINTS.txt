@@ -1,0 +1,7 @@
+GET /api/v1/profile/me
+PATCH /api/v1/profile/me
+GET /api/v1/profile/users
+GET /api/v1/profile/users/{user_id}
+PATCH /api/v1/profile/users/{user_id}
+GET /home
+GET /users

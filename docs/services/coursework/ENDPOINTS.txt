@@ -1,0 +1,8 @@
+GET /api/v1/coursework/submissions
+POST /api/v1/coursework/submissions
+GET /api/v1/coursework/submissions/{submission_id}
+DELETE /api/v1/coursework/submissions/{submission_id}
+PUT /api/v1/coursework/submissions/{submission_id}/file
+GET /api/v1/coursework/submissions/{submission_id}/file
+PUT /api/v1/coursework/submissions/{submission_id}/review
+GET /coursework

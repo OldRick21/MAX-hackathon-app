@@ -1,0 +1,688 @@
+openapi: 3.1.1
+info:
+  title: Вузы России — Сервис анкет пользователей
+  version: 0.1.0
+  description: 'Только собственные операции сервиса и его HTML entrypoints. Полный API сервиса = этот контракт +
+    ../sdk/OPENAPI.yaml. Общие операции SDK здесь не дублируются. Разделение SERVICES_API_OPENAPI.yaml 0.1.0 без
+    изменения HTTP-поведения. Правила: SPEC.md; общие требования: ../sdk/SPEC.md. Схемы включены локально; внешних
+    $ref нет. Это проект, не текущая реализация.'
+servers:
+- url: https://profiles.platform.example
+  description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+security:
+- ServiceBearer: []
+tags:
+- name: User profile
+- name: Client
+paths:
+  /api/v1/profile/me:
+    servers:
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    get:
+      tags:
+      - User profile
+      operationId: getMyProfileCard
+      summary: Прочитать свою анкету
+      description: ''
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileCard'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      x-authorization: online-introspection
+      x-access-rules:
+      - Любой поддерживаемый профиль с активной service session.
+    patch:
+      tags:
+      - User profile
+      operationId: editMyProfileCard
+      summary: Изменить своё отображаемое имя и описание
+      description: Поля должности/степени недоступны. Первое изменение создаёт запись с проверкой ETag виртуальной
+        карточки. about="" очищает описание.
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileCard'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      x-authorization: online-introspection
+      x-access-rules:
+      - Любой поддерживаемый профиль с активной service session.
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfCardPatch'
+  /api/v1/profile/users:
+    servers:
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    get:
+      tags:
+      - User profile
+      operationId: listProfileCards
+      summary: Каталог заполненных анкет своего вуза
+      description: Только сохранённые карточки с непустым display_name и подтверждённым текущим членством. Это не
+        реестр всех членов ядра. Порядок user_id ASC. После фильтрации страница может быть неполной и иметь next_cursor.
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileCardPage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      x-authorization: online-introspection
+      x-access-rules:
+      - Любой поддерживаемый профиль с активной service session.
+      parameters:
+      - $ref: '#/components/parameters/Search'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+  /api/v1/profile/users/{user_id}:
+    servers:
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    get:
+      tags:
+      - User profile
+      operationId: getProfileCard
+      summary: Прочитать анкету участника
+      description: Целевой UUID проверяется через API профилей ядра. Нет действующего членства — 404. Действующий
+        участник без записи получает пустую карточку.
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileCard'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      x-authorization: online-introspection
+      x-access-rules:
+      - Любой поддерживаемый профиль с активной service session.
+      parameters:
+      - $ref: '#/components/parameters/user_id'
+    patch:
+      tags:
+      - User profile
+      operationId: editAcademicProfileCard
+      summary: Изменить должность и учёную степень
+      description: Только сведения вуза, без назначения профилей/ролей. null явно очищает поле. ETag карточки общий
+        с /me.
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileCard'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      x-authorization: online-introspection
+      x-access-rules:
+      - admin AND profiles.manage.
+      parameters:
+      - $ref: '#/components/parameters/user_id'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcademicCardPatch'
+  /home:
+    servers:
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    get:
+      tags:
+      - Client
+      operationId: getHomeClient
+      summary: Загрузить HTML клиента сервиса
+      description: Статическая оболочка без токенов, персональных данных и tenant. После iframe-handshake получает
+        service access и вызывает API. Не является доказательством доступа.
+      responses:
+        '200':
+          description: HTML-оболочка.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            text/html:
+              schema:
+                type: string
+      security: []
+  /users:
+    servers:
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    get:
+      tags:
+      - Client
+      operationId: getUsersClient
+      summary: Загрузить HTML клиента сервиса
+      description: Статическая оболочка без токенов, персональных данных и tenant. После iframe-handshake получает
+        service access и вызывает API. Не является доказательством доступа.
+      responses:
+        '200':
+          description: HTML-оболочка.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            text/html:
+              schema:
+                type: string
+      security: []
+components:
+  securitySchemes:
+    ServiceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT service_access
+      description: 'Только JWT ядра: aud=service:{service_id}, token_use=service_access. Ни core, ни machine, ни
+        refresh. Контекст уточняется introspection своего экземпляра.'
+  parameters:
+    user_id:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+      description: Непрозрачный keyset cursor на 15 минут; связан с actor, фильтрами и областью доступа.
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 128
+        pattern: ^"[^"\\]+"$
+      description: Ровно один strong ETag текущего ресурса. Нет заголовка — 428; несовпадение — 412. * запрещён.
+    Search:
+      name: q
+      in: query
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+      description: Поиск подстроки display_name без учёта регистра; область поиска — доступные карточки своего вуза.
+  headers:
+    RequestId:
+      description: UUID запроса, назначенный ядром.
+      schema:
+        $ref: '#/components/schemas/UUID'
+    NoStore:
+      description: Ответ нельзя сохранять в HTTP-кэше.
+      schema:
+        type: string
+        const: no-store
+    ETag:
+      description: Strong ETag ресурса для If-Match.
+      schema:
+        type: string
+        examples:
+        - '"rev-7"'
+    RetryAfter:
+      description: Число секунд до следующей попытки.
+      schema:
+        type: integer
+        minimum: 1
+    Authenticate:
+      description: Basic на machine token exchange; Bearer на access-защищённых маршрутах. На body-refresh может
+        отсутствовать.
+      schema:
+        type: string
+        examples:
+        - Bearer
+        - Basic realm="core-service"
+  responses:
+    Error400:
+      description: Невалидный JSON, cursor или синтаксис запроса.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error401:
+      description: Аутентификация отсутствует или недействительна; invalid_init_data/refresh/client также дают 401.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        WWW-Authenticate:
+          $ref: '#/components/headers/Authenticate'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error403:
+      description: Не хватает профиля, scope или актуального permission; защищённая операция запрещена.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error404:
+      description: Ресурс не существует либо находится вне области доступа. Public private-prefix всегда 404.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error409:
+      description: Конфликт состояния, защищённого инварианта, уникальности или Idempotency-Key.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error412:
+      description: Переданный If-Match больше не соответствует версии ресурса.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error422:
+      description: Ошибка схемы или доменной валидации; см. error.details.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error428:
+      description: Обязательный If-Match отсутствует.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error429:
+      description: Превышен лимит запросов.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error503:
+      description: Необходимое хранилище или конфигурация недоступны. Повтор не означает гарантированный успех.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error500:
+      description: Внутренняя ошибка без раскрытия реализации.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - request_id
+          properties:
+            code:
+              type: string
+              enum:
+              - BAD_REQUEST
+              - INVALID_CURSOR
+              - INVALID_INIT_DATA
+              - INVALID_REFRESH_TOKEN
+              - INVALID_CLIENT
+              - UNAUTHENTICATED
+              - FORBIDDEN
+              - PROTECTED_RESOURCE
+              - RESOURCE_NOT_FOUND
+              - RESOURCE_INACTIVE
+              - MEMBERSHIP_ALREADY_EXISTS
+              - SERVICE_ALREADY_EXISTS
+              - ROLE_ALREADY_EXISTS
+              - ROLE_IN_USE
+              - LAST_OWNER
+              - MANIFEST_REQUIRED
+              - CREDENTIAL_LIMIT
+              - IDEMPOTENCY_CONFLICT
+              - PRECONDITION_FAILED
+              - PRECONDITION_REQUIRED
+              - VALIDATION_ERROR
+              - INVALID_ROLE_ASSIGNMENT
+              - RATE_LIMITED
+              - SERVICE_UNAVAILABLE
+              - INTERNAL_ERROR
+              - INSTANCE_NOT_READY
+              - GROUP_ALREADY_EXISTS
+              - GROUP_IN_USE
+              - STUDENT_ALREADY_GROUPED
+              - INVALID_REFERENCE
+              - INVALID_TIME_RANGE
+              - INVALID_STATE
+              - PAYLOAD_TOO_LARGE
+              - UNSUPPORTED_MEDIA_TYPE
+              - FILE_STORAGE_UNAVAILABLE
+            message:
+              type: string
+              maxLength: 500
+            request_id:
+              $ref: '#/components/schemas/UUID'
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+              maxItems: 100
+      examples:
+      - error:
+          code: RESOURCE_NOT_FOUND
+          message: Ресурс не найден
+          request_id: 7de86629-e295-46c1-85c1-d0322ec97d3a
+    ProfileCard:
+      type: object
+      additionalProperties: false
+      required:
+      - user_id
+      - display_name
+      - about
+      - position
+      - academic_degree
+      properties:
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        display_name:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 200
+        about:
+          type: string
+          minLength: 0
+          maxLength: 2000
+        position:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 200
+        academic_degree:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 200
+      description: Одна анкета на user_id в данном экземпляре, общая для admin/teacher/student. GET для действующего
+        участника без анкеты возвращает виртуальную пустую карточку и ETag, не создавая строку. Только position/academic_degree
+        допускают явный null для очистки.
+    SelfCardPatch:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        about:
+          type: string
+          minLength: 0
+          maxLength: 2000
+      minProperties: 1
+      examples:
+      - display_name: Иван Иванов
+        about: Студент второго курса
+    AcademicCardPatch:
+      type: object
+      additionalProperties: false
+      required: []
+      properties:
+        position:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 200
+        academic_degree:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 200
+      minProperties: 1
+    ProfileCardPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileCard'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          type:
+          - string
+          - 'null'
+          maxLength: 2048
+    UUID:
+      type: string
+      format: uuid
+      examples:
+      - 46bf3278-29fa-4d0a-a711-e4a6a324ed31
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - path
+      - message
+      properties:
+        path:
+          type: string
+          maxLength: 256
+        message:
+          type: string
+          maxLength: 500
+      description: path — JSON Pointer либо имя параметра. В message не отражаются входные секреты.
+x-shared-contract: ../sdk/OPENAPI.yaml

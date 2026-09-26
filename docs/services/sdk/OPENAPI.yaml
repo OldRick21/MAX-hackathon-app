@@ -1,0 +1,546 @@
+openapi: 3.1.1
+info:
+  title: Вузы России — Общий контракт Service SDK
+  version: 0.1.0
+  description: 'Общие операции каждого сервиса; реализуются Service SDK. Доменные API определены в соседних каталогах.
+    Разделение SERVICES_API_OPENAPI.yaml 0.1.0 без изменения HTTP-поведения. Правила: SPEC.md; общие требования:
+    SPEC.md. Схемы включены локально; внешних $ref нет. Это проект, не текущая реализация.'
+servers:
+- url: https://administration.platform.example
+  description: Облачное администрирование; все вузы обслуживает один процесс этого типа.
+- url: https://schedule.platform.example
+  description: Облачное расписание; все вузы обслуживает один процесс этого типа.
+- url: https://profiles.platform.example
+  description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+- url: https://coursework.university.example
+  description: Локальный экземпляр курсовых; origin утверждает платформа.
+security:
+- ServiceBearer: []
+tags:
+- name: Common
+- name: Client
+paths:
+  /api/v1/health:
+    servers:
+    - url: https://administration.platform.example
+      description: Облачное администрирование; все вузы обслуживает один процесс этого типа.
+    - url: https://schedule.platform.example
+      description: Облачное расписание; все вузы обслуживает один процесс этого типа.
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    - url: https://coursework.university.example
+      description: Локальный экземпляр курсовых; origin утверждает платформа.
+    get:
+      tags:
+      - Common
+      operationId: getServiceHealth
+      summary: Проверить живость процесса
+      description: Только liveness, без сведений о вузах, БД и credentials.
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '500':
+          $ref: '#/components/responses/Error500'
+      security: []
+  /api/v1/service:
+    servers:
+    - url: https://administration.platform.example
+      description: Облачное администрирование; все вузы обслуживает один процесс этого типа.
+    - url: https://schedule.platform.example
+      description: Облачное расписание; все вузы обслуживает один процесс этого типа.
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    - url: https://coursework.university.example
+      description: Локальный экземпляр курсовых; origin утверждает платформа.
+    get:
+      tags:
+      - Common
+      operationId: getCurrentService
+      summary: Получить экземпляр, контекст и доступные меню
+      description: ServiceView совместим с ядром. id, institution_id, service_type и URLs — из доверенного binding;
+        profile и актуальные права — из introspection. Manifest читается из ядра и фильтруется по этим правам. Профиль
+        нельзя выбрать параметром. Не выдаёт credentials.
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceView'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      x-authorization: online-introspection
+      x-access-rules:
+      - Любой поддерживаемый профиль с активной service session.
+      parameters:
+      - $ref: '#/components/parameters/LocaleQuery'
+  /assets/{asset_name}:
+    servers:
+    - url: https://administration.platform.example
+      description: Облачное администрирование; все вузы обслуживает один процесс этого типа.
+    - url: https://schedule.platform.example
+      description: Облачное расписание; все вузы обслуживает один процесс этого типа.
+    - url: https://profiles.platform.example
+      description: Облачные анкеты; все вузы обслуживает один процесс этого типа.
+    - url: https://coursework.university.example
+      description: Локальный экземпляр курсовых; origin утверждает платформа.
+    get:
+      tags:
+      - Client
+      operationId: getServiceAsset
+      summary: Загрузить статический asset
+      description: Только опубликованные файлы данного клиента. Имя содержит hash; не отдаёт произвольный файл с
+        диска.
+      responses:
+        '200':
+          description: Опубликованный asset.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: public, max-age=31536000, immutable
+          content:
+            text/javascript:
+              schema:
+                type: string
+            text/css:
+              schema:
+                type: string
+            image/svg+xml:
+              schema:
+                type: string
+            image/png:
+              schema:
+                type: string
+                format: binary
+            font/woff2:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/AssetName'
+      security: []
+components:
+  securitySchemes:
+    ServiceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT service_access
+      description: 'Только JWT ядра: aud=service:{service_id}, token_use=service_access. Ни core, ни machine, ни
+        refresh. Контекст уточняется introspection своего экземпляра.'
+  parameters:
+    LocaleQuery:
+      name: locale
+      in: query
+      schema:
+        $ref: '#/components/schemas/Locale'
+      description: ru по умолчанию. Нет перевода en — fallback ru отдельно для каждой строки.
+    AssetName:
+      name: asset_name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.(js|css|png|svg|woff2)$
+        maxLength: 200
+      description: Плоское имя с content hash; без каталогов.
+  headers:
+    RequestId:
+      description: UUID запроса, назначенный ядром.
+      schema:
+        $ref: '#/components/schemas/UUID'
+    NoStore:
+      description: Ответ нельзя сохранять в HTTP-кэше.
+      schema:
+        type: string
+        const: no-store
+    RetryAfter:
+      description: Число секунд до следующей попытки.
+      schema:
+        type: integer
+        minimum: 1
+    Authenticate:
+      description: Basic на machine token exchange; Bearer на access-защищённых маршрутах. На body-refresh может
+        отсутствовать.
+      schema:
+        type: string
+        examples:
+        - Bearer
+        - Basic realm="core-service"
+  responses:
+    Error400:
+      description: Невалидный JSON, cursor или синтаксис запроса.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error401:
+      description: Аутентификация отсутствует или недействительна; invalid_init_data/refresh/client также дают 401.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        WWW-Authenticate:
+          $ref: '#/components/headers/Authenticate'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error403:
+      description: Не хватает профиля, scope или актуального permission; защищённая операция запрещена.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error404:
+      description: Ресурс не существует либо находится вне области доступа. Public private-prefix всегда 404.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error422:
+      description: Ошибка схемы или доменной валидации; см. error.details.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error429:
+      description: Превышен лимит запросов.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error503:
+      description: Необходимое хранилище или конфигурация недоступны. Повтор не означает гарантированный успех.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Error500:
+      description: Внутренняя ошибка без раскрытия реализации.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required:
+          - code
+          - message
+          - request_id
+          properties:
+            code:
+              type: string
+              enum:
+              - BAD_REQUEST
+              - INVALID_CURSOR
+              - INVALID_INIT_DATA
+              - INVALID_REFRESH_TOKEN
+              - INVALID_CLIENT
+              - UNAUTHENTICATED
+              - FORBIDDEN
+              - PROTECTED_RESOURCE
+              - RESOURCE_NOT_FOUND
+              - RESOURCE_INACTIVE
+              - MEMBERSHIP_ALREADY_EXISTS
+              - SERVICE_ALREADY_EXISTS
+              - ROLE_ALREADY_EXISTS
+              - ROLE_IN_USE
+              - LAST_OWNER
+              - MANIFEST_REQUIRED
+              - CREDENTIAL_LIMIT
+              - IDEMPOTENCY_CONFLICT
+              - PRECONDITION_FAILED
+              - PRECONDITION_REQUIRED
+              - VALIDATION_ERROR
+              - INVALID_ROLE_ASSIGNMENT
+              - RATE_LIMITED
+              - SERVICE_UNAVAILABLE
+              - INTERNAL_ERROR
+              - INSTANCE_NOT_READY
+              - GROUP_ALREADY_EXISTS
+              - GROUP_IN_USE
+              - STUDENT_ALREADY_GROUPED
+              - INVALID_REFERENCE
+              - INVALID_TIME_RANGE
+              - INVALID_STATE
+              - PAYLOAD_TOO_LARGE
+              - UNSUPPORTED_MEDIA_TYPE
+              - FILE_STORAGE_UNAVAILABLE
+            message:
+              type: string
+              maxLength: 500
+            request_id:
+              $ref: '#/components/schemas/UUID'
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+              maxItems: 100
+      examples:
+      - error:
+          code: RESOURCE_NOT_FOUND
+          message: Ресурс не найден
+          request_id: 7de86629-e295-46c1-85c1-d0322ec97d3a
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          const: ok
+      examples:
+      - status: ok
+    ServiceView:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - institution_id
+      - service_type
+      - deployment
+      - display_name
+      - locale
+      - api_base_url
+      - client_base_url
+      - profile
+      - roles
+      - permissions
+      - menus
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        institution_id:
+          $ref: '#/components/schemas/UUID'
+        service_type:
+          $ref: '#/components/schemas/ServiceTypeCode'
+        deployment:
+          $ref: '#/components/schemas/Deployment'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        locale:
+          $ref: '#/components/schemas/Locale'
+        api_base_url:
+          $ref: '#/components/schemas/HttpsApiUrl'
+        client_base_url:
+          $ref: '#/components/schemas/HttpsOrigin'
+        profile:
+          $ref: '#/components/schemas/Profile'
+        roles:
+          $ref: '#/components/schemas/RoleCodes'
+        permissions:
+          $ref: '#/components/schemas/Permissions'
+        menus:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuView'
+          maxItems: 32
+      description: Карточка в контексте текущего пользователя и выбранного профиля. Только разрешённые меню; секретов
+        нет.
+      examples:
+      - id: b4c51283-fbdf-44a2-91e8-7f3d07f52e1a
+        institution_id: 46bf3278-29fa-4d0a-a711-e4a6a324ed31
+        service_type: user-profile
+        deployment: cloud
+        display_name: Профиль пользователя
+        locale: ru
+        api_base_url: https://profiles-api.platform.example/api/v1
+        client_base_url: https://profiles-ui.platform.example
+        profile: teacher
+        roles: []
+        permissions: []
+        menus:
+        - id: home
+          display_name: Главная
+          locale: ru
+          entrypoint_path: /home
+          order: 0
+        - id: users
+          display_name: Пользователи
+          locale: ru
+          entrypoint_path: /users
+          order: 10
+    UUID:
+      type: string
+      format: uuid
+      examples:
+      - 46bf3278-29fa-4d0a-a711-e4a6a324ed31
+    Code:
+      type: string
+      pattern: ^[a-z][a-z0-9_.-]{0,63}$
+      maxLength: 64
+    Profile:
+      type: string
+      enum:
+      - admin
+      - teacher
+      - student
+    Locale:
+      type: string
+      enum:
+      - ru
+      - en
+      default: ru
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      required:
+      - path
+      - message
+      properties:
+        path:
+          type: string
+          maxLength: 256
+        message:
+          type: string
+          maxLength: 500
+      description: path — JSON Pointer либо имя параметра. В message не отражаются входные секреты.
+    ServiceTypeCode:
+      type: string
+      enum:
+      - administration
+      - schedule
+      - user-profile
+      - coursework
+    Deployment:
+      type: string
+      enum:
+      - cloud
+      - local
+    HttpsApiUrl:
+      type: string
+      format: uri
+      pattern: ^https://[^/?#@]+(?:/[^?#]*)?$
+      maxLength: 2048
+      description: HTTPS URL, разрешённый платформой. Может иметь path-prefix. Дополнительные проверки hostname
+        и allowlist — в спецификации.
+    HttpsOrigin:
+      type: string
+      format: uri
+      pattern: ^https://[^/?#@]+$
+      maxLength: 2048
+      description: Только origin, без завершающего / и пути. DNS hostname должен быть одобрен оператором.
+    RoleCodes:
+      type: array
+      items:
+        $ref: '#/components/schemas/Code'
+      maxItems: 32
+      uniqueItems: true
+    Permissions:
+      type: array
+      items:
+        $ref: '#/components/schemas/Code'
+      maxItems: 128
+      uniqueItems: true
+      description: Коды из неизменяемого платформой словаря соответствующего типа сервиса.
+    MenuView:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - display_name
+      - locale
+      - entrypoint_path
+      - order
+      properties:
+        id:
+          $ref: '#/components/schemas/Code'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        locale:
+          $ref: '#/components/schemas/Locale'
+        entrypoint_path:
+          $ref: '#/components/schemas/EntrypointPath'
+        order:
+          type: integer
+          minimum: 0
+          maximum: 10000
+    EntrypointPath:
+      type: string
+      pattern: ^/(?!/)[A-Za-z0-9_./-]*$
+      maxLength: 1024
+      description: Путь внутри client origin. Дополнительно запрещены сегменты . и ..; URL-encoding, query, fragment
+        и backslash не поддерживаются.
+x-shared-contract: OPENAPI.yaml

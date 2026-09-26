@@ -1,0 +1,13 @@
+GET /api/v1/schedule/groups
+POST /api/v1/schedule/groups
+GET /api/v1/schedule/groups/{group_id}
+PATCH /api/v1/schedule/groups/{group_id}
+DELETE /api/v1/schedule/groups/{group_id}
+GET /api/v1/schedule/groups/{group_id}/students
+PUT /api/v1/schedule/groups/{group_id}/students
+GET /api/v1/schedule/events
+POST /api/v1/schedule/events
+GET /api/v1/schedule/events/{event_id}
+PUT /api/v1/schedule/events/{event_id}
+DELETE /api/v1/schedule/events/{event_id}
+GET /schedule
