@@ -1,0 +1,85 @@
+import time
+import requests
+from requests.auth import HTTPBasicAuth
+
+BASE_URL = "http://127.0.0.1:8000"
+
+
+def run():
+    print("\n[Suite 3] Запуск тестов Private Administration...")
+    ts = int(time.time())
+    admin_name = f"ivan_admin_{ts}"
+    student_name = f"petr_ext_{ts}"
+
+    # 1. Вход администратора
+    r = requests.post(f"{BASE_URL}/api/v1/auth/token", json={"username": admin_name})
+    admin_tokens = r.json()
+    admin_core_h = {"Authorization": f"Bearer {admin_tokens['access_token']}"}
+
+    r_inst = requests.get(f"{BASE_URL}/api/v1/institution", headers=admin_core_h)
+    inst_id = r_inst.json()["items"][0]["id"]
+
+    # 2. Получение Machine Token сервиса администрирования
+    r = requests.post(
+        f"{BASE_URL}/api/v1/internal/auth/token",
+        auth=HTTPBasicAuth("admin_service_client", "admin_service_super_secret_123"),
+        json={"grant_type": "client_credentials"}
+    )
+    machine_token = r.json()["access_token"]
+    admin_srv_id = r.json()["service_id"]
+
+    # 3. Выпуск Service Session под профилем admin (Actor Token)
+    r_sess = requests.post(
+        f"{BASE_URL}/api/v1/institution/{inst_id}/service/{admin_srv_id}/session",
+        json={"profile": "admin"},
+        headers=admin_core_h
+    )
+    actor_jwt = r_sess.json()["access_token"]
+    private_h = {
+        "Authorization": f"Bearer {machine_token}",
+        "X-Actor-Token": actor_jwt
+    }
+    print("  ✓ Admin dual-token context established")
+
+    # 4. Регистрация нового внешнего пользователя
+    r_new = requests.post(f"{BASE_URL}/api/v1/auth/token", json={"username": student_name})
+    new_user_id = requests.get(
+        f"{BASE_URL}/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {r_new.json()['access_token']}"}
+    ).json()["id"]
+
+    # 5. Добавление участника в ВУЗ
+    member_payload = {"user_id": new_user_id, "profiles": ["student"]}
+    r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/members", json=member_payload, headers=private_h)
+    assert r.status_code == 201
+    print("  ✓ Add member to institution OK")
+
+    # 6. Проверка дубликата (409)
+    r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/members", json=member_payload, headers=private_h)
+    assert r.status_code == 409
+    print("  ✓ Duplicate membership rejected (409)")
+
+    # 7. Установка сервиса и выдача credentials
+    curr_srvs = requests.get(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services", headers=private_h).json()["items"]
+    for s in curr_srvs:
+        if s["service_type"] == "coursework":
+            requests.delete(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services/{s['id']}", headers=private_h)
+
+    srv_payload = {
+        "service_type": "coursework",
+        "deployment": "local",
+        "api_base_url": "https://cw.mephi.ru/api/v1",
+        "client_base_url": "https://cw.mephi.ru"
+    }
+    r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services", json=srv_payload, headers=private_h)
+    assert r.status_code == 201
+    cw_id = r.json()["id"]
+
+    r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services/{cw_id}/credentials", headers=private_h)
+    assert r.status_code == 201 and "client_secret" in r.json()
+    print("  ✓ Local service registered & credentials issued")
+
+    # 8. Защита ingress без X-Actor-Token (404)
+    r_pub = requests.get(f"{BASE_URL}/api/v1/institution/{inst_id}/internal", headers={"Authorization": f"Bearer {machine_token}"})
+    assert r_pub.status_code == 404
+    print("  ✓ Public ingress masking without Actor token (404) OK")
