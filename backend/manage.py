@@ -89,6 +89,7 @@ def main(argv=None) -> None:
     owner.add_argument("user_id")
     sub.add_parser("list-institutions")
     sub.add_parser("ensure-invariants")
+    sub.add_parser("export-services")
     args = parser.parse_args(argv)
 
     create_tables()  # создаёт новые таблицы и применяет инварианты
@@ -100,6 +101,10 @@ def main(argv=None) -> None:
         assign_owner(_uuid(args.institution_id), _uuid(args.user_id))
     elif args.command == "list-institutions":
         list_institutions()
+    elif args.command == "export-services":
+        from platform_core.service_files import export_services
+        export_services(session_local)
+        print("Настройки сервисов выгружены.")
     elif args.command == "ensure-invariants":
         print("Инварианты платформы проверены.")
 

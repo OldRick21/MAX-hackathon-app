@@ -1,14 +1,14 @@
 # Сервис «Администрирование»: реализация
 
-Документ описывает код в `administration/` и связанные изменения ядра (`backend/`). Контракт — [SPEC.md](SPEC.md) и [OPENAPI.yaml](OPENAPI.yaml). Здесь перечислено, что реализовано, какие операции добавлены сверх контракта и где реализация сознательно проще целевой архитектуры.
+Документ описывает код в `services/administration/` и связанные изменения ядра (`backend/`). Контракт — [SPEC.md](SPEC.md) и [OPENAPI.yaml](OPENAPI.yaml). Здесь перечислено, что реализовано, какие операции добавлены сверх контракта и где реализация сознательно проще целевой архитектуры.
 
 ## Компоненты
 
 | Где | Что делает |
 | --- | --- |
-| `administration/app/main.py` | Процесс сервиса (один на все вузы): SDK-проверка запроса, 25 явных операций фасада, `GET /api/v1/service`, `/admin`, assets с content hash |
-| `administration/app/core_client.py` | Клиент ядра: binding по UUID, machine JWT с кэшем по credential/revision, online introspection без кэша, вызовы private API, отказ → 503 |
-| `administration/client/` | Интерфейс в iframe: протокол SDK (init/ready/context/refresh/session_ended), разделы «Вуз», «Участники», «Сервисы», «Роли», «Журнал» |
+| `services/administration/app/main.py` | Процесс сервиса (один на все вузы): SDK-проверка запроса, 25 явных операций фасада, `GET /api/v1/service`, `/admin`, assets с content hash |
+| `services/administration/app/core_client.py` | Клиент ядра: binding по UUID, machine JWT с кэшем по credential/revision, online introspection без кэша, вызовы private API, отказ → 503 |
+| `services/administration/client/` | Интерфейс в iframe: протокол SDK (init/ready/context/refresh/session_ended), разделы «Вуз», «Участники», «Сервисы», «Роли», «Журнал» |
 | `backend/routes/private_admin.py`, `services/institution_admin.py` | Private API вуза: все операции контракта + расширения, ETag/If-Match, Idempotency-Key, LAST_OWNER, журнал |
 | `backend/auth/authorization.py` | Три проверки private API: сеть, machine credential administration этого вуза, actor с живыми сессиями и правами из БД |
 | `backend/routes/platform.py`, `services/platform_support.py` | Заявки вузов, поддержка платформы, provisioning bindings |

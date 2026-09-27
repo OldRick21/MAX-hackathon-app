@@ -1,6 +1,7 @@
 from auth.config import AuthSettings
 
 class Settings(AuthSettings):
+    SERVICE_CONFIG_DIR: str = ""
     DATABASE_URL: str
     # --- Облачные сервисы платформы (CLOUD_RUNTIME_SPEC.md) ---
     # Ключ вывода machine-секретов cloud bindings; хранится только в секретах deployment.

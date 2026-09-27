@@ -10,6 +10,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: sqlite:////data/core.db
+      SERVICE_CONFIG_DIR: /srv/services/connected
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
       CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Set CLOUD_BINDING_KEY in .env}
@@ -22,6 +23,7 @@ services:
       ALLOW_FAKE_REDIS: "false"
     volumes:
       - core-data:/data
+      - ./services/connected:/srv/services/connected
     depends_on:
       redis:
         condition: service_healthy
@@ -37,7 +39,7 @@ services:
   # Облачный сервис «Администрирование»: один процесс на все вузы.
   # Только он обращается к private API ядра (http://backend:8000/api/v1/institution/*/internal).
   administration:
-    build: ./administration
+    build: ./services/administration
     environment:
       CORE_INTERNAL_URL: http://backend:8000
       ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN}
@@ -65,7 +67,7 @@ services:
       - "8444:8444"
     volumes:
       - ./frontend:/srv/frontend:ro
-      - ./demo-service:/srv/demo-service:ro
+      - ./services/demo-service:/srv/demo-service:ro
       - ./web/configs/docker-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /var/lib/max-miniapp/acme:/var/www/acme:ro
       - /var/lib/max-miniapp/letsencrypt:/etc/letsencrypt:ro

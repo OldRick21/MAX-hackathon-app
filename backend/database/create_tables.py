@@ -97,6 +97,8 @@ def create_tables():
         db.commit()
     finally:
         db.close()
+    from platform_core.service_files import export_services
+    export_services(session_local)
 
 def get_db():
     db = session_local()
@@ -104,3 +106,6 @@ def get_db():
         yield db
     finally:
         db.close()
+
+from platform_core.service_files import install_export_hook
+install_export_hook(session_local)
