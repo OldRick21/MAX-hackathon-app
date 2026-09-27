@@ -9,7 +9,7 @@ import hmac
 from urllib.parse import urlencode
 
 _tmp = tempfile.TemporaryDirectory()
-os.environ.update(DATABASE_URL=f"sqlite:///{_tmp.name}/test.db", JWT_SECRET_KEY="test-secret-" * 6,
+os.environ.update(DATABASE_URL=f"sqlite:///{_tmp.name}/test.db", JWT_ISSUER="https://core.test", JWT_KEYRING_PATH=f"{_tmp.name}/keys.json", CURSOR_SECRET_KEY="test-secret-" * 6,
                   MAX_BOT_TOKEN="integration-test-token", ALLOW_DEV_LOGIN="false",
                   CLOUD_BINDING_KEY="b" * 48, ADMINISTRATION_PROVISIONING_TOKEN="p" * 48,
                   SEED_DEMO_DATA="false", ALLOW_FAKE_REDIS="true", REDIS_PORT="1")
@@ -34,6 +34,8 @@ class MaxIntegration(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.context.__exit__(None, None, None)
+        from database.create_tables import engine
+        engine.dispose()
         _tmp.cleanup()
 
     def test_verified_identity_refresh_logout(self):

@@ -138,13 +138,13 @@ def _page(ctx: ActorContext, kind: str, query, key_column, key_of: Callable, vie
     limit = check_limit(limit)
     scope = {"kind": kind, "institution": ctx.institution_id, "actor": ctx.actor_id,
              "permissions": ctx.permissions, **(extra_scope or {})}
-    after = decode_cursor(settings.JWT_SECRET_KEY, scope, cursor)
+    after = decode_cursor(settings.CURSOR_SECRET_KEY, scope, cursor)
     if after is not None:
         query = query.filter(key_column > after)
     rows = query.order_by(key_column.asc()).limit(limit + 1).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
-    next_cursor = encode_cursor(settings.JWT_SECRET_KEY, scope, key_of(rows[-1])) if has_more and rows else None
+    next_cursor = encode_cursor(settings.CURSOR_SECRET_KEY, scope, key_of(rows[-1])) if has_more and rows else None
     return Result({"items": [view(r) for r in rows], "next_cursor": next_cursor})
 
 
@@ -650,7 +650,7 @@ def list_audit(db: Session, ctx: ActorContext, limit, cursor) -> Result:
     ctx.require("institution.read")
     limit = check_limit(limit)
     scope = {"kind": "audit", "institution": ctx.institution_id, "actor": ctx.actor_id}
-    before_id = decode_cursor(settings.JWT_SECRET_KEY, scope, cursor)
+    before_id = decode_cursor(settings.CURSOR_SECRET_KEY, scope, cursor)
     query = db.query(AuditEvent).filter(AuditEvent.scope == "institution",
                                         AuditEvent.institution_id == ctx.institution_id)
     if before_id is not None:
@@ -659,4 +659,4 @@ def list_audit(db: Session, ctx: ActorContext, limit, cursor) -> Result:
     has_more = len(rows) > limit
     rows = rows[:limit]
     return Result({"items": [registry.audit_view(r) for r in rows],
-                   "next_cursor": encode_cursor(settings.JWT_SECRET_KEY, scope, rows[-1].id) if has_more else None})
+                   "next_cursor": encode_cursor(settings.CURSOR_SECRET_KEY, scope, rows[-1].id) if has_more else None})

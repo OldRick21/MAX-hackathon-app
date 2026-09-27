@@ -1,5 +1,5 @@
 """Rebuildable, secret-free projection of registered services onto disk."""
-import fcntl
+from filelock import FileLock
 import json
 import logging
 import os
@@ -20,8 +20,7 @@ def export_services(session_factory):
     root = Path(settings.SERVICE_CONFIG_DIR)
     root.mkdir(parents=True, exist_ok=True)
     # Readers see whole files; concurrent commits rebuild from the latest DB state.
-    with (root / '.export.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with FileLock(str(root / '.export.lock')):
         with session_factory() as db:
             services = db.query(ServiceInstance).all()
             expected = set()

@@ -338,8 +338,8 @@ def check_role_patch(body, type_code: str, supported_profiles: Iterable[str]) ->
 
 
 def check_role_codes(values, path: str = "roles") -> List[str]:
-    if not isinstance(values, list) or len(values) > 64:
-        raise validation("roles — список кодов (до 64)", path)
+    if not isinstance(values, list) or len(values) > 32:
+        raise validation("roles — список кодов (до 32)", path)
     result: List[str] = []
     for i, code in enumerate(values):
         check_code(code, f"{path}[{i}]")

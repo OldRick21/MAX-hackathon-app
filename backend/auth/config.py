@@ -1,25 +1,23 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from datetime import timedelta
+from pydantic import field_validator
+from urllib.parse import urlsplit
 
 class AuthSettings(BaseSettings):
     MAX_BOT_TOKEN: str = ""
     ALLOW_DEV_LOGIN: bool = False
     SEED_DEMO_DATA: bool = False
     ALLOW_FAKE_REDIS: bool = False
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRES: timedelta = timedelta(minutes=2)     # 2 minutes for access token
-    JWT_REFRESH_TOKEN_EXPIRES: timedelta = timedelta(days=28)      # 28 days for refresh token (keep in HTTP-only cookie)
+    CURSOR_SECRET_KEY: str
+    JWT_ISSUER: str
+    JWT_KEYRING_PATH: str = "./data/jwt-keys.json"
 
-    # cookie settings
-    JWT_ACCESS_COOKIE_NAME: str = "access_token"
-    JWT_REFRESH_COOKIE_NAME: str = "refresh_token"
-    JWT_TOKEN_LOCATION: list = ["headers", "cookies"]
-
-    JWT_COOKIE_HTTPONLY: bool = True        # protect for XSS (block access from JS to cookies)
-    # JWT_COOKIE_SECURE: bool = True        # https is needed (cookie only with https)
-    JWT_COOKIE_SAMESITE: str = "lax"        # protect for CSRF (block post requests from other site)
-    JWT_COOKIE_CSRF_PROTECT: bool = True    # other protect for CSRF
+    @field_validator('JWT_ISSUER')
+    @classmethod
+    def valid_issuer(cls, value):
+        parsed = urlsplit(value)
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.query or parsed.fragment or parsed.username:
+            raise ValueError('JWT_ISSUER must be an exact HTTPS issuer URL without query/fragment/userinfo')
+        return value
 
     model_config = SettingsConfigDict(
         env_file=".env",            # need to read .env

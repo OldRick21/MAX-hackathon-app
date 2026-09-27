@@ -9,7 +9,7 @@ import uuid
 
 _tmp = tempfile.TemporaryDirectory()
 os.environ.update(
-    DATABASE_URL=f"sqlite:///{_tmp.name}/admin.db", JWT_SECRET_KEY="flow-secret-" * 6, MAX_BOT_TOKEN="",
+    DATABASE_URL=f"sqlite:///{_tmp.name}/admin.db", JWT_ISSUER="https://core.test", JWT_KEYRING_PATH=f"{_tmp.name}/keys.json", CURSOR_SECRET_KEY="flow-secret-" * 6, MAX_BOT_TOKEN="",
     ALLOW_DEV_LOGIN="true", SEED_DEMO_DATA="false", ALLOW_FAKE_REDIS="true", REDIS_PORT="1",
     CLOUD_BINDING_KEY="b" * 48, ADMINISTRATION_PROVISIONING_TOKEN="p" * 48,
 )
@@ -31,6 +31,8 @@ class AdministrationFlow(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.ctx.__exit__(None, None, None)
+        from database.create_tables import engine
+        engine.dispose()
         _tmp.cleanup()
 
     # --- помощники ---
