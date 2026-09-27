@@ -1,3 +1,4 @@
+import os
 import time
 import requests
 from requests.auth import HTTPBasicAuth
@@ -19,14 +20,17 @@ def run():
     r_inst = requests.get(f"{BASE_URL}/api/v1/institution", headers=admin_core_h)
     inst_id = r_inst.json()["items"][0]["id"]
 
-    # 2. Получение Machine Token сервиса администрирования
+    # 2. Machine token сервиса администрирования через его binding
+    services = requests.get(f"{BASE_URL}/api/v1/institution/{inst_id}/service?profile=admin", headers=admin_core_h).json()["items"]
+    admin_srv_id = next(s["id"] for s in services if s["service_type"] == "administration")
+    binding = requests.get(f"{BASE_URL}/api/v1/internal/provisioning/bindings/{admin_srv_id}",
+                           headers={"Authorization": f"Bearer {os.environ['ADMINISTRATION_PROVISIONING_TOKEN']}"}).json()
     r = requests.post(
         f"{BASE_URL}/api/v1/internal/auth/token",
-        auth=HTTPBasicAuth("admin_service_client", "admin_service_super_secret_123"),
+        auth=HTTPBasicAuth(binding["client_id"], binding["client_secret"]),
         json={"grant_type": "client_credentials"}
     )
     machine_token = r.json()["access_token"]
-    admin_srv_id = r.json()["service_id"]
 
     # 3. Выпуск Service Session под профилем admin (Actor Token)
     r_sess = requests.post(
@@ -58,26 +62,6 @@ def run():
     r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/members", json=member_payload, headers=private_h)
     assert r.status_code == 409
     print("  ✓ Duplicate membership rejected (409)")
-
-    # 7. Установка сервиса и выдача credentials
-    curr_srvs = requests.get(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services", headers=private_h).json()["items"]
-    for s in curr_srvs:
-        if s["service_type"] == "coursework":
-            requests.delete(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services/{s['id']}", headers=private_h)
-
-    srv_payload = {
-        "service_type": "coursework",
-        "deployment": "local",
-        "api_base_url": "https://cw.mephi.ru/api/v1",
-        "client_base_url": "https://cw.mephi.ru"
-    }
-    r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services", json=srv_payload, headers=private_h)
-    assert r.status_code == 201
-    cw_id = r.json()["id"]
-
-    r = requests.post(f"{BASE_URL}/api/v1/institution/{inst_id}/internal/services/{cw_id}/credentials", headers=private_h)
-    assert r.status_code == 201 and "client_secret" in r.json()
-    print("  ✓ Local service registered & credentials issued")
 
     # 8. Защита ingress без X-Actor-Token (404)
     r_pub = requests.get(f"{BASE_URL}/api/v1/institution/{inst_id}/internal", headers={"Authorization": f"Bearer {machine_token}"})

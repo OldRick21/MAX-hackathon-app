@@ -4,22 +4,19 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     String,
+    Text,
+    Integer,
     DateTime,
     Boolean,
     ForeignKey,
     JSON,
-    event,
+    Index,
     UniqueConstraint
 )
 from sqlalchemy.orm import relationship, declarative_base
 
-table_class = declarative_base()
-
-def generate_uuid() -> str:
-    return str(uuid.uuid4())
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from database.base import table_class, generate_uuid, utc_now
+from auth.models import User, CoreSession, ServiceSession, ServiceCredential
 
 # --- Перечисления по спецификации OpenAPI ---
 
@@ -47,23 +44,6 @@ class DeploymentType(str, enum.Enum):
 
 # --- Основные сущности ---
 
-class User(table_class):
-    """Глобальный пользователь платформы (компонент User в OpenAPI)."""
-    __tablename__ = "users"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    # Идентификатор пользователя в мессенджере Макс
-    max_user_id = Column(String(32), unique=True, index=True, nullable=True)
-    # username и password остаются для разработки / фоллбека
-    username = Column(String(50), unique=True, index=True, nullable=True)
-    email = Column(String(100), unique=True, index=True, nullable=True)
-    hashed_password = Column(String(255), nullable=True)
-    
-    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-
-    # Связи
-    memberships = relationship("Membership", back_populates="user", cascade="all, delete-orphan")
-    core_sessions = relationship("CoreSession", back_populates="user", cascade="all, delete-orphan")
 
 class Institution(table_class):
     """ВУЗ (компонент InstitutionView / AdminInstitution в OpenAPI)."""
@@ -154,49 +134,129 @@ class RoleAssignment(table_class):
 
 # --- Сессии (Core и Service) ---
 
-class CoreSession(table_class):
-    """Основная сессия пользователя в ядре (CoreBearer)."""
-    __tablename__ = "core_sessions"
 
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    current_refresh_jti = Column(String(64), nullable=False)
-    is_revoked = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-
-    user = relationship("User", back_populates="core_sessions")
-    service_sessions = relationship("ServiceSession", back_populates="parent_session", cascade="all, delete-orphan")
-
-class ServiceSession(table_class):
-    """Сессия обращения к конкретному сервису (ServiceTokenPair)."""
-    __tablename__ = "service_sessions"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    parent_session_id = Column(String(36), ForeignKey("core_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
-    institution_id = Column(String(36), ForeignKey("institutions.id", ondelete="CASCADE"), nullable=False)
-    service_id = Column(String(36), ForeignKey("services.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    profile = Column(String(20), nullable=False)  # admin, teacher, student
-
-    current_refresh_jti = Column(String(64), nullable=False)
-    is_revoked = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-
-    parent_session = relationship("CoreSession", back_populates="service_sessions")
 
 # --- Machine Credentials для локальных сервисов ---
 
-class ServiceCredential(table_class):
-    """Credentials локального сервиса (Basic Auth: client_id + client_secret)."""
-    __tablename__ = "service_credentials"
+
+
+# --- Платформа: поддержка, заявки вузов, bindings, аудит ---
+
+class PlatformRole(str, enum.Enum):
+    SUPPORT = "platform_support"
+
+
+class ApplicationStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
+class PlatformStaff(table_class):
+    """Сотрудник поддержки платформы. Права не связаны с членством в вузах.
+
+    Первую запись создаёт оператор командой `python manage.py grant-platform-role`.
+    """
+    __tablename__ = "platform_staff"
+
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role = Column(String(32), nullable=False, default=PlatformRole.SUPPORT.value)
+    granted_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class InstitutionApplication(table_class):
+    """Заявка на подключение вуза. Вуз создаётся только после одобрения поддержкой."""
+    __tablename__ = "institution_applications"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    client_id = Column(String(36), unique=True, nullable=False, default=generate_uuid)
-    service_id = Column(String(36), ForeignKey("services.id", ondelete="CASCADE"), nullable=False, index=True)
-    hashed_secret = Column(String(255), nullable=False)
+    applicant_user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    titles = Column(JSON, nullable=False)
+    default_locale = Column(String(10), nullable=False, default="ru")
+    contact = Column(String(200), nullable=False)
+    comment = Column(Text, nullable=False, default="")
+    status = Column(String(20), nullable=False, default=ApplicationStatus.PENDING.value, index=True)
+    decision_reason = Column(Text, nullable=True)
+    reviewed_by = Column(String(36), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    institution_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
-    service = relationship("ServiceInstance", back_populates="credentials")
+
+class InstitutionLocalHost(table_class):
+    """DNS hostname, одобренный поддержкой для local-экземпляров вуза (CORE_API_SPEC.md §7)."""
+    __tablename__ = "institution_local_hosts"
+
+    institution_id = Column(String(36), ForeignKey("institutions.id", ondelete="CASCADE"), primary_key=True)
+    hostname = Column(String(253), primary_key=True)
+    approved_by = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class CloudBinding(table_class):
+    """Привязка облачного экземпляра к credential (CLOUD_RUNTIME_SPEC.md §2).
+
+    Секрет не хранится: он выводится из CLOUD_BINDING_KEY и credential_id.
+    """
+    __tablename__ = "cloud_bindings"
+
+    service_id = Column(String(36), ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
+    institution_id = Column(String(36), nullable=False, index=True)
+    service_type = Column(String(50), nullable=False, index=True)
+    credential_id = Column(String(36), nullable=False)
+    client_id = Column(String(36), nullable=False)
+    revision = Column(Integer, nullable=False, default=1)
+    active = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class IdempotencyRecord(table_class):
+    """Результат создания по Idempotency-Key на 24 часа (CORE_API_SPEC.md §3)."""
+    __tablename__ = "idempotency_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    actor_user_id = Column(String(36), nullable=False)
+    institution_id = Column(String(36), nullable=False)
+    method = Column(String(10), nullable=False)
+    path = Column(String(512), nullable=False)
+    key = Column(String(36), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    resource_id = Column(String(36), nullable=True)
+    response = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("actor_user_id", "institution_id", "method", "path", "key", name="uq_idempotency_scope"),
+    )
+
+
+class AuditEvent(table_class):
+    """Журнал административных изменений. Без токенов, секретов и анкет.
+
+    Внешних ключей нет намеренно: запись переживает удаление экземпляра/вуза.
+    """
+    __tablename__ = "audit_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    scope = Column(String(20), nullable=False)          # institution | platform
+    institution_id = Column(String(36), nullable=True)
+    actor_user_id = Column(String(36), nullable=True)
+    actor_kind = Column(String(20), nullable=False)     # admin | platform_support | operator | system
+    machine_credential_id = Column(String(36), nullable=True)
+    request_id = Column(String(36), nullable=True)
+    facade_request_id = Column(String(36), nullable=True)
+    action = Column(String(64), nullable=False)
+    target_type = Column(String(32), nullable=True)
+    target_id = Column(String(128), nullable=True)
+    outcome = Column(String(20), nullable=False)        # success | denied
+    error_code = Column(String(40), nullable=True)
+    details = Column(JSON, nullable=False, default=dict)
+
+    __table_args__ = (
+        Index("ix_audit_institution_id", "institution_id", "id"),
+        Index("ix_audit_scope_id", "scope", "id"),
+    )

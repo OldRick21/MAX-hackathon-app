@@ -40,3 +40,20 @@ a {color:var(--accent)}
 footer {padding:28px 0 8px; font-size:12px; color:var(--muted); text-align:center}
 @media(max-width:760px) {.shell {padding-left:14px; padding-right:14px}.topbar {min-height:82px}.brand {font-size:16px}.brand small {font-size:10px}.language-label {font-size:0}.language-label select {font-size:13px}.top-actions {gap:6px}#workspace {grid-template-columns:1fr; gap:18px; margin-top:18px}.sidebar {padding:16px}.identity {margin-top:12px}#services {grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.service-group {grid-column:1/-1}.entry {margin:7vh auto; padding:28px}.content-header h1 {font-size:24px}#frame-host iframe {height:70dvh; min-height:340px}.card {min-height:130px}}
 @media(prefers-color-scheme:dark) {:root {--bg:#141724; --surface:#1d2131; --text:#ecedf6; --muted:#a0a8bf; --line:#343a50; --accent:#b1a4ff; --accent-soft:#30294d; --danger:#ffadb6}.brand-mark,.primary {background:#6651d9;color:white}}
+
+/* Заявки вузов и консоль поддержки платформы */
+.platform-links { display: grid; gap: 8px; margin-top: 18px; }
+.panel { background: var(--surface); border: 1px solid var(--line, #e0dfed); border-radius: 16px; padding: 16px; margin: 12px 0; }
+.panel h2 { margin: 0 0 8px; font-size: 18px; }
+.form-field { display: grid; gap: 4px; margin: 10px 0; }
+.form-field span { font-weight: 600; font-size: 14px; }
+.form-field input, .form-field textarea, .panel input, .panel textarea { font: inherit; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line, #e0dfed); width: 100%; box-sizing: border-box; }
+.list-row { border-top: 1px solid var(--line, #e0dfed); padding: 10px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.list-row:first-of-type { border-top: 0; }
+.list-row p { flex-basis: 100%; margin: 0; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.row-actions input { flex: 1 1 200px; width: auto; }
+.pill-tabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.pill { border-radius: 999px; padding: 7px 14px; border: 1px solid var(--line, #e0dfed); background: transparent; cursor: pointer; font: inherit; color: inherit; }
+.pill.active { background: var(--accent, #6554d9); color: #fff; border-color: transparent; }
+.card-grid > .panel, .card-grid > .pill-tabs, .card-grid > div, .card-grid > p {grid-column:1/-1}

@@ -10,7 +10,11 @@ export const isUUID = (value) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9
 export const profiles = ['student', 'teacher', 'admin'];
 export const isProfile = (value) => profiles.includes(value);
 
-export async function request(path, { method = 'GET', body, token, signal } = {}) {
+// Коды, сообщения которых сервер формирует сам и которые безопасно показать пользователю.
+const SAFE_CODES = new Set(['VALIDATION_ERROR', 'APPLICATION_LIMIT', 'APPLICATION_NOT_PENDING', 'OWNER_EXISTS',
+  'PRECONDITION_FAILED', 'PRECONDITION_REQUIRED', 'FORBIDDEN', 'RESOURCE_NOT_FOUND']);
+
+export async function request(path, { method = 'GET', body, token, signal, headers: extra = {}, meta = false } = {}) {
   if (!path.startsWith('/api/v1/')) throw new Error('Недопустимый путь API');
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -21,10 +25,10 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
     const response = await fetch(path, {
       method, signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error',
       headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (response.status === 204) return null;
+    if (response.status === 204) return meta ? { data: null, etag: response.headers.get('ETag') } : null;
     const data = await response.json().catch(() => null);
     if (!response.ok) {
       // Не показываем произвольное тело ответа: оно может содержать входные credentials.
@@ -32,11 +36,14 @@ export async function request(path, { method = 'GET', body, token, signal } = {}
         403: 'Нет доступа к выбранному профилю или сервису.', 404: 'Ресурс не найден или API ещё не подключён.',
         409: 'Вуз или сервис сейчас недоступен.', 422: 'Сервер отклонил параметры запроса.',
         429: 'Слишком много запросов. Подождите и повторите действие.', 503: 'Сервис временно недоступен.' };
-      throw new ApiError(messages[response.status] || 'Не удалось выполнить запрос к серверу.', response.status,
+      const code = data?.error?.code;
+      const serverMessage = SAFE_CODES.has(code) && path.match(/^\/api\/v1\/(platform|institution-applications)(\/|$|\?)/)
+        ? String(data.error.message || '').slice(0, 300) : '';
+      throw new ApiError(serverMessage || messages[response.status] || 'Не удалось выполнить запрос к серверу.', response.status,
         data?.error?.request_id || response.headers.get('X-Request-ID') || '');
     }
     if (!data || typeof data !== 'object') throw new ApiError('Сервер вернул ответ не по контракту.');
-    return data;
+    return meta ? { data, etag: response.headers.get('ETag') } : data;
   } catch (error) {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     if (error instanceof ApiError) throw error;

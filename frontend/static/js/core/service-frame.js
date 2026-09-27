@@ -1,4 +1,4 @@
-import { ApiError, isUUID, request, tokenPair } from './api.js?v=7eaa0b600c59';
+import { ApiError, isUUID, request, tokenPair } from './api.js?v=9ff99b1c478b';
 
 export function clientAddress(service, menu, coreOrigin = location.origin) {
   let base, api;

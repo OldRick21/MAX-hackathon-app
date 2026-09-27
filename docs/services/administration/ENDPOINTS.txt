@@ -18,3 +18,10 @@ GET /api/v1/administration/services/{service_id}/credentials
 POST /api/v1/administration/services/{service_id}/credentials
 DELETE /api/v1/administration/services/{service_id}/credentials/{credential_id}
 GET /admin
+# Расширения реализации (см. IMPLEMENTATION.md)
+GET /api/v1/administration/audit
+PUT /api/v1/administration/services/{service_id}/manifest
+POST /api/v1/administration/services/{service_id}/roles
+GET /api/v1/administration/services/{service_id}/roles/{role_code}
+PATCH /api/v1/administration/services/{service_id}/roles/{role_code}
+DELETE /api/v1/administration/services/{service_id}/roles/{role_code}

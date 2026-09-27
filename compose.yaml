@@ -12,6 +12,10 @@ services:
       DATABASE_URL: sqlite:////data/core.db
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
+      CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Set CLOUD_BINDING_KEY in .env}
+      ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN:?Set ADMINISTRATION_PROVISIONING_TOKEN in .env}
+      ADMINISTRATION_API_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN:?Set ADMINISTRATION_PUBLIC_ORIGIN in .env}/api/v1
+      ADMINISTRATION_CLIENT_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN}
       REDIS_HOST: redis
       ALLOW_DEV_LOGIN: "false"
       SEED_DEMO_DATA: "false"
@@ -30,9 +34,27 @@ services:
       start_period: 10s
       retries: 3
 
+  # Облачный сервис «Администрирование»: один процесс на все вузы.
+  # Только он обращается к private API ядра (http://backend:8000/api/v1/institution/*/internal).
+  administration:
+    build: ./administration
+    environment:
+      CORE_INTERNAL_URL: http://backend:8000
+      ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN}
+      ADMINISTRATION_API_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN}/api/v1
+      SHELL_ORIGIN: ${SHELL_ORIGIN:?Set SHELL_ORIGIN in .env}
+      FRAME_ANCESTORS: https://web.max.ru
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
   web:
     depends_on:
       backend:
+        condition: service_healthy
+      administration:
         condition: service_healthy
     image: nginx:stable-alpine
     restart: unless-stopped
@@ -40,6 +62,7 @@ services:
       - "80:80"
       - "443:443"
       - "8443:8443"
+      - "8444:8444"
     volumes:
       - ./frontend:/srv/frontend:ro
       - ./demo-service:/srv/demo-service:ro

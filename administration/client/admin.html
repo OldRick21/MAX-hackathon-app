@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta name="admin-boot" content="__BOOT__">
+  <title>Администрирование вуза</title>
+  <link rel="stylesheet" href="/assets/admin.css">
+  <script src="/assets/admin.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="head">
+      <div>
+        <span class="eyebrow">СЕРВИС ВУЗА</span>
+        <h1 id="title">Администрирование</h1>
+        <p id="roles" class="muted"></p>
+      </div>
+    </header>
+    <p id="status" class="status" role="status" aria-live="polite">Откройте сервис из приложения вуза.</p>
+    <div id="notice" class="notice" role="alert" hidden></div>
+    <nav id="tabs" class="tabs" aria-label="Разделы" hidden></nav>
+    <section id="view" class="view" aria-live="polite"></section>
+  </main>
+  <dialog id="dialog">
+    <form method="dialog" class="dialog">
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-body"></div>
+      <div class="actions"><button id="dialog-cancel" value="cancel" class="quiet">Отмена</button><button id="dialog-ok" value="ok" class="primary">OK</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

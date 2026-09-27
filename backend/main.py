@@ -7,7 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from database.create_tables import create_tables
-from routes.auth import router_auth
+from auth.routes import router as router_auth
+from routes.institutions import router as router_institutions
+from routes.service_registry import router as router_service_registry
+from routes.system import router as router_system
+from routes.private_admin import router_private
+from routes.platform import router_platform
+from platform_core.errors import DomainError
 
 
 @asynccontextmanager
@@ -16,6 +22,8 @@ async def lifespan(app: FastAPI):
     if not settings.ALLOW_DEV_LOGIN:
         if not settings.MAX_BOT_TOKEN.strip() or len(settings.JWT_SECRET_KEY) < 32:
             raise RuntimeError("Set MAX_BOT_TOKEN and a random JWT_SECRET_KEY of at least 32 characters")
+        if len(settings.CLOUD_BINDING_KEY) < 32 or len(settings.ADMINISTRATION_PROVISIONING_TOKEN) < 32:
+            raise RuntimeError("Set CLOUD_BINDING_KEY and ADMINISTRATION_PROVISIONING_TOKEN (32+ random characters)")
     create_tables()
     yield
 
@@ -24,7 +32,8 @@ app = FastAPI(lifespan=lifespan)
 # --- Middleware сквозного X-Request-ID и Cache-Control ---
 class RequestIdAndCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        req_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        # Request ID генерирует сервер; присланный клиентом не переносится (CORE_API_SPEC.md §3).
+        req_id = str(uuid.uuid4())
         request.state.request_id = req_id
         
         response = await call_next(request)
@@ -44,6 +53,11 @@ app.add_middleware(
 )
 
 app.include_router(router_auth)
+app.include_router(router_institutions)
+app.include_router(router_service_registry)
+app.include_router(router_system)
+app.include_router(router_private)
+app.include_router(router_platform)
 
 # --- Обработчики ошибок по схеме ErrorResponse ---
 STATUS_TO_CODE = {
@@ -52,10 +66,26 @@ STATUS_TO_CODE = {
     403: "FORBIDDEN",
     404: "RESOURCE_NOT_FOUND",
     409: "CONFLICT",
+    412: "PRECONDITION_FAILED",
     422: "VALIDATION_ERROR",
+    428: "PRECONDITION_REQUIRED",
     429: "RATE_LIMITED",
-    500: "INTERNAL_ERROR"
+    500: "INTERNAL_ERROR",
+    503: "SERVICE_UNAVAILABLE"
 }
+
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError):
+    req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    error = {"code": exc.code, "message": exc.message[:500], "request_id": req_id}
+    if exc.details:
+        error["details"] = exc.details[:100]
+    return JSONResponse(
+        status_code=exc.status,
+        headers={"X-Request-ID": req_id, "Cache-Control": "no-store", **(exc.headers or {})},
+        content={"error": error},
+    )
 
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
@@ -83,6 +113,12 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    if any(err.get("type") == "json_invalid" for err in exc.errors()):
+        return JSONResponse(
+            status_code=400,
+            headers={"X-Request-ID": req_id, "Cache-Control": "no-store"},
+            content={"error": {"code": "BAD_REQUEST", "message": "Некорректный JSON", "request_id": req_id}},
+        )
     details = []
     for err in exc.errors():
         loc = ".".join(str(x) for x in err.get("loc", []))

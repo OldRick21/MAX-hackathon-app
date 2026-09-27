@@ -7,8 +7,8 @@
   <meta name="referrer" content="no-referrer">
   <title>Вузы России — сервисы вашего вуза</title>
   <script src="https://st.max.ru/js/max-web-app.js" defer></script>
-  <link rel="stylesheet" href="/static/css/styles.css?v=7eaa0b600c59">
-  <script type="module" src="/static/js/app.js?v=7eaa0b600c59"></script>
+  <link rel="stylesheet" href="/static/css/styles.css?v=9ff99b1c478b">
+  <script type="module" src="/static/js/app.js?v=9ff99b1c478b"></script>
 </head>
 <body>
   <div class="shell">
@@ -37,6 +37,10 @@
         <select id="profile" disabled><option value="">Сначала выберите вуз</option></select>
         <div class="sidebar-heading services-heading">СЕРВИСЫ</div>
         <nav id="services" aria-label="Меню сервисов"><p class="muted">Выберите вуз и профиль</p></nav>
+        <div class="platform-links">
+          <button id="apply" class="context-button" hidden>Подключить свой вуз</button>
+          <button id="support" class="context-button" hidden>Поддержка платформы</button>
+        </div>
         <div class="identity"><span>Ваш ID на платформе</span><code id="user-id"></code><small>Можно сообщить администратору для добавления в вуз.</small></div>
       </aside>
       <section class="content">

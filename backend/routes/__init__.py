@@ -1,1 +1,1 @@
-from .auth import router_auth
+"""Institution, registry and platform HTTP routes."""

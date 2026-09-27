@@ -1,5 +1,6 @@
-import { ApiError, CoreSession, isUUID, isProfile, listAll } from './core/api.js?v=7eaa0b600c59';
-import { ServiceFrame } from './core/service-frame.js?v=7eaa0b600c59';
+import { ApiError, CoreSession, isUUID, isProfile, listAll } from './core/api.js?v=9ff99b1c478b';
+import { ServiceFrame } from './core/service-frame.js?v=9ff99b1c478b';
+import { createPlatform } from './platform.js?v=9ff99b1c478b';
 
 const $ = (id) => document.getElementById(id);
 const labels = { student: 'Студент', teacher: 'Преподаватель', admin: 'Администратор' };
@@ -17,7 +18,15 @@ function showError(error) {
   $('notice').hidden = false;
 }
 function clearError() { $('notice').hidden = true; $('notice').textContent = ''; }
+const platform = createPlatform({
+  core, host: $('selection'),
+  setHeader: (crumb, title) => { $('breadcrumb').textContent = crumb; $('page-title').textContent = title; },
+  setStatus: (value) => { $('page-status').textContent = value; },
+  showError: (error) => showError(error), clearError: () => clearError(),
+  onChanged: () => {},
+});
 function begin() {
+  platform.cancel();
   state.controller?.abort();
   state.controller = new AbortController();
   state.version += 1;
@@ -55,7 +64,7 @@ function expire() {
   begin();
   state.user = null; state.institution = null; state.profile = ''; state.services = [];
   $('workspace').hidden = true; $('entry').hidden = false; $('logout').hidden = true;
-  $('user-id').textContent = '';
+  $('user-id').textContent = ''; $('support').hidden = true; $('apply').hidden = true;
   $('entry-status').textContent = 'Сессия завершена. Закройте мини-приложение и откройте его заново через MAX.';
   $('login').hidden = true;
 }
@@ -73,7 +82,7 @@ async function listInstitutions(autoSelect = false, desiredId = '') {
     if (desiredId && items.some(i => i.id === desiredId)) return chooseInstitution(desiredId, true);
     if (autoSelect && items.length === 1) return chooseInstitution(items[0].id, true);
     route(null, autoSelect);
-    $('page-status').textContent = items.length ? 'Выберите вуз, в котором хотите работать.' : 'Вы пока не добавлены ни в один вуз. Передайте свой ID администратору.';
+    $('page-status').textContent = items.length ? 'Выберите вуз, в котором хотите работать.' : 'Вы пока не добавлены ни в один вуз. Передайте свой ID администратору вуза или подайте заявку на подключение своего вуза.';
     for (const item of items) {
       $('selection').append(card(item.display_name, (item.profiles || []).map(p => labels[p]).filter(Boolean).join(' · '),
         statuses[item.status] || 'Недоступен', () => chooseInstitution(item.id)));
@@ -192,6 +201,8 @@ async function login() {
     state.user = await core.call('/api/v1/auth/me');
     if (!isUUID(state.user.id)) throw new ApiError('Сервер вернул некорректный аккаунт.');
     $('user-id').textContent = state.user.id;
+    $('support').hidden = !(await platform.detect());
+    $('apply').hidden = false;
     $('entry').hidden = true; $('workspace').hidden = false; $('logout').hidden = false;
     const requestedId = location.pathname.match(/^\/institution\/([0-9a-f-]+)$/i)?.[1] || '';
     await listInstitutions(true, requestedId);
@@ -202,6 +213,17 @@ async function login() {
   } finally { state.busy = false; }
 }
 
+function openPlatformView(show) {
+  if (!core.pair) return;
+  begin();
+  state.institution = null; state.profile = ''; state.services = [];
+  setProfileOptions([]); clearMenus();
+  $('change-institution').textContent = 'Выбрать вуз ↗'; $('institution-status').textContent = '';
+  route(null);
+  void show().catch((error) => showError(error));
+}
+$('apply').addEventListener('click', () => openPlatformView(() => platform.showApplications()));
+$('support').addEventListener('click', () => openPlatformView(() => platform.showSupport()));
 $('login').addEventListener('click', login);
 $('home').addEventListener('click', (event) => { event.preventDefault(); if (core.pair) void listInstitutions(); });
 $('change-institution').addEventListener('click', () => listInstitutions());

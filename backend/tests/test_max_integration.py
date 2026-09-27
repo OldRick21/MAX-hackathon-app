@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 _tmp = tempfile.TemporaryDirectory()
 os.environ.update(DATABASE_URL=f"sqlite:///{_tmp.name}/test.db", JWT_SECRET_KEY="test-secret-" * 6,
                   MAX_BOT_TOKEN="integration-test-token", ALLOW_DEV_LOGIN="false",
+                  CLOUD_BINDING_KEY="b" * 48, ADMINISTRATION_PROVISIONING_TOKEN="p" * 48,
                   SEED_DEMO_DATA="false", ALLOW_FAKE_REDIS="true", REDIS_PORT="1")
 from fastapi.testclient import TestClient
 from main import app
