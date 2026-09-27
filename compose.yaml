@@ -9,9 +9,11 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: sqlite:////data/core.db
+      DATABASE_URL: sqlite:////data/core-jwt.db
       SERVICE_CONFIG_DIR: /srv/services/connected
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      CURSOR_SECRET_KEY: ${CURSOR_SECRET_KEY:?Set CURSOR_SECRET_KEY in .env}
+      JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env}
+      JWT_KEYRING_PATH: /data/jwt/keys.json
       MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
       CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Set CLOUD_BINDING_KEY in .env}
       ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN:?Set ADMINISTRATION_PROVISIONING_TOKEN in .env}

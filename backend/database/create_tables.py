@@ -84,7 +84,7 @@ def create_tables():
             # Учетные данные для сервиса профилей
             cred_profile = ServiceCredential(
                 id="a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
-                client_id="user_profile_service_client",
+                client_id="22370780-1c30-4de9-959e-b474475274c7",
                 service_id=services[0].id,
                 hashed_secret=hash_password("service_super_secret_key_123")
             )

@@ -1,21 +1,25 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Literal
+from pydantic import BaseModel, Field, ConfigDict
 
-class AuthTokenRequest(BaseModel):
+class RequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class AuthTokenRequest(RequestModel):
     initData: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
     max_user_id: Optional[str] = None
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+class RefreshRequest(RequestModel):
+    refresh_token: str = Field(..., min_length=1, max_length=16384, strict=True)
 
-class CreateServiceSession(BaseModel):
-    profile: str = Field(..., description="Выбранный профиль: admin, teacher или student")
+class CreateServiceSession(RequestModel):
+    profile: Literal["admin", "teacher", "student"] = Field(..., description="Выбранный профиль: admin, teacher или student")
 
-class MachineTokenRequest(BaseModel):
-    grant_type: str = Field("client_credentials", pattern="^client_credentials$")
+class MachineTokenRequest(RequestModel):
+    grant_type: Literal["client_credentials"]
 
-class IntrospectionRequest(BaseModel):
-    token: str
+class IntrospectionRequest(RequestModel):
+    token: str = Field(..., min_length=1, max_length=16384, strict=True)
 

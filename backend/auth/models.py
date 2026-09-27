@@ -28,6 +28,7 @@ class CoreSession(table_class):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     current_refresh_jti = Column(String(64), nullable=False)
+    family_id = Column(String(36), unique=True, nullable=False, default=generate_uuid)
     is_revoked = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
@@ -48,11 +49,24 @@ class ServiceSession(table_class):
     profile = Column(String(20), nullable=False)  # admin, teacher, student
 
     current_refresh_jti = Column(String(64), nullable=False)
+    family_id = Column(String(36), unique=True, nullable=False, default=generate_uuid)
     is_revoked = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
 
     parent_session = relationship("CoreSession", back_populates="service_sessions")
+
+
+class RefreshUse(table_class):
+    """Hashes and jti history, retained through absolute expiry + clock skew."""
+    __tablename__ = "refresh_uses"
+    jti = Column(String(36), primary_key=True)
+    family_id = Column(String(36), nullable=False, index=True)
+    session_id = Column(String(36), nullable=False, index=True)
+    token_use = Column(String(32), nullable=False)
+    token_hash = Column(String(64), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
 
 
 class ServiceCredential(table_class):

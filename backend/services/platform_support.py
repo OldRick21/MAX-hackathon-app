@@ -173,7 +173,7 @@ def list_applications(db: Session, staff: StaffContext, status: Optional[str], l
     if status is not None and status not in {s.value for s in ApplicationStatus}:
         raise validation("status: pending, approved, rejected или withdrawn", "status")
     scope = {"kind": "applications", "actor": staff.user_id, "status": status}
-    after = decode_cursor(settings.JWT_SECRET_KEY, scope, cursor)
+    after = decode_cursor(settings.CURSOR_SECRET_KEY, scope, cursor)
     query = db.query(InstitutionApplication)
     if status:
         query = query.filter(InstitutionApplication.status == status)
@@ -183,7 +183,7 @@ def list_applications(db: Session, staff: StaffContext, status: Optional[str], l
     more = len(rows) > limit
     rows = rows[:limit]
     return Result({"items": [application_view(a) for a in rows],
-                   "next_cursor": encode_cursor(settings.JWT_SECRET_KEY, scope, rows[-1].id) if more else None})
+                   "next_cursor": encode_cursor(settings.CURSOR_SECRET_KEY, scope, rows[-1].id) if more else None})
 
 
 def get_application(db: Session, staff: StaffContext, application_id: str) -> Result:
@@ -255,7 +255,7 @@ def _institution(db: Session, institution_id: str) -> Institution:
 def list_institutions(db: Session, staff: StaffContext, limit, cursor) -> Result:
     limit = check_limit(limit)
     scope = {"kind": "platform-institutions", "actor": staff.user_id}
-    after = decode_cursor(settings.JWT_SECRET_KEY, scope, cursor)
+    after = decode_cursor(settings.CURSOR_SECRET_KEY, scope, cursor)
     query = db.query(Institution)
     if after is not None:
         query = query.filter(Institution.id > after)
@@ -263,7 +263,7 @@ def list_institutions(db: Session, staff: StaffContext, limit, cursor) -> Result
     more = len(rows) > limit
     rows = rows[:limit]
     return Result({"items": [institution_view(db, i) for i in rows],
-                   "next_cursor": encode_cursor(settings.JWT_SECRET_KEY, scope, rows[-1].id) if more else None})
+                   "next_cursor": encode_cursor(settings.CURSOR_SECRET_KEY, scope, rows[-1].id) if more else None})
 
 
 def get_institution(db: Session, staff: StaffContext, institution_id: str) -> Result:
@@ -363,7 +363,7 @@ def assign_initial_owner(db: Session, staff: StaffContext, institution_id: str, 
 def list_platform_audit(db: Session, staff: StaffContext, limit, cursor) -> Result:
     limit = check_limit(limit)
     scope = {"kind": "platform-audit", "actor": staff.user_id}
-    before_id = decode_cursor(settings.JWT_SECRET_KEY, scope, cursor)
+    before_id = decode_cursor(settings.CURSOR_SECRET_KEY, scope, cursor)
     query = db.query(AuditEvent).filter(AuditEvent.scope == "platform")
     if before_id is not None:
         query = query.filter(AuditEvent.id < int(before_id))
@@ -371,4 +371,4 @@ def list_platform_audit(db: Session, staff: StaffContext, limit, cursor) -> Resu
     more = len(rows) > limit
     rows = rows[:limit]
     return Result({"items": [registry.audit_view(r) for r in rows],
-                   "next_cursor": encode_cursor(settings.JWT_SECRET_KEY, scope, rows[-1].id) if more else None})
+                   "next_cursor": encode_cursor(settings.CURSOR_SECRET_KEY, scope, rows[-1].id) if more else None})

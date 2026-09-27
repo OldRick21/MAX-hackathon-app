@@ -119,9 +119,8 @@ def authenticate(request: Request) -> Context:
         raise FacadeError(401, "UNAUTHENTICATED", "Нужен service access", {"WWW-Authenticate": "Bearer"})
     token = token.strip()
     try:
-        # Подпись проверяет ядро при introspection ниже (ядро подписывает HS256 и
-        # не публикует JWKS). Непроверенные поля используются только для выбора
-        # заранее зарегистрированного binding; tenant не создаётся запросом.
+        # Unverified claims only select an existing binding. Core introspection
+        # verifies RS256, issuer, audience and live state on every request.
         claims = jwt.decode(token, options={"verify_signature": False, "verify_exp": True})
     except jwt.PyJWTError:
         raise FacadeError(401, "UNAUTHENTICATED", "Сессия недействительна или истекла")
@@ -139,7 +138,9 @@ def authenticate(request: Request) -> Context:
     if not info.get("active"):
         raise FacadeError(401, "UNAUTHENTICATED", "Сессия завершена. Откройте сервис заново")
     if (info.get("sub") != claims.get("sub") or info.get("service_id") != service_id
-            or info.get("institution_id") != institution_id or info.get("profile") != claims.get("profile")):
+            or info.get("institution_id") != institution_id or info.get("profile") != claims.get("profile")
+            or info.get("session_id") != claims.get("sid")
+            or info.get("parent_session_id") != claims.get("parent_sid")):
         raise FacadeError(401, "UNAUTHENTICATED", "Контекст сессии не совпадает")
     if info.get("profile") != "admin":
         raise FacadeError(403, "FORBIDDEN", "Сервис доступен только в профиле администратора")

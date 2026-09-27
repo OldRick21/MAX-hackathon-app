@@ -20,10 +20,12 @@ from platform_core.errors import DomainError
 async def lifespan(app: FastAPI):
     from settings.config import settings
     if not settings.ALLOW_DEV_LOGIN:
-        if not settings.MAX_BOT_TOKEN.strip() or len(settings.JWT_SECRET_KEY) < 32:
-            raise RuntimeError("Set MAX_BOT_TOKEN and a random JWT_SECRET_KEY of at least 32 characters")
+        if not settings.MAX_BOT_TOKEN.strip() or len(settings.CURSOR_SECRET_KEY) < 32:
+            raise RuntimeError("Set MAX_BOT_TOKEN and a random CURSOR_SECRET_KEY of at least 32 characters")
         if len(settings.CLOUD_BINDING_KEY) < 32 or len(settings.ADMINISTRATION_PROVISIONING_TOKEN) < 32:
             raise RuntimeError("Set CLOUD_BINDING_KEY and ADMINISTRATION_PROVISIONING_TOKEN (32+ random characters)")
+    from auth.security import security
+    security.keys.initialize()
     create_tables()
     yield
 
@@ -100,7 +102,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
     return JSONResponse(
         status_code=exc.status_code,
-        headers={"X-Request-ID": req_id, "Cache-Control": "no-store"},
+        headers={"X-Request-ID": req_id, "Cache-Control": "no-store", **(exc.headers or {})},
         content={
             "error": {
                 "code": code,
@@ -152,6 +154,20 @@ async def jwt_exception_handler(request: Request, exc: jwt.PyJWTError):
         }
     )
 
+from sqlalchemy.exc import SQLAlchemyError
+from auth.keys import KeyStoreUnavailable
+from filelock import Timeout as FileLockTimeout
+
+
+@app.exception_handler(SQLAlchemyError)
+@app.exception_handler(KeyStoreUnavailable)
+@app.exception_handler(FileLockTimeout)
+@app.exception_handler(OSError)
+async def storage_unavailable(request: Request, exc):
+    return await domain_error_handler(request, DomainError(503, 'SERVICE_UNAVAILABLE', 'Authentication storage unavailable'))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

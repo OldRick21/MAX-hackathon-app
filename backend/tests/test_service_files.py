@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 _tmp = tempfile.TemporaryDirectory()
-os.environ.update(DATABASE_URL=f'sqlite:///{_tmp.name}/db.sqlite', JWT_SECRET_KEY='test-key-' * 8,
+os.environ.update(DATABASE_URL=f'sqlite:///{_tmp.name}/db.sqlite', JWT_ISSUER="https://core.test", JWT_KEYRING_PATH=f"{_tmp.name}/keys.json", CURSOR_SECRET_KEY='test-key-' * 8,
                   SERVICE_CONFIG_DIR=f'{_tmp.name}/connected')
 from database.create_tables import session_local, engine
 from database.tables import table_class, Institution, ServiceInstance

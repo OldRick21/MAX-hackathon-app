@@ -1,4 +1,5 @@
 from typing import List
+from platform_core import catalog, registry
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from database.tables import Membership, ServiceInstance, ServiceRole, RoleAssignment
@@ -79,6 +80,7 @@ class ServiceRegistry:
     @staticmethod
     def create_service_role(service_id: str, role_data, machine_claims: dict, db: Session):
         ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        registry.lock_institution(db, machine_claims['institution_id'])
         service = db.query(ServiceInstance).filter(ServiceInstance.id == service_id).first()
         if not service:
             raise HTTPException(status_code=404, detail="Service not found")
@@ -93,6 +95,7 @@ class ServiceRegistry:
         if existing:
             raise HTTPException(status_code=409, detail=f"Role '{role_data.code}' already exists")
 
+        catalog.check_role_input(role_data.model_dump(exclude_none=True), service.service_type, service.supported_profiles)
         new_role = ServiceRole(
             service_id=service_id,
             code=role_data.code,
@@ -136,6 +139,7 @@ class ServiceRegistry:
     @staticmethod
     def update_service_role(service_id: str, role_code: str, patch_data, machine_claims: dict, db: Session):
         ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        registry.lock_institution(db, machine_claims['institution_id'])
         role = db.query(ServiceRole).filter(
             ServiceRole.service_id == service_id,
             ServiceRole.code == role_code
@@ -145,6 +149,8 @@ class ServiceRegistry:
         if role.system or (role.service and role.service.protected):
             raise HTTPException(status_code=403, detail="PROTECTED_RESOURCE: System roles cannot be modified")
 
+        catalog.check_role_patch(patch_data.model_dump(exclude_unset=True, exclude_none=True),
+                                 role.service.service_type, role.service.supported_profiles)
         if patch_data.titles is not None:
             role.titles = patch_data.titles.model_dump()
         if patch_data.allowed_profiles is not None:
@@ -166,6 +172,7 @@ class ServiceRegistry:
     @staticmethod
     def delete_service_role(service_id: str, role_code: str, machine_claims: dict, db: Session):
         ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        registry.lock_institution(db, machine_claims['institution_id'])
         role = db.query(ServiceRole).filter(
             ServiceRole.service_id == service_id,
             ServiceRole.code == role_code
@@ -228,6 +235,7 @@ class ServiceRegistry:
         db: Session
     ):
         ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        registry.lock_institution(db, machine_claims['institution_id'])
         profile_norm = profile.lower()
         service = db.query(ServiceInstance).filter(ServiceInstance.id == service_id).first()
         if not service:
@@ -245,7 +253,7 @@ class ServiceRegistry:
             raise HTTPException(status_code=404, detail="Target user or profile does not exist in institution")
 
         # 2. Валидируем роли
-        target_roles = assignment_data.roles or []
+        target_roles = catalog.check_role_codes(assignment_data.roles)
         if target_roles:
             existing_roles = db.query(ServiceRole).filter(
                 ServiceRole.service_id == service_id,

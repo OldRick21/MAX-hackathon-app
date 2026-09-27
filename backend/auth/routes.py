@@ -44,12 +44,13 @@ def create_service_session(
     institution_id: str,
     service_id: str,
     body: CreateServiceSession,
+    response: Response,
     session_data=Depends(get_current_core_session),
     db: Session = Depends(get_db)
 ):
     """Выдать пару JWT токенов для одного экземпляра сервиса и профиля."""
     user, core_session = session_data
-    return AuthService.create_service_session(
+    result = AuthService.create_service_session(
         user=user,
         core_session=core_session,
         institution_id=institution_id,
@@ -57,6 +58,8 @@ def create_service_session(
         profile=body.profile,
         db=db
     )
+    response.headers["Location"] = f"/api/v1/institution/{institution_id}/service/{service_id}/session/{result['session_id']}"
+    return result
 
 
 @router.post("/api/v1/internal/auth/token")
@@ -110,5 +113,5 @@ def revoke_service_session(
 ):
     """Отозвать дочернюю сессию сервиса."""
     user, core_session = session_data
-    AuthService.revoke_service_session(session_id, core_session, user, db)
+    AuthService.revoke_service_session(session_id, core_session, user, db, institution_id, service_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

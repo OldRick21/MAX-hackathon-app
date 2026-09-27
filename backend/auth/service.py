@@ -1,39 +1,97 @@
+from datetime import timedelta, datetime, timezone
+import hashlib
+import hmac
 import time
-from datetime import timedelta
-from typing import List
+import jwt
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from database.tables import (
-    User,
-    Institution,
-    Membership,
-    ServiceInstance,
-    CoreSession,
-    ServiceSession,
-    ServiceRole,
-    RoleAssignment,
-    ProfileEnum,
-    utc_now,
-    generate_uuid
-)
-from auth.revocations import revoked_tokens_redis
-from auth.security import hash_password, verify_password, security
-from settings.config import settings
-
+from sqlalchemy.exc import IntegrityError
+from database.tables import (User, Institution, Membership, ServiceInstance, CoreSession,
+                             ServiceSession, ServiceCredential, ProfileEnum, utc_now, generate_uuid)
+from auth.models import RefreshUse
+from auth.security import hash_password, verify_password, security, timestamp
+from auth.state import alive, lock_core, revoke_core, core_state, service_state, machine_scopes
 from auth.max_validation import validate_max_init_data
+from settings.config import settings
+from platform_core import registry
+
+
+def invalid_refresh():
+    return HTTPException(401, 'INVALID_REFRESH_TOKEN: Invalid, expired or reused refresh token')
+
+
+def decode_refresh(token, kind):
+    try:
+        return security.decode(token, kind)
+    except jwt.PyJWTError:
+        raise invalid_refresh()
+
+
+def digest(token):
+    return hashlib.sha256(token.encode('utf8')).hexdigest()
+
+
+def max_user(db, max_id):
+    user = db.query(User).filter_by(max_user_id=max_id).first()
+    if user:
+        return user
+    try:
+        with db.begin_nested():
+            user = User(max_user_id=max_id)
+            db.add(user)
+            db.flush()
+        return user
+    except IntegrityError:
+        # The unique MAX id arbitrates concurrent first logins.
+        user = db.query(User).filter_by(max_user_id=max_id).first()
+        if not user:
+            raise
+        return user
+
+
+def known_refresh(db, token, claims, session):
+    row = db.get(RefreshUse, claims['jti'], populate_existing=True)
+    if (not row or row.family_id != session.family_id or row.session_id != session.id
+            or row.token_use != claims['token_use'] or not hmac.compare_digest(row.token_hash, digest(token))):
+        return None
+    return row
+
+
+def pair(db, session, parent=None):
+    child = parent is not None
+    kind = 'service' if child else 'core'
+    deadline = timestamp(session.expires_at)
+    if child:
+        deadline = min(deadline, timestamp(parent.expires_at))
+    expires_at = datetime.fromtimestamp(deadline, timezone.utc)
+    common = {'sid': session.id}
+    response = {'session_id': session.id, 'token_type': 'Bearer'}
+    access = dict(common)
+    if child:
+        context = {'institution_id': session.institution_id, 'service_id': session.service_id, 'profile': session.profile}
+        common.update(context, parent_sid=parent.id)
+        access = dict(common)
+        roles = registry.assigned_roles(db, session.service_id, session.user_id, session.profile)
+        access.update(roles=roles, permissions=registry.permissions_for(db, session.service_id, roles))
+        response.update(context, parent_session_id=parent.id)
+    session.current_refresh_jti = generate_uuid()
+    refresh = dict(common, family_id=session.family_id, jti=session.current_refresh_jti)
+    access_token = security.create_token(session.user_id, kind + '_access', expires_at, access)
+    refresh_token = security.create_token(session.user_id, kind + '_refresh', expires_at, refresh)
+    # Locally issued tokens: decode only to report their exact remaining lifetime.
+    access_claims = jwt.decode(access_token, options={'verify_signature': False})
+    refresh_claims = jwt.decode(refresh_token, options={'verify_signature': False})
+    now = timestamp(utc_now())
+    response.update(access_token=access_token, refresh_token=refresh_token,
+                    expires_in=max(0, access_claims['exp'] - now),
+                    refresh_expires_in=max(0, refresh_claims['exp'] - now))
+    db.add(RefreshUse(jti=session.current_refresh_jti, family_id=session.family_id, session_id=session.id,
+                      token_use=kind + '_refresh', token_hash=digest(refresh_token),
+                      expires_at=expires_at + timedelta(seconds=30)))
+    return response
+
 
 class AuthService:
-    @staticmethod
-    def _create_token(sub: str, token_use: str, aud: str, expiry: timedelta, custom_claims: dict) -> str:
-        return security.create_token(
-            uid=sub,
-            token_use=token_use,
-            aud=aud,
-            expiry=expiry,
-            custom_claims=custom_claims
-        )
-
-
     @staticmethod
     def login_or_register(auth_data, db: Session):
         import random
@@ -75,16 +133,12 @@ class AuthService:
                             from platform_core.registry import assign_owner
                             db.flush()
                             assign_owner(db, demo_inst.id, user.id)
-                db.commit()
+                db.flush()
             elif auth_data.password and not verify_password(auth_data.password, user.hashed_password):
                 raise HTTPException(status_code=401, detail="Invalid credentials")
 
         elif auth_data.max_user_id:
-            user = db.query(User).filter(User.max_user_id == auth_data.max_user_id).first()
-            if not user:
-                user = User(max_user_id=auth_data.max_user_id)
-                db.add(user)
-                db.commit()
+            user = max_user(db, auth_data.max_user_id)
 
         elif auth_data.initData:
             bot_token = settings.MAX_BOT_TOKEN
@@ -93,545 +147,158 @@ class AuthService:
             user_payload = validate_max_init_data(auth_data.initData, bot_token)
             max_id = str(user_payload.get("id"))
             
-            user = db.query(User).filter(User.max_user_id == max_id).first()
-            if not user:
-                user = User(max_user_id=max_id)
-                db.add(user)
-                db.commit()
+            user = max_user(db, max_id)
+
         else:
             raise HTTPException(status_code=400, detail="Either initData or username/max_user_id must be provided")
 
-        # 2. Создание Core-сессии ядра
-        session_id = generate_uuid()
-        refresh_jti = generate_uuid()
-        now = utc_now()
-        refresh_exp = now + timedelta(days=7)
-
-        core_session = CoreSession(
-            id=session_id,
-            user_id=user.id,
-            current_refresh_jti=refresh_jti,
-            expires_at=refresh_exp
-        )
-        db.add(core_session)
+        now = utc_now().replace(microsecond=0)
+        session = CoreSession(id=generate_uuid(), user_id=user.id, family_id=generate_uuid(),
+                              current_refresh_jti=generate_uuid(), expires_at=now + timedelta(days=7))
+        db.add(session)
+        db.flush()
+        result = pair(db, session)
         db.commit()
-
-        # 3. Выпуск токенов ядра (CoreTokenPair)
-        access_token = AuthService._create_token(
-            sub=user.id,
-            token_use="core_access",
-            aud="core-api",
-            expiry=timedelta(minutes=10),
-            custom_claims={"session_id": session_id}
-        )
-
-        refresh_token = AuthService._create_token(
-            sub=user.id,
-            token_use="core_refresh",
-            aud="core-api",
-            expiry=timedelta(days=7),
-            custom_claims={"session_id": session_id, "jti": refresh_jti}
-        )
-
-        return {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "Bearer",
-            "expires_in": 600,
-            "refresh_expires_in": 604800,
-            "session_id": session_id
-        }
+        return result
 
 
     @staticmethod
-    def refresh_core_session(refresh_token_str: str, db: Session):
-        """Атомарная ротация пары Core-токенов по спецификации."""
-        try:
-            payload = security._decode_token(refresh_token_str)
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-        data = payload.data if hasattr(payload, "data") and isinstance(payload.data, dict) else {}
-        token_use = getattr(payload, "token_use", None) or data.get("token_use")
-        session_id = getattr(payload, "session_id", None) or data.get("session_id")
-        jti = getattr(payload, "jti", None) or data.get("jti")
-
-        if token_use != "core_refresh" or not session_id or not jti:
-            raise HTTPException(status_code=401, detail="Invalid token type")
-
-        session_entry = db.query(CoreSession).filter(CoreSession.id == session_id).first()
-        if not session_entry or session_entry.is_revoked:
-            raise HTTPException(status_code=401, detail="Session revoked or not found")
-
-        # Проверка повторного использования (Replay attack detection)
-        if session_entry.current_refresh_jti != jti:
-            # Атомарный отзыв всей семьи сессий
-            session_entry.is_revoked = True
+    def refresh_core_session(refresh_token_str, db):
+        claims = decode_refresh(refresh_token_str, 'core_refresh')
+        lock_core(db, claims['sid'])
+        state = core_state(db, claims)
+        if not state:
+            raise invalid_refresh()
+        _, session = state
+        row = known_refresh(db, refresh_token_str, claims, session)
+        if not row:
+            raise invalid_refresh()
+        if row.used_at is not None or session.current_refresh_jti != claims['jti']:
+            revoke_core(db, session)
             db.commit()
-            revoked_tokens_redis.set(f"core_session_revoked:{session_id}", "1", ex=604800)
-            raise HTTPException(status_code=401, detail="Refresh token already used. Session terminated.")
+            raise invalid_refresh()
+        row.used_at = utc_now()
+        result = pair(db, session)
+        db.commit()
+        return result
 
-        # Ротация JTI
-        new_refresh_jti = generate_uuid()
-        session_entry.current_refresh_jti = new_refresh_jti
+    @staticmethod
+    def logout_core_session(refresh_token_str, db):
+        try:
+            claims = security.decode(refresh_token_str, 'core_refresh')
+        except jwt.PyJWTError:
+            return
+        lock_core(db, claims['sid'])
+        state = core_state(db, claims)
+        if state and known_refresh(db, refresh_token_str, claims, state[1]):
+            revoke_core(db, state[1])
         db.commit()
 
-        new_access = AuthService._create_token(
-            sub=session_entry.user_id,
-            token_use="core_access",
-            aud="core-api",
-            expiry=timedelta(minutes=10),
-            custom_claims={"session_id": session_id}
-        )
-
-        new_refresh = AuthService._create_token(
-            sub=session_entry.user_id,
-            token_use="core_refresh",
-            aud="core-api",
-            expiry=timedelta(days=7),
-            custom_claims={"session_id": session_id, "jti": new_refresh_jti}
-        )
-
-        return {
-            "access_token": new_access,
-            "refresh_token": new_refresh,
-            "token_type": "Bearer",
-            "expires_in": 600,
-            "refresh_expires_in": 604800,
-            "session_id": session_id
-        }
-
-
     @staticmethod
-    def logout_core_session(refresh_token_str: str, db: Session):
-        """Отзывает core-сессию и каскадно инвалидирует связанные service sessions."""
-        try:
-            payload = security._decode_token(refresh_token_str)
-            data = payload.data if hasattr(payload, "data") and isinstance(payload.data, dict) else {}
-            session_id = getattr(payload, "session_id", None) or data.get("session_id")
-            if session_id:
-                session_entry = db.query(CoreSession).filter(CoreSession.id == session_id).first()
-                if session_entry:
-                    session_entry.is_revoked = True
-                    db.commit()
-                # Помещаем session_id в Redis для мгновенной блокировки всех токенов
-                revoked_tokens_redis.set(f"core_session_revoked:{session_id}", "1", ex=604800)
-        except Exception:
-            pass  # По спецификации 204 возвращается даже при неизвестном токене
-        return
-
-
-    @staticmethod
-    def create_service_session(
-        user: User,
-        core_session: CoreSession,
-        institution_id: str,
-        service_id: str,
-        profile: str,
-        db: Session
-    ):
-        """Выдает пару JWT для обращения к конкретному сервису под выбранным профилем."""
-        profile_norm = profile.lower()
-
-        # 1. Проверяем, что пользователь состоит в этом ВУЗе и обладает данным профилем
-        membership = db.query(Membership).filter(
-            Membership.institution_id == institution_id,
-            Membership.user_id == user.id
-        ).first()
-
-        if not membership:
-            raise HTTPException(status_code=403, detail="Forbidden: User is not a member of this institution")
-
-        if profile_norm not in [p.lower() for p in (membership.profiles or [])]:
-            raise HTTPException(status_code=403, detail=f"Forbidden: Profile '{profile}' is not assigned to user")
-
-        institution = db.query(Institution).filter(Institution.id == institution_id).first()
-        if not institution or institution.status != "active":
-            raise HTTPException(status_code=409, detail="RESOURCE_INACTIVE: Institution is not active")
-
-        # 2. Проверяем сервис
-        service = db.query(ServiceInstance).filter(
-            ServiceInstance.id == service_id,
-            ServiceInstance.institution_id == institution_id
-        ).first()
-
-        if not service:
-            raise HTTPException(status_code=404, detail="Service not found in this institution")
-
+    def create_service_session(user, core_session, institution_id, service_id, profile, db):
+        parent = lock_core(db, core_session.id)
+        if not alive(parent) or parent.user_id != user.id:
+            raise HTTPException(401, 'Core session inactive')
+        institution = registry.lock_institution(db, institution_id)
+        db.refresh(institution)
+        if institution.status != 'active':
+            raise HTTPException(409, 'RESOURCE_INACTIVE: Institution is not active')
+        service = db.get(ServiceInstance, service_id, populate_existing=True)
+        if not service or service.institution_id != institution_id or profile not in service.supported_profiles:
+            raise HTTPException(404, 'Service not found for this institution/profile')
         if not service.enabled:
-            raise HTTPException(status_code=409, detail="RESOURCE_INACTIVE: Service is currently disabled")
+            raise HTTPException(409, 'RESOURCE_INACTIVE: Service is disabled')
+        member = db.get(Membership, (institution_id, user.id), populate_existing=True)
+        if not member or profile not in member.profiles:
+            raise HTTPException(403, 'Profile is not assigned to user')
+        deadline = min(timestamp(utc_now()) + 86400, timestamp(parent.expires_at))
+        session = ServiceSession(id=generate_uuid(), parent_session_id=parent.id, user_id=user.id,
+                                 institution_id=institution_id, service_id=service_id, profile=profile,
+                                 family_id=generate_uuid(), current_refresh_jti=generate_uuid(),
+                                 expires_at=datetime.fromtimestamp(deadline, timezone.utc))
+        db.add(session)
+        db.flush()
+        result = pair(db, session, parent)
+        db.commit()
+        return result
 
-        if profile_norm not in [p.lower() for p in service.supported_profiles]:
-            raise HTTPException(status_code=404, detail=f"Service does not support profile '{profile}'")
+    @staticmethod
+    def refresh_service_session(service_id, institution_id, refresh_token_str, db):
+        claims = decode_refresh(refresh_token_str, 'service_refresh')
+        if claims['service_id'] != service_id or claims['institution_id'] != institution_id:
+            raise invalid_refresh()
+        lock_core(db, claims['parent_sid'])
+        registry.lock_institution(db, institution_id)
+        state = service_state(db, claims)
+        if not state:
+            raise invalid_refresh()
+        session, parent = state
+        row = known_refresh(db, refresh_token_str, claims, session)
+        if not row:
+            raise invalid_refresh()
+        if row.used_at is not None or session.current_refresh_jti != claims['jti']:
+            session.is_revoked = True
+            db.commit()
+            raise invalid_refresh()
+        row.used_at = utc_now()
+        result = pair(db, session, parent)
+        db.commit()
+        return result
 
-        # 3. Вычисляем роли и права из БД
-        assignments = db.query(RoleAssignment).filter(
-            RoleAssignment.service_id == service_id,
-            RoleAssignment.user_id == user.id,
-            RoleAssignment.profile == profile_norm
-        ).first()
-
-        assigned_roles = assignments.roles if assignments else []
-        permissions: List[str] = []
-
-        if assigned_roles:
-            roles_in_db = db.query(ServiceRole).filter(
-                ServiceRole.service_id == service_id,
-                ServiceRole.code.in_(assigned_roles)
-            ).all()
-            for r in roles_in_db:
-                permissions.extend(r.permissions or [])
-        permissions = list(set(permissions))
-
-        # 4. Создаем Service-сессию
-        service_session_id = generate_uuid()
-        refresh_jti = generate_uuid()
-        now = utc_now()
-        exp_time = now + timedelta(hours=24)
-
-        service_session = ServiceSession(
-            id=service_session_id,
-            parent_session_id=core_session.id,
-            institution_id=institution_id,
-            service_id=service_id,
-            user_id=user.id,
-            profile=profile_norm,
-            current_refresh_jti=refresh_jti,
-            expires_at=exp_time
-        )
-        db.add(service_session)
+    @staticmethod
+    def revoke_service_session(session_id, core_session, user, db, institution_id, service_id):
+        parent = lock_core(db, core_session.id)
+        if not alive(parent) or parent.user_id != user.id:
+            raise HTTPException(401, 'Core session inactive')
+        session = db.get(ServiceSession, session_id, populate_existing=True)
+        if (not session or session.user_id != user.id or session.parent_session_id != parent.id
+                or session.institution_id != institution_id or session.service_id != service_id):
+            raise HTTPException(404, 'RESOURCE_NOT_FOUND: Service session not found')
+        session.is_revoked = True
         db.commit()
 
-        # 5. Генерируем токены сервиса (ServiceTokenPair)
-        access_token = AuthService._create_token(
-            sub=user.id,
-            token_use="service_access",
-            aud=f"service:{service_id}",
-            expiry=timedelta(seconds=300),
-            custom_claims={
-                "session_id": service_session_id,
-                "parent_session_id": core_session.id,
-                "institution_id": institution_id,
-                "service_id": service_id,
-                "profile": profile_norm,
-                "roles": assigned_roles,
-                "permissions": permissions
-            }
-        )
-
-        refresh_token = AuthService._create_token(
-            sub=user.id,
-            token_use="service_refresh",
-            aud=f"service:{service_id}",
-            expiry=timedelta(hours=24),
-            custom_claims={
-                "session_id": service_session_id,
-                "parent_session_id": core_session.id,
-                "institution_id": institution_id,
-                "service_id": service_id,
-                "profile": profile_norm,
-                "jti": refresh_jti
-            }
-        )
-
-        return {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "Bearer",
-            "expires_in": 300,
-            "refresh_expires_in": 86400,
-            "session_id": service_session_id,
-            "parent_session_id": core_session.id,
-            "institution_id": institution_id,
-            "service_id": service_id,
-            "profile": profile_norm
-        }
-
-
     @staticmethod
-    def issue_machine_token(credentials, req_body, db: Session):
-        """Обмен Basic Auth (client_id:client_secret) на Machine JWT."""
-        from database.tables import ServiceCredential, InstitutionStatus
-
+    def issue_machine_token(credentials, req_body, db):
+        failure = HTTPException(401, 'Invalid client credentials', headers={'WWW-Authenticate': 'Basic realm="core-service"'})
         if not credentials:
-            raise HTTPException(
-                status_code=401,
-                detail="Basic credentials missing",
-                headers={"WWW-Authenticate": 'Basic realm="core-service"'}
-            )
-
-        client_id = credentials.username
-        client_secret = credentials.password
-
-        cred = db.query(ServiceCredential).filter(ServiceCredential.client_id == client_id).first()
-        if not cred or cred.revoked_at is not None:
-            raise HTTPException(status_code=401, detail="Invalid client credentials")
-
-        if not verify_password(client_secret, cred.hashed_secret):
-            raise HTTPException(status_code=401, detail="Invalid client credentials")
-
-        service = cred.service
+            raise failure
+        cred = db.query(ServiceCredential).filter_by(client_id=credentials.username).first()
+        if not cred or cred.revoked_at is not None or not verify_password(credentials.password, cred.hashed_secret):
+            raise failure
+        service = db.get(ServiceInstance, cred.service_id)
         if not service:
-            raise HTTPException(status_code=404, detail="Service instance not found")
-
-        if service.institution.status in [InstitutionStatus.PENDING.value, InstitutionStatus.SUSPENDED.value]:
-            raise HTTPException(status_code=409, detail="RESOURCE_INACTIVE: Institution is pending or suspended")
-
-        # Scopes назначает платформа по типу экземпляра (CORE_API_SPEC.md §5).
-        scopes = [
-            "manifest:write",
-            "roles:read",
-            "roles:write",
-            "assignments:read",
-            "assignments:write",
-            "profiles:read",
-            "tokens:introspect",
-        ]
-        if service.service_type == "administration":
-            scopes = [s for s in scopes if s not in ("roles:write", "assignments:write")] + ["institution:manage"]
-
-        machine_jwt = AuthService._create_token(
-            sub=client_id,
-            token_use="machine_access",
-            aud="core-internal",
-            expiry=timedelta(seconds=300),
-            custom_claims={
-                "institution_id": service.institution_id,
-                "service_id": service.id,
-                "credential_id": cred.id,
-                "jti": generate_uuid(),
-                "scopes": scopes
-            }
-        )
-
-        return {
-            "access_token": machine_jwt,
-            "token_type": "Bearer",
-            "expires_in": 300,
-            "institution_id": service.institution_id,
-            "service_id": service.id,
-            "credential_id": cred.id,
-            "scopes": scopes
-        }
-
-
-    @staticmethod
-    def introspect_service_token(token_str: str, machine_claims, db: Session):
-        """Интроспекция service_access токена."""
-        # Чужой, истекший или невалидный токен возвращает 200 {"active": False}
-        try:
-            payload = security._decode_token(token_str)
-        except Exception:
-            return {"active": False}
-
-        data = payload.data if hasattr(payload, "data") and isinstance(payload.data, dict) else {}
-        token_use = getattr(payload, "token_use", None) or data.get("token_use")
-        service_id = getattr(payload, "service_id", None) or data.get("service_id")
-        session_id = getattr(payload, "session_id", None) or data.get("session_id")
-        parent_sid = getattr(payload, "parent_session_id", None) or data.get("parent_session_id")
-        institution_id = getattr(payload, "institution_id", None) or data.get("institution_id")
-        profile = getattr(payload, "profile", None) or data.get("profile")
-        user_id = payload.sub
-        exp = getattr(payload, "exp", None) or data.get("exp")
-
-        # 1. Проверяем тип токена и совпадение с сервисом машины
-        machine_service_id = getattr(machine_claims, "service_id", None) or machine_claims.get("service_id")
-        if token_use != "service_access" or service_id != machine_service_id:
-            return {"active": False}
-
-        # 2. Проверяем отзыв в Redis (родительской Core сессии)
-        if revoked_tokens_redis.exists(f"core_session_revoked:{parent_sid}"):
-            return {"active": False}
-
-        # 3. Проверяем сессию в БД
-        service_session = db.query(ServiceSession).filter(ServiceSession.id == session_id).first()
-        if not service_session or service_session.is_revoked or service_session.user_id != user_id \
-                or service_session.service_id != service_id or service_session.profile != (profile or "").lower():
-            return {"active": False}
-        expires_at = service_session.expires_at
-        now = utc_now() if expires_at.tzinfo else utc_now().replace(tzinfo=None)
-        if expires_at <= now:
-            return {"active": False}
-        parent = db.query(CoreSession).filter(CoreSession.id == service_session.parent_session_id).first()
-        if not parent or parent.is_revoked:
-            return {"active": False}
-        service_row = db.query(ServiceInstance).filter(ServiceInstance.id == service_id).first()
-        if not service_row or not service_row.enabled or service_row.institution_id != institution_id \
-                or service_row.institution.status != "active":
-            return {"active": False}
-
-        # 4. Проверяем актуальное членство пользователя
-        membership = db.query(Membership).filter(
-            Membership.institution_id == institution_id,
-            Membership.user_id == user_id
-        ).first()
-
-        if not membership or profile.lower() not in [p.lower() for p in (membership.profiles or [])]:
-            return {"active": False}
-
-        # 5. Актуальные роли и permissions из БД
-        assignments = db.query(RoleAssignment).filter(
-            RoleAssignment.service_id == service_id,
-            RoleAssignment.user_id == user_id,
-            RoleAssignment.profile == profile.lower()
-        ).first()
-
-        assigned_roles = assignments.roles if assignments else []
-        permissions: List[str] = []
-        if assigned_roles:
-            roles_in_db = db.query(ServiceRole).filter(
-                ServiceRole.service_id == service_id,
-                ServiceRole.code.in_(assigned_roles)
-            ).all()
-            for r in roles_in_db:
-                permissions.extend(r.permissions or [])
-
-        return {
-            "active": True,
-            "sub": user_id,
-            "aud": f"service:{service_id}",
-            "exp": exp,
-            "session_id": session_id,
-            "parent_session_id": parent_sid,
-            "institution_id": institution_id,
-            "service_id": service_id,
-            "profile": profile.lower(),
-            "roles": assigned_roles,
-            "permissions": list(set(permissions))
-        }
-
+            raise failure
+        institution = registry.lock_institution(db, service.institution_id)
+        db.refresh(cred)
+        db.refresh(service)
+        db.refresh(institution)
+        if cred.revoked_at is not None:
+            raise failure
+        if institution.status != 'active':
+            raise HTTPException(409, 'RESOURCE_INACTIVE: Institution is not active')
+        scopes = machine_scopes(service)
+        token = security.create_token(cred.client_id, 'machine_access', utc_now() + timedelta(seconds=300),
+                                      {'institution_id': service.institution_id, 'service_id': service.id,
+                                       'credential_id': cred.id, 'scopes': scopes})
+        result = {'access_token': token, 'token_type': 'Bearer', 'expires_in': 300,
+                  'institution_id': service.institution_id, 'service_id': service.id, 'scopes': scopes}
+        db.commit()
+        return result
 
     @staticmethod
     def get_public_jwks():
-        """Публичные ключи ядра по контракту JWKS."""
-        return {
-            "keys": [
-                {
-                    "kty": "RSA",
-                    "use": "sig",
-                    "alg": "RS256",
-                    "kid": "core-access-key-1",
-                    "n": "u1W_z8r45k9q8gLpX...",
-                    "e": "AQAB"
-                }
-            ]
-        }
-
+        return security.keys.jwks()
 
     @staticmethod
-    def refresh_service_session(service_id: str, institution_id: str, refresh_token_str: str, db: Session):
-        """Ротация пары токенов сессии сервиса."""
+    def introspect_service_token(token_str, machine_claims, db):
         try:
-            payload = security._decode_token(refresh_token_str)
-        except Exception:
-            raise HTTPException(status_code=401, detail="INVALID_REFRESH_TOKEN: Invalid token")
-
-        data = payload.data if hasattr(payload, "data") and isinstance(payload.data, dict) else {}
-        token_use = getattr(payload, "token_use", None) or data.get("token_use")
-        session_id = getattr(payload, "session_id", None) or data.get("session_id")
-        parent_sid = getattr(payload, "parent_session_id", None) or data.get("parent_session_id")
-        token_srv = getattr(payload, "service_id", None) or data.get("service_id")
-        token_inst = getattr(payload, "institution_id", None) or data.get("institution_id")
-        profile = getattr(payload, "profile", None) or data.get("profile")
-        jti = getattr(payload, "jti", None) or data.get("jti")
-        user_id = payload.sub
-
-        if token_use != "service_refresh" or token_srv != service_id or token_inst != institution_id:
-            raise HTTPException(status_code=401, detail="INVALID_REFRESH_TOKEN: Path mismatch")
-
-        # Проверка родительской Core-сессии в Redis
-        if revoked_tokens_redis.exists(f"core_session_revoked:{parent_sid}"):
-            raise HTTPException(status_code=401, detail="UNAUTHENTICATED: Parent core session is terminated")
-
-        sess = db.query(ServiceSession).filter(ServiceSession.id == session_id).first()
-        if not sess or sess.is_revoked:
-            raise HTTPException(status_code=401, detail="UNAUTHENTICATED: Service session is revoked")
-
-        if sess.current_refresh_jti != jti:
-            # Replay attack: отзываем сервисную сессию
-            sess.is_revoked = True
-            db.commit()
-            raise HTTPException(status_code=401, detail="INVALID_REFRESH_TOKEN: Token already used")
-
-        # Ротация jti
-        new_jti = generate_uuid()
-        sess.current_refresh_jti = new_jti
-        db.commit()
-
-        # Актуальные роли
-        assignments = db.query(RoleAssignment).filter(
-            RoleAssignment.service_id == service_id,
-            RoleAssignment.user_id == user_id,
-            RoleAssignment.profile == profile
-        ).first()
-        assigned_roles = assignments.roles if assignments else []
-        permissions = []
-        if assigned_roles:
-            roles_in_db = db.query(ServiceRole).filter(
-                ServiceRole.service_id == service_id,
-                ServiceRole.code.in_(assigned_roles)
-            ).all()
-            for r in roles_in_db:
-                permissions.extend(r.permissions or [])
-
-        access_token = AuthService._create_token(
-            sub=user_id,
-            token_use="service_access",
-            aud=f"service:{service_id}",
-            expiry=timedelta(seconds=300),
-            custom_claims={
-                "session_id": session_id,
-                "parent_session_id": parent_sid,
-                "institution_id": institution_id,
-                "service_id": service_id,
-                "profile": profile,
-                "roles": assigned_roles,
-                "permissions": list(set(permissions))
-            }
-        )
-
-        new_refresh = AuthService._create_token(
-            sub=user_id,
-            token_use="service_refresh",
-            aud=f"service:{service_id}",
-            expiry=timedelta(hours=24),
-            custom_claims={
-                "session_id": session_id,
-                "parent_session_id": parent_sid,
-                "institution_id": institution_id,
-                "service_id": service_id,
-                "profile": profile,
-                "jti": new_jti
-            }
-        )
-
-        return {
-            "access_token": access_token,
-            "refresh_token": new_refresh,
-            "token_type": "Bearer",
-            "expires_in": 300,
-            "refresh_expires_in": 86400,
-            "session_id": session_id,
-            "parent_session_id": parent_sid,
-            "institution_id": institution_id,
-            "service_id": service_id,
-            "profile": profile
-        }
-
-
-    @staticmethod
-    def revoke_service_session(session_id: str, core_session: CoreSession, user: User, db: Session):
-        """Отзыв дочерней сервисной сессии пользователем."""
-        sess = db.query(ServiceSession).filter(
-            ServiceSession.id == session_id,
-            ServiceSession.user_id == user.id,
-            ServiceSession.parent_session_id == core_session.id
-        ).first()
-
-        if not sess:
-            raise HTTPException(status_code=404, detail="RESOURCE_NOT_FOUND: Service session not found")
-
-        sess.is_revoked = True
-        db.commit()
-
-
+            claims = security.decode(token_str, 'service_access', machine_claims['service_id'])
+        except jwt.PyJWTError:
+            return {'active': False}
+        if claims['institution_id'] != machine_claims['institution_id'] or not service_state(db, claims):
+            return {'active': False}
+        roles = registry.assigned_roles(db, claims['service_id'], claims['sub'], claims['profile'])
+        return {'active': True, 'sub': claims['sub'], 'session_id': claims['sid'],
+                'parent_session_id': claims['parent_sid'], 'institution_id': claims['institution_id'],
+                'service_id': claims['service_id'], 'profile': claims['profile'], 'exp': claims['exp'],
+                'roles': roles, 'permissions': registry.permissions_for(db, claims['service_id'], roles)}
