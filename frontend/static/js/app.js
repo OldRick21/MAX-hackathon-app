@@ -1,5 +1,5 @@
-import { ApiError, CoreSession, isUUID, isProfile, listAll } from './core/api.js';
-import { ServiceFrame } from './core/service-frame.js';
+import { ApiError, CoreSession, isUUID, isProfile, listAll } from './core/api.js?v=7eaa0b600c59';
+import { ServiceFrame } from './core/service-frame.js?v=7eaa0b600c59';
 
 const $ = (id) => document.getElementById(id);
 const labels = { student: 'Студент', teacher: 'Преподаватель', admin: 'Администратор' };
