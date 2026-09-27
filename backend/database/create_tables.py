@@ -17,6 +17,8 @@ engine = create_engine(settings.DATABASE_URL)
 
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
+    if engine.dialect.name != "sqlite":
+        return
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
@@ -27,7 +29,7 @@ def create_tables():
     table_class.metadata.create_all(bind=engine)
     db = session_local()
     try:
-        if db.query(Institution).count() == 0:
+        if settings.SEED_DEMO_DATA and db.query(Institution).count() == 0:
             demo_inst = Institution(
                 id="46bf3278-29fa-4d0a-a711-e4a6a324ed31",
                 titles={"ru": "НИЯУ МИФИ", "en": "NRNU MEPhI"},

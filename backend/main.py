@@ -12,6 +12,10 @@ from routes.auth import router_auth
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from settings.config import settings
+    if not settings.ALLOW_DEV_LOGIN:
+        if not settings.MAX_BOT_TOKEN.strip() or len(settings.JWT_SECRET_KEY) < 32:
+            raise RuntimeError("Set MAX_BOT_TOKEN and a random JWT_SECRET_KEY of at least 32 characters")
     create_tables()
     yield
 

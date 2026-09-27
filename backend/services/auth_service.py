@@ -44,6 +44,9 @@ class AuthService:
         import random
         user = None
 
+        if not settings.ALLOW_DEV_LOGIN and (auth_data.username or auth_data.max_user_id or auth_data.password):
+            raise HTTPException(status_code=400, detail="Only MAX initData login is enabled")
+
         # 1. Dev-вход по username или max_user_id
         if auth_data.username:
             user = db.query(User).filter(User.username == auth_data.username).first()
@@ -84,7 +87,9 @@ class AuthService:
                 db.commit()
 
         elif auth_data.initData:
-            bot_token = getattr(settings, "MAX_BOT_TOKEN", "test_bot_token_123")
+            bot_token = settings.MAX_BOT_TOKEN
+            if not bot_token:
+                raise HTTPException(status_code=503, detail="MAX login is not configured")
             user_payload = validate_max_init_data(auth_data.initData, bot_token)
             max_id = str(user_payload.get("id"))
             
@@ -1193,16 +1198,22 @@ def validate_max_init_data(init_data_raw: str, bot_token: str) -> dict:
     Проверяет целостность данных и свежесть auth_date (до 300 секунд).
     """
     try:
-        parsed_data = dict(urllib.parse.parse_qsl(init_data_raw, keep_blank_values=True))
+        pairs = urllib.parse.parse_qsl(init_data_raw, keep_blank_values=True, strict_parsing=True)
+        if len({key for key, _ in pairs}) != len(pairs):
+            raise ValueError("Duplicate parameters")
+        parsed_data = dict(pairs)
     except Exception:
         raise HTTPException(status_code=400, detail="INVALID_INIT_DATA: Malformed query string")
 
     received_hash = parsed_data.pop("hash", None)
-    if not received_hash:
+    if not received_hash or len(received_hash) != 64 or any(c not in "0123456789abcdef" for c in received_hash):
         raise HTTPException(status_code=401, detail="INVALID_INIT_DATA: Hash missing")
 
     # 1. Проверка времени жизни auth_date (до 300 с, skew 30 с)
-    auth_date = int(parsed_data.get("auth_date", 0))
+    try:
+        auth_date = int(parsed_data.get("auth_date", 0))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="INVALID_INIT_DATA: Invalid auth_date")
     now = int(time.time())
     if auth_date == 0 or (now - auth_date) > 300 or (auth_date - now) > 30:
         raise HTTPException(status_code=401, detail="INVALID_INIT_DATA: auth_date expired or invalid")
@@ -1223,4 +1234,10 @@ def validate_max_init_data(init_data_raw: str, bot_token: str) -> dict:
     if not user_raw:
         raise HTTPException(status_code=400, detail="INVALID_INIT_DATA: user payload missing")
 
-    return json.loads(user_raw)
+    try:
+        user = json.loads(user_raw)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="INVALID_INIT_DATA: Invalid user")
+    if not isinstance(user, dict) or type(user.get("id")) is not int or user["id"] <= 0:
+        raise HTTPException(status_code=401, detail="INVALID_INIT_DATA: Invalid user ID")
+    return user

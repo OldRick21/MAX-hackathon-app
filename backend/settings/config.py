@@ -3,6 +3,10 @@ from authx import AuthXConfig
 from datetime import timedelta
 
 class Settings(BaseSettings):
+    MAX_BOT_TOKEN: str = ""
+    ALLOW_DEV_LOGIN: bool = False
+    SEED_DEMO_DATA: bool = False
+    ALLOW_FAKE_REDIS: bool = False
     DATABASE_URL: str
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"

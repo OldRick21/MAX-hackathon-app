@@ -2,20 +2,54 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>Приветствие — мини-приложение</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='10' fill='%235b48e8'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <meta name="referrer" content="no-referrer">
+  <title>Вузы России — сервисы вашего вуза</title>
   <script src="https://st.max.ru/js/max-web-app.js" defer></script>
   <link rel="stylesheet" href="/static/css/styles.css">
-  <script src="/static/js/app.js" defer></script>
+  <script type="module" src="/static/js/app.js"></script>
 </head>
 <body>
-  <main>
-    <div class="mark" aria-hidden="true">✦</div>
-    <h1 id="greeting">Привет!</h1>
-    <p id="status" role="status">Подключаемся к MAX…</p>
-    <noscript>Для работы мини-приложения включи JavaScript.</noscript>
-  </main>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/institution" id="home"><span class="brand-mark" aria-hidden="true">В</span><span>Вузы России<small>Сервисы вашего вуза</small></span></a>
+      <div class="top-actions">
+        <label class="language-label">Язык данных<select id="locale" aria-label="Язык данных сервисов"><option value="ru">RU</option><option value="en">EN</option></select></label>
+        <button class="quiet" id="logout" hidden>Выйти</button>
+      </div>
+    </header>
+    <div id="notice" class="notice" role="alert" hidden></div>
+    <section id="entry" class="entry">
+      <span class="eyebrow">ОДНО ПРИЛОЖЕНИЕ · ВАШИ ВУЗЫ</span>
+      <h1>Всё для учёбы<br>в одном месте</h1>
+      <p id="entry-description">Выберите вуз и профиль, чтобы открыть доступные вам сервисы.</p>
+      <p id="entry-status" role="status">Подключаемся к MAX…</p>
+      <button id="login" class="primary" hidden>Повторить вход</button>
+      <noscript>Для работы приложения включите JavaScript.</noscript>
+    </section>
+    <main id="workspace" hidden>
+      <aside class="sidebar">
+        <div class="sidebar-heading">ВАШЕ ПРОСТРАНСТВО</div>
+        <button id="change-institution" class="context-button">Выбрать вуз <span aria-hidden="true">↗</span></button>
+        <p id="institution-status" class="muted"></p>
+        <label class="field-label" for="profile">Профиль</label>
+        <select id="profile" disabled><option value="">Сначала выберите вуз</option></select>
+        <div class="sidebar-heading services-heading">СЕРВИСЫ</div>
+        <nav id="services" aria-label="Меню сервисов"><p class="muted">Выберите вуз и профиль</p></nav>
+        <div class="identity"><span>Ваш ID на платформе</span><code id="user-id"></code><small>Можно сообщить администратору для добавления в вуз.</small></div>
+      </aside>
+      <section class="content">
+        <header class="content-header"><div><span class="eyebrow" id="breadcrumb">ЛИЧНОЕ ПРОСТРАНСТВО</span><h1 id="page-title">Мои вузы</h1></div><button id="refresh" class="quiet">Обновить</button></header>
+        <p id="page-status" class="muted" role="status" aria-live="polite"></p>
+        <div id="selection" class="card-grid"></div>
+        <section id="service-panel" hidden aria-label="Открытый сервис">
+          <div class="service-toolbar"><span id="frame-status" role="status"></span><button id="close-service" class="quiet">Закрыть сервис</button></div>
+          <div id="frame-host"></div>
+        </section>
+      </section>
+    </main>
+    <footer>Ваш вуз. Ваш профиль. Ваши сервисы.</footer>
+  </div>
 </body>
 </html>

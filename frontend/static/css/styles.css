@@ -1,11 +1,42 @@
-* { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; font: 1rem/1.6 system-ui, sans-serif; background: #f5f4fb; color: #242138; }
-main { width: 100%; max-width: 460px; padding: clamp(24px, 6vw, 40px); background: #fff; border: 1px solid #e7e3f4; border-radius: 24px; }
-.mark { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 18px; background: #5b48e8; color: white; font-size: 28px; }
-h1 { margin: 24px 0 12px; font-size: clamp(1.8rem, 7vw, 2.5rem); line-height: 1.2; overflow-wrap: anywhere; }
-p { margin: 0; color: #605b74; }
-@media (prefers-color-scheme: dark) {
-  body { background: #151320; color: #f4f2ff; }
-  main { background: #211e30; border-color: #383249; }
-  p { color: #c1bcd2; }
-}
+:root {color-scheme:light dark; --bg:#f4f5f9; --surface:#fff; --text:#20243a; --muted:#687089; --line:#e3e6ef; --accent:#5845d6; --accent-soft:#eeebff; --danger:#a32736}
+* {box-sizing:border-box}
+[hidden] {display:none!important}
+body {margin:0; font:15px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text)}
+button,select {font:inherit; color:inherit}
+button,a,select {-webkit-tap-highlight-color:transparent}
+button,select {min-height:44px; border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:10px 14px}
+button {cursor:pointer} button:disabled {cursor:default; opacity:.55}
+button:hover:not(:disabled) {border-color:var(--accent)}
+a {color:var(--accent)}
+:focus-visible {outline:3px solid #9686f0; outline-offset:3px}
+.shell {max-width:1440px; margin:auto; padding:0 max(20px,env(safe-area-inset-right)) 16px max(20px,env(safe-area-inset-left))}
+.topbar {display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:96px; border-bottom:1px solid var(--line)}
+.brand {display:flex; align-items:center; gap:12px; color:var(--text); font-size:19px; font-weight:750; text-decoration:none}
+.brand-mark {display:grid; place-items:center; width:42px; height:46px; border-radius:14px 14px 14px 4px; background:var(--accent); color:white; font-size:26px}
+.brand small {display:block; font-size:12px; font-weight:400; color:var(--muted)}
+.top-actions {display:flex; align-items:center; gap:12px}.language-label {font-size:12px; color:var(--muted)}.language-label select {margin-left:8px; padding:8px}
+.quiet {background:transparent}.primary {background:var(--accent); color:#fff; border-color:var(--accent); padding:12px 24px}
+.notice {margin-top:20px; padding:16px 20px; border:1px solid #e4abb1; border-radius:14px; color:var(--danger); background:var(--surface); overflow-wrap:anywhere}
+.entry {max-width:720px; margin:10vh auto; padding:48px; background:var(--surface); border:1px solid var(--line); border-radius:24px}
+.eyebrow,.sidebar-heading {font-size:11px; font-weight:700; letter-spacing:.12em; color:var(--muted)}
+.entry h1 {font-size:clamp(32px,5vw,54px); line-height:1.12; letter-spacing:-.04em; margin:24px 0}.entry p {color:var(--muted)}
+#entry-status {margin:28px 0 20px; border-top:1px solid var(--line); padding-top:20px}
+#workspace {display:grid; grid-template-columns:260px minmax(0,1fr); min-height:70vh; margin-top:28px; gap:28px}
+.sidebar {display:flex; flex-direction:column; gap:10px; padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:18px; align-self:start}
+.context-button {display:flex; gap:12px; justify-content:space-between; text-align:left; font-weight:600; border:0; padding:10px 0; overflow-wrap:anywhere}
+.field-label {font-size:12px; color:var(--muted); margin-top:8px}
+.services-heading {margin-top:22px}
+#services {display:grid; gap:5px}.service-group {margin:10px 0 4px; font-size:12px; color:var(--muted)}
+.menu-button {width:100%; text-align:left; border:0; background:transparent; overflow-wrap:anywhere}.menu-button[aria-current=page] {color:var(--accent); background:var(--accent-soft); font-weight:650}
+.identity {margin-top:36px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:11px}.identity code {display:block; overflow-wrap:anywhere; margin:8px 0}.identity small {font-size:11px}
+.content {min-width:0}.content-header {display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0}.content-header h1 {font-size:28px; line-height:1.25; margin:6px 0; letter-spacing:-.025em}
+.muted {font-size:14px; color:var(--muted); margin:4px 0 16px}
+.card-grid {display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:16px; margin:20px 0}
+.card {padding:24px; background:var(--surface); border:1px solid var(--line); border-radius:18px; display:flex; flex-direction:column; align-items:flex-start; gap:12px; text-align:left; min-height:160px}
+.card h2 {font-size:19px; margin:0; line-height:1.35}.card p {color:var(--muted); margin:0; font-size:13px}.card .badge {font-size:11px; padding:4px 10px; background:var(--accent-soft); color:var(--accent); border-radius:20px}.card .arrow {margin-top:auto; color:var(--accent)}
+#service-panel {margin-top:16px; background:var(--surface); border:1px solid var(--line); border-radius:16px; overflow:hidden}
+.service-toolbar {display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); font-size:12px; color:var(--muted)}
+#frame-host iframe {display:block; width:100%; height:72vh; min-height:400px; border:0; background:white}
+footer {padding:28px 0 8px; font-size:12px; color:var(--muted); text-align:center}
+@media(max-width:760px) {.shell {padding-left:14px; padding-right:14px}.topbar {min-height:82px}.brand {font-size:16px}.brand small {font-size:10px}.language-label {font-size:0}.language-label select {font-size:13px}.top-actions {gap:6px}#workspace {grid-template-columns:1fr; gap:18px; margin-top:18px}.sidebar {padding:16px}.identity {margin-top:12px}#services {grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}.service-group {grid-column:1/-1}.entry {margin:7vh auto; padding:28px}.content-header h1 {font-size:24px}#frame-host iframe {height:70dvh; min-height:340px}.card {min-height:130px}}
+@media(prefers-color-scheme:dark) {:root {--bg:#141724; --surface:#1d2131; --text:#ecedf6; --muted:#a0a8bf; --line:#343a50; --accent:#b1a4ff; --accent-soft:#30294d; --danger:#ffadb6}.brand-mark,.primary {background:#6651d9;color:white}}

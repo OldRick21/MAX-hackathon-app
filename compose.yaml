@@ -8,6 +8,19 @@ services:
 
   backend:
     build: ./backend
+    environment:
+      DATABASE_URL: sqlite:////data/core.db
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
+      REDIS_HOST: redis
+      ALLOW_DEV_LOGIN: "false"
+      SEED_DEMO_DATA: "false"
+      ALLOW_FAKE_REDIS: "false"
+    volumes:
+      - core-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     init: true
     healthcheck:
@@ -38,3 +51,19 @@ services:
     volumes:
       - /var/lib/max-miniapp/acme:/var/www/acme
       - /var/lib/max-miniapp/letsencrypt:/etc/letsencrypt
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  core-data:
+  redis-data:

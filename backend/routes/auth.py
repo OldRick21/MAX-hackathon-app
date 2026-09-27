@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import HTTPException, APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from database.tables import Institution, Membership, ServiceInstance

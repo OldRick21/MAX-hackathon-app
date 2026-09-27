@@ -16,6 +16,8 @@ try:
     revoked_tokens_redis = real_redis
     logger.info(f"Connected to REAL Redis at {settings.REDIS_HOST}:{settings.REDIS_PORT}")
 except Exception:
+    if not settings.ALLOW_FAKE_REDIS:
+        raise
     # Если локальный Redis не запущен, используем in-memory fakeredis
     import fakeredis
     fake_server = fakeredis.FakeServer()
