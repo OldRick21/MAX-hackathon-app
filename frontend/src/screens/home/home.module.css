@@ -1,69 +1,84 @@
-/* Главная — точные размеры из Figma (1rem = 1px/10 при 1440). */
+/* Главная — рабочая панель: приветствие, профиль и занятия рядом, ниже плитки сервисов. */
 
-.greeting { font-family: var(--font-accent); font-weight: 500; font-size: 4.36rem; line-height: 1.2; letter-spacing: -.005em; text-wrap: balance; }
-.subtitle { margin-top: 1.4rem; font-size: 3rem; line-height: 1.3; color: var(--text-2); }
+.head { display: flex; align-items: baseline; gap: 1.6rem; flex-wrap: wrap; }
+.greeting { font-family: var(--font-accent); font-weight: 500; font-size: 3.4rem; line-height: 1.2; letter-spacing: -.005em; }
+.subtitle { font-size: 2.2rem; color: var(--text-2); }
+.subtitle::first-letter, .dayTitle::first-letter { text-transform: uppercase; }
 
-/* ProfileSummary: 693×269, радиус 30, обводка 1px #667085 */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 2.4rem; margin-top: 2.8rem; align-items: start; }
+
 .profileCard {
-  --home-avatar: 19rem;
-  display: flex; align-items: center; gap: 3.5rem; margin-top: 5.2rem;
-  max-width: 69.3rem; min-height: 26.9rem; padding: 3.9rem 3.2rem;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
-  color: inherit; text-decoration: none; transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+  --home-avatar: 11rem;
+  display: flex; align-items: center; gap: 2.4rem; padding: 2.4rem;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-large);
+  color: inherit; text-decoration: none; transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-a.profileCard:hover { box-shadow: var(--shadow-accent); transform: translateY(-.3rem); }
-.photo { border-radius: 3rem; }
-.profileText { min-width: 0; display: grid; }
-.name { font-family: var(--font-accent); font-weight: 500; font-size: 2.8rem; line-height: 1.25; overflow-wrap: anywhere; }
-.meta { margin-top: 1.9rem; font-size: 2.8rem; line-height: 1.3; color: var(--text-2); overflow-wrap: anywhere; }
-.uni { margin-top: 1.4rem; font-size: 2rem; line-height: 1.3; color: var(--text-2); max-width: 34rem; overflow-wrap: anywhere; }
+a.profileCard:hover { border-color: var(--accent); box-shadow: var(--shadow-accent); }
+.photo { border-radius: 2rem; }
+.profileText { min-width: 0; display: grid; gap: .6rem; }
+.name { font-family: var(--font-accent); font-weight: 500; font-size: 2.6rem; line-height: 1.25; overflow-wrap: anywhere; }
+.meta { font-size: 2rem; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
+.uni { font-size: 1.8rem; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
 
-/* Расписание на день: 813×300 */
-.dayCard {
-  margin-top: 5.7rem; max-width: var(--content-w);
-  padding: 4.1rem 3.8rem 3.5rem 2.7rem;
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+.dayCard { padding: 2.4rem; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-large); }
+.dayHead { display: flex; align-items: baseline; justify-content: space-between; gap: 1.6rem; }
+.dayTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; line-height: 1.25; }
+.dayCaption { margin-top: 1.6rem; font-size: 2rem; color: var(--text-2); }
+.lessons { list-style: none; margin: 1.6rem 0 0; padding: 0; display: grid; gap: .4rem; }
+.lesson {
+  display: grid; grid-template-columns: 13rem minmax(0, 1fr) auto; gap: 1.6rem; align-items: baseline;
+  padding: 1rem 1.2rem; border-radius: 1rem; font-size: 2rem; line-height: 1.4;
 }
-.dayTitle { margin-right: -2rem; text-align: center; font-family: var(--font-accent); font-weight: 500; font-size: 2.7rem; line-height: 1.25; }
-.dayCaption { text-align: center; margin-top: .6rem; font-size: 2rem; color: var(--text-2); }
-.lessons { list-style: none; margin: 1.7rem 0 0; padding: 0; display: grid; gap: 2.2rem; }
-.lesson { display: grid; grid-template-columns: 14.6rem minmax(0, 1fr) auto; column-gap: 0; align-items: baseline; font-size: 2.4rem; line-height: 3.2rem; }
-.time { font-weight: 500; white-space: nowrap; }
-.subject { max-width: 44rem; min-width: 0; overflow-wrap: anywhere; }
-.room { text-align: right; white-space: nowrap; padding-left: 2rem; }
+.lesson:nth-child(odd) { background: var(--surface-muted); }
+.time { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.subject { min-width: 0; overflow-wrap: anywhere; }
+.room { text-align: right; white-space: nowrap; color: var(--text-2); }
 .cancelled .subject, .cancelled .time { text-decoration: line-through; color: var(--text-2); }
+.now { box-shadow: inset 3px 0 0 var(--accent); }
 .now .time { color: var(--accent); }
-.tag { display: inline-block; margin-left: 1rem; vertical-align: .2em; }
-.online { color: var(--accent-dark); font-weight: 600; }
-.more { display: block; margin-top: 2.8rem; text-align: center; font-size: 2.2rem; font-weight: 600; color: var(--accent-dark); text-decoration: none; }
+.more { font-size: 1.8rem; font-weight: 600; color: var(--accent-dark); text-decoration: none; white-space: nowrap; }
 .more:hover { text-decoration: underline; }
-.skeletonRow { display: grid; grid-template-columns: 14.6rem 1fr 8rem; gap: 2rem; }
 
-/* Сжатый десктоп: колонка контента узкая, поэтому аватар меньше, а предмет — отдельной строкой под временем */
+.services { margin-top: 3.2rem; }
+.sectionTitle { font-size: 1.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
+.tiles { list-style: none; margin: 1.4rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr)); gap: 1.2rem; }
+.tile {
+  display: flex; align-items: center; gap: 1.6rem; padding: 1.6rem;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 1.6rem;
+  color: inherit; text-decoration: none; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.tile:hover { border-color: var(--accent); background: var(--surface-hover); }
+.tileIcon { flex: none; width: 5.2rem; height: 5.2rem; border-radius: 1.4rem; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-dark); }
+.tileIcon svg { width: 2.8rem; height: 2.8rem; }
+.tileText { min-width: 0; display: grid; }
+.tileName { font-weight: 600; font-size: 2rem; }
+.tileDesc { font-size: 1.7rem; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 1100px) and (min-width: 768px) {
-  .profileCard { --home-avatar: 12rem; gap: 2.4rem; padding: 3.2rem 2.8rem; }
-  .lesson { grid-template-columns: 1fr auto; column-gap: 2rem; row-gap: .4rem; }
-  .time { grid-column: 1; }
-  .room { grid-column: 2; grid-row: 1; padding-left: 0; }
-  .subject { grid-column: 1 / -1; max-width: none; }
+  .grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 767px) {
-  .greeting { font-size: 2.6rem; }
-  .subtitle { font-size: 1.6rem; margin-top: .6rem; }
-  .profileCard { --home-avatar: 8.8rem; margin-top: 2.4rem; gap: 1.6rem; min-height: 0; padding: 1.6rem; }
-  .photo { border-radius: 1.8rem; }
+  .greeting { font-size: 2.4rem; }
+  .subtitle { font-size: 1.5rem; }
+  .grid { grid-template-columns: 1fr; gap: 1.2rem; margin-top: 1.6rem; }
+  .profileCard { --home-avatar: 7.2rem; gap: 1.4rem; padding: 1.4rem; border-radius: 1.6rem; }
+  .photo { border-radius: 1.6rem; }
   .name { font-size: 1.8rem; }
-  .meta { margin-top: .6rem; font-size: 1.5rem; }
-  .uni { margin-top: .6rem; font-size: 1.3rem; }
-  .dayCard { margin-top: 1.6rem; padding: 2rem 1.6rem; }
-  .dayTitle { font-size: 1.7rem; margin-right: 0; }
+  .meta { font-size: 1.4rem; }
+  .uni { font-size: 1.3rem; }
+  .dayCard { padding: 1.6rem; border-radius: 1.6rem; }
+  .dayTitle { font-size: 1.7rem; }
   .dayCaption { font-size: 1.4rem; }
-  .lessons { margin-top: 1.6rem; gap: 1.4rem; }
-  .lesson { grid-template-columns: 1fr auto; font-size: 1.5rem; line-height: 2rem; row-gap: .2rem; column-gap: 1.2rem; }
-  .time { grid-column: 1; }
-  .room { grid-column: 2; grid-row: 1; }
-  .subject { grid-column: 1 / -1; max-width: none; }
-  .more { font-size: 1.5rem; margin-top: 1.6rem; }
-  .skeletonRow { grid-template-columns: 1fr; gap: .6rem; }
+  .more { font-size: 1.4rem; }
+  .lesson { grid-template-columns: auto minmax(0, 1fr); font-size: 1.4rem; gap: .2rem 1.2rem; padding: .8rem 1rem; }
+  .room { grid-column: 2; text-align: left; }
+  .services { margin-top: 2rem; }
+  .sectionTitle { font-size: 1.2rem; }
+  .tiles { grid-template-columns: 1fr; gap: .8rem; margin-top: 1rem; }
+  .tile { padding: 1.2rem; gap: 1.2rem; border-radius: 1.4rem; }
+  .tileIcon { width: 4rem; height: 4rem; border-radius: 1.2rem; }
+  .tileIcon svg { width: 2.2rem; height: 2.2rem; }
+  .tileName { font-size: 1.5rem; }
+  .tileDesc { font-size: 1.3rem; }
 }

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import type { Profile } from '../../api/types';
-import { PROFILE_LABEL, rememberProfile, useInstitution } from '../../state/institution';
+import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useSession } from '../../state/session';
 import { IconChevron } from '../icons/figma';
 import { Dropdown, type DropdownItem } from '../ui';
@@ -54,36 +54,34 @@ export function UniversitySwitcher() {
   );
 }
 
-/** Правый верхний угол: переход в любой свой вуз сразу с нужным профилем и вступление в новый. */
+/** Правый верхний угол — вуз: переход в другой свой вуз, вступление в новый и оформление.
+ *  Профиль внутри вуза меняет левая кнопка (ProfileSwitcher). */
 export function AccountSwitcher() {
   const { institutions } = useSession();
-  const { institution, profile, setProfile } = useInstitution();
+  const { institution } = useInstitution();
   const navigate = useNavigate();
   const theme = useTheme();
-  const items: DropdownItem[] = institutions.flatMap(i => (i.status === 'active' ? i.profiles : []).map(p => ({
-    key: `${i.id}:${p}`,
-    label: <span className={s.accountItem}><span>{shortInstitutionName(i.display_name)}</span><small>{PROFILE_LABEL[p]}</small></span>,
-    checked: i.id === institution.id && p === profile,
-    onSelect: () => {
-      if (i.id === institution.id) { setProfile(p); return; }
-      rememberProfile(i.id, p);
-      navigate(`/institution/${i.id}`);
-    },
-  })));
+  const items: DropdownItem[] = institutions.filter(i => i.status === 'active').map(i => ({
+    key: i.id,
+    label: <span className={s.accountItem}><span>{shortInstitutionName(i.display_name)}</span>
+      <small>{i.profiles.map(p => PROFILE_LABEL[p]).join(', ')}</small></span>,
+    checked: i.id === institution.id,
+    onSelect: () => { if (i.id !== institution.id) navigate(`/institution/${i.id}`); },
+  }));
   items.push({ key: 'join', label: <span className={s.accountJoin}>+ Вступить в другой вуз</span>, checked: false, divider: true, onSelect: () => navigate('/join') });
   items.push({ key: 'theme', label: <span className={s.accountTheme}>Оформление: {THEME_LABEL[theme]}</span>, checked: false, keepOpen: true, divider: true,
     onSelect: () => setTheme(nextTheme(theme)) });
   return (
     <Dropdown
-      label="Вуз и профиль"
+      label="Вуз и оформление"
       align="end"
       items={items}
       trigger={({ toggle, ref, ...aria }) => (
-        <button ref={ref} type="button" className={s.account} onClick={toggle}
-          aria-label={`${institution.display_name}, ${PROFILE_LABEL[profile]}. Сменить вуз или профиль`} {...aria}>
+        <button ref={ref} type="button" className={s.account} onClick={toggle} title={institution.display_name}
+          aria-label={`${institution.display_name}. Сменить вуз или оформление`} {...aria}>
           <span className={s.accountText}>
             <span>{shortInstitutionName(institution.display_name)}</span>
-            <small>{PROFILE_LABEL[profile]}</small>
+            <small>Вуз</small>
           </span>
           <IconChevron className={s.switcherChevron} />
         </button>

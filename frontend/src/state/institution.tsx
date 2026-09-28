@@ -76,8 +76,8 @@ export function InstitutionProvider({ institutionId, children, fallback }: {
     return () => { ctrl.abort(); backend.releaseServices(); };
   }, [backend, institutionId, profile, ready, blocked, catalogAttempt]);
 
-  // Роли выдают в администрировании, пока приложение открыто в MAX. При возвращении
-  // во вкладку перечитываем каталог без экрана загрузки: права и меню обновятся на месте.
+  // Роли и сервисы меняют в администрировании, пока приложение открыто в MAX. При повторном входе и
+  // возвращении во вкладку каталог перечитывается без экрана загрузки: меню и плитки сервисов обновятся сами.
   useEffect(() => {
     if (!ready || !profile || blocked) return;
     let busy = false;

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { serviceEntries } from '../../components/layout/navigation';
 import type { ScheduleEvent } from '../../api/types';
 import { Avatar, Button, Skeleton, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
@@ -6,7 +7,7 @@ import { useAvatar } from '../../hooks/useAvatar';
 import { useProfilesApi, useScheduleApi } from '../../hooks/useServices';
 import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useSession } from '../../state/session';
-import { addDays, dayKey, now, startOfDay } from '../../utils/time';
+import { addDays, dayKey, formatShort, formatTime, formatWeekday, now, startOfDay } from '../../utils/time';
 import s from './home.module.css';
 
 
@@ -46,6 +47,7 @@ export function HomeScreen() {
 
   const me = useAsync(async signal => (profiles ? (await profiles.api.getMe(signal)).data : null), [profiles]);
   const schedule = useHomeSchedule();
+  const scheduleApi = useScheduleApi();
   const photo = useAvatar(user?.id);
 
   const displayName = me.data?.display_name
@@ -78,14 +80,68 @@ export function HomeScreen() {
     </>
   );
 
+  const services = catalogReady ? serviceEntries(base, catalog.value) : [];
+  const day = schedule.data;
+  const today = now();
+
   return (
     <div>
-      <h1 className={s.greeting}>Привет, {firstName}!</h1>
-      <p className={s.subtitle}>Хорошего дня и продуктивной учебы!</p>
+      <header className={s.head}>
+        <h1 className={s.greeting}>Привет, {firstName}!</h1>
+        <p className={s.subtitle}>{formatWeekday(today)}, {formatShort(today)}</p>
+      </header>
 
-      {profiles
-        ? <Link to={`${base}/users/me`} className={s.profileCard} aria-label={`Мой профиль: ${displayName}`}>{cardInner}</Link>
-        : <div className={s.profileCard}>{cardInner}</div>}
+      <div className={s.grid}>
+        {profiles
+          ? <Link to={`${base}/users/me`} className={s.profileCard} aria-label={`Мой профиль: ${displayName}`}>{cardInner}</Link>
+          : <div className={s.profileCard}>{cardInner}</div>}
+
+        {scheduleApi && (
+          <section className={s.dayCard} aria-label="Занятия">
+            <div className={s.dayHead}>
+              <h2 className={s.dayTitle}>{!day?.day ? 'Занятия' : day.isToday ? 'Сегодня' : `${formatWeekday(day.day)}, ${formatShort(day.day)}`}</h2>
+              <Link to={`${base}/schedule`} className={s.more}>Всё расписание</Link>
+            </div>
+            {schedule.status === 'loading' ? (
+              <div className={s.lessons}>{[0, 1, 2].map(i => <Skeleton key={i} height="2rem" />)}</div>
+            ) : schedule.status === 'error' ? (
+              <p className={s.dayCaption}>Не удалось загрузить расписание.</p>
+            ) : !day?.events.length ? (
+              <p className={s.dayCaption}>На ближайшую неделю занятий нет.</p>
+            ) : (
+              <ul className={s.lessons}>
+                {day.events.map(e => {
+                  const t = today.getTime();
+                  const current = e.status !== 'cancelled' && Date.parse(e.starts_at) <= t && t < Date.parse(e.ends_at);
+                  return (
+                    <li key={e.id} className={[s.lesson, e.status === 'cancelled' && s.cancelled, current && s.now].filter(Boolean).join(' ')}>
+                      <span className={s.time}>{formatTime(e.starts_at)}–{formatTime(e.ends_at)}</span>
+                      <span className={s.subject}>{e.title}</span>
+                      <span className={s.room}>{e.location || 'онлайн'}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+      </div>
+
+      {services.length > 0 && (
+        <section className={s.services} aria-label="Сервисы">
+          <h2 className={s.sectionTitle}>Сервисы</h2>
+          <ul className={s.tiles}>
+            {services.map(({ key, to, name, desc, Icon }) => (
+              <li key={key}>
+                <Link to={to} className={s.tile}>
+                  <span className={s.tileIcon}><Icon /></span>
+                  <span className={s.tileText}><span className={s.tileName}>{name}</span><span className={s.tileDesc}>{desc}</span></span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Без сервиса «Люди» профиля нет — ID для администратора показываем здесь. */}
       {catalogReady && !profiles && user && (
@@ -95,7 +151,6 @@ export function HomeScreen() {
             .then(() => toast('ID скопирован'), () => toast('Не удалось скопировать', true))}>Скопировать</Button>
         </p>
       )}
-
     </div>
   );
 }

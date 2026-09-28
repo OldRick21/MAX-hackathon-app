@@ -64,10 +64,10 @@
   --r-card: 3rem;
   --r-large: 2.4rem;
 
-  --sidebar-w: 50.3rem;
-  --page-pad-l: 6.6rem;
-  --page-pad-r: 5.7rem;
-  --content-w: 81.3rem;
+  --sidebar-w: 40rem;
+  --page-pad-l: 4.8rem;
+  --page-pad-r: 4.8rem;
+  --content-w: 120rem;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -168,7 +168,8 @@
   color-scheme: dark;
 }
 
-html { font-size: clamp(7px, calc(100vw / 144), 10px); -webkit-text-size-adjust: 100%; }
+/* Плотный десктоп (как VS Code/Discord): 1rem = 7.5px при ширине от 1440, пропорционально уже на узких. */
+html { font-size: clamp(6px, calc(100vw / 192), 7.5px); -webkit-text-size-adjust: 100%; }
 @media (max-width: 767px) {
   html { font-size: 10px; }
   :root {
