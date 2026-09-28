@@ -1,6 +1,7 @@
-# Курсовые — отдельный сервис вуза. Поднимается независимо от платформы:
-#   cd test-data/coursework && cp .env.example .env && nano .env && docker compose up -d --build
-# С платформой общается только по HTTPS через CORE_URL и ключ из админки.
+# Курсовые — отдельный сервис вуза. Поднимается независимо от платформы, все настройки — в coursework.env:
+#   cd test-data/coursework && cp coursework.env.example coursework.env && nano coursework.env
+#   docker compose --env-file coursework.env up -d --build
+# С платформой общается только по HTTPS через CORE_URL и ключ из пульта. Сертификаты — свои, в ./letsencrypt.
 name: coursework
 
 services:
@@ -8,13 +9,13 @@ services:
     build: .
     restart: unless-stopped
     init: true
-    env_file: .env
+    env_file: coursework.env
     environment:
       SERVICE_DATA: /data
     volumes:
       - coursework-data:/data
 
-  # HTTPS-вход на DNS-имени, одобренном поддержкой платформы. Сертификат — из CERT_DIR.
+  # HTTPS-вход на DNS-имени, одобренном в пульте оператора.
   proxy:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -22,13 +23,20 @@ services:
       app:
         condition: service_healthy
     ports:
-      - "${COURSEWORK_PORT:-9443}:443"
+      - "${COURSEWORK_PORT:?Run compose with --env-file coursework.env}:443"
     environment:
-      COURSEWORK_HOST: ${COURSEWORK_HOST:?Set COURSEWORK_HOST in .env}
-      COURSEWORK_CERT: ${COURSEWORK_CERT:-coursework}
+      COURSEWORK_HOST: ${COURSEWORK_HOST:?Run compose with --env-file coursework.env}
     volumes:
       - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ${CERT_DIR:-/var/lib/max-miniapp/letsencrypt}:/etc/letsencrypt:ro
+      - ./letsencrypt:/etc/letsencrypt:ro
+
+  # Выпуск и продление сертификата сервиса; хранится только в ./letsencrypt.
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["tools"]
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ${ACME_WEBROOT:-/var/lib/max-miniapp/acme}:/var/www/acme
 
 volumes:
   coursework-data:
