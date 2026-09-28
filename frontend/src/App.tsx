@@ -11,6 +11,7 @@ import {
   BootScreen, NoInstitutionsScreen, NotInMaxScreen, SelectInstitutionScreen, SessionProblemScreen,
 } from './screens/entry/EntryScreens';
 import { HomeScreen } from './screens/home/HomeScreen';
+import { GroupsScreen } from './screens/schedule/GroupsScreen';
 import { ScheduleScreen } from './screens/schedule/ScheduleScreen';
 import { ServiceScreen } from './screens/services/ServiceScreen';
 import { UserProfileScreen } from './screens/users/UserProfileScreen';
@@ -40,6 +41,7 @@ function InstitutionRoute() {
         <Route element={<AppLayout />}>
           <Route index element={<HomeScreen />} />
           <Route path="schedule" element={<ScheduleScreen />} />
+          <Route path="schedule/groups" element={<GroupsScreen />} />
           <Route path="users" element={<UsersScreen />} />
           <Route path="users/:userId" element={<UserProfileScreen />} />
           <Route path="coursework" element={<CourseworkScreen />} />

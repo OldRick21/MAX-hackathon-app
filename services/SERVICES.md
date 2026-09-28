@@ -1,8 +1,9 @@
 # Исходники сервисов
 
 - `administration/` — backend и клиент сервиса администрирования.
+- `schedule/` — сервис расписания: учебные группы и занятия, собственное хранилище, без HTML-клиента (экраны рисует оболочка).
 - `user-profile/` — сервис «Люди»: анкеты участников вуза, собственное хранилище, без HTML-клиента (экраны рисует оболочка).
-- `demo-service/` — статический клиент демо-расписания.
+- `demo-service/` — прежний статический клиент демо-расписания; больше не используется, экземпляр заглушки ядро превращает в настоящее расписание.
 - Новые сервисы, разрабатываемые в этом репозитории, размещаются в `services/<имя>/`.
 
 `backend/services/` — внутренняя бизнес-логика ядра, а не исходники отдельных сервисов.
@@ -19,7 +20,7 @@
 mkdir -p services/connected
 sudo chown 10001:10001 services/connected
 sudo chmod 750 services/connected
-sudo docker compose up -d --build backend administration user-profile web
+sudo docker compose up -d --build backend administration user-profile schedule web
 ```
 
 Сервис «Люди» хранит анкеты в volume `profile-data` и работает под UID 10003; каталог в томе создаёт сам образ, отдельной подготовки не требуется. Экземпляр подключается вузу в админке или командой `manage.py install-people INSTITUTION_UUID` — подробности в [корневом README](../README.md#сервис-люди).

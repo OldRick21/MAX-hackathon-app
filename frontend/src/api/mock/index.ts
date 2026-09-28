@@ -56,8 +56,24 @@ export function createMockBackend(): Backend {
       if (!e) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
       return e;
     };
-    const requireWrite = () => {
-      if (s.profile !== 'admin' || !has(s, 'schedule.write')) throw new ApiError('Нет доступа к этому действию.', 403);
+    // Занятия пишут преподаватели (только свои) и admin с schedule.write (любые) — как сервис.
+    const writesAny = () => s.profile === 'admin' && has(s, 'schedule.write');
+    const requireWrite = (input?: Omit<ScheduleEvent, 'id'>, existing?: string) => {
+      if (!writesAny() && s.profile !== 'teacher') throw new ApiError('Нет доступа к этому действию.', 403);
+      if (writesAny()) return;
+      if (existing && !events[inst].find(e => e.id === existing)?.teacher_ids.includes(D.ME)) {
+        throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
+      }
+      if (input && !input.teacher_ids.includes(D.ME)) throw new ApiError('Проверьте заполненные поля.', 422);
+    };
+    const requireGroups = () => {
+      if (s.profile !== 'admin' || !has(s, 'groups.manage')) throw new ApiError('Нет доступа к этому действию.', 403);
+    };
+    const groupList = () => (D.groups[inst] ??= []);
+    const findGroup = (id: string) => {
+      const g = groupList().find(x => x.id === id);
+      if (!g) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
+      return g;
     };
     const validate = (input: ScheduleEvent | Omit<ScheduleEvent, 'id'>) => {
       if (!(Date.parse(input.starts_at) < Date.parse(input.ends_at))) {
@@ -79,29 +95,62 @@ export function createMockBackend(): Backend {
       },
       async getEvent(id) { await wait(150); return { data: clone(find(id)), etag: etagOf(id) }; },
       async createEvent(input) {
-        await wait(); requireWrite(); validate(input);
+        await wait(); requireWrite(input); validate(input);
         const e = { ...clone(input), id: crypto.randomUUID() };
         events[inst].push(e);
         return clone(e);
       },
       async updateEvent(id, input, etag) {
-        await wait(); requireWrite(); checkEtag(id, etag); validate(input);
+        await wait(); requireWrite(input, id); checkEtag(id, etag); validate(input);
         const i = events[inst].findIndex(e => e.id === id);
         events[inst][i] = { ...clone(input), id };
         bump(id);
         return clone(events[inst][i]);
       },
       async deleteEvent(id, etag) {
-        await wait(); requireWrite(); checkEtag(id, etag);
+        await wait(); requireWrite(undefined, id); checkEtag(id, etag);
         events[inst] = events[inst].filter(e => e.id !== id);
       },
       async listGroups() {
         await wait(200);
-        if (s.profile === 'admin' && has(s, 'schedule.read_all')) return clone(D.groups[inst] ?? []);
-        // Студенту и преподавателю — группы из их занятий и своя группа.
-        const ids = new Set(events[inst].filter(visible).flatMap(e => e.group_ids));
-        const g = myGroup(); if (g) ids.add(g.id);
-        return clone((D.groups[inst] ?? []).filter(x => ids.has(x.id)));
+        if (s.profile === 'teacher' || (s.profile === 'admin' && has(s, 'schedule.read_all'))) return clone(groupList());
+        const g = myGroup();
+        return g ? [clone(g)] : [];
+      },
+      async getGroup(id) { await wait(150); return { data: clone(findGroup(id)), etag: etagOf(`group:${id}`) }; },
+      async createGroup(name) {
+        await wait(); requireGroups();
+        if (groupList().some(g => g.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+          throw new ApiError('Группа с таким названием уже есть.', 409, 'GROUP_ALREADY_EXISTS');
+        }
+        const g = { id: crypto.randomUUID(), name: name.trim() };
+        groupList().push(g);
+        return clone(g);
+      },
+      async renameGroup(id, name, etag) {
+        await wait(); requireGroups(); checkEtag(`group:${id}`, etag);
+        findGroup(id).name = name.trim();
+        bump(`group:${id}`);
+        return { data: clone(findGroup(id)), etag: etagOf(`group:${id}`) };
+      },
+      async deleteGroup(id, etag) {
+        await wait(); requireGroups(); checkEtag(`group:${id}`, etag);
+        if (D.groupStudents[id]?.length || events[inst].some(e => e.group_ids.includes(id))) {
+          throw new ApiError('В группе есть студенты или занятия.', 409, 'GROUP_IN_USE');
+        }
+        D.groups[inst] = groupList().filter(g => g.id !== id);
+      },
+      async getStudents(id) {
+        await wait(150); requireGroups(); findGroup(id);
+        return { data: clone(D.groupStudents[id] ?? []), etag: etagOf(`students:${id}`) };
+      },
+      async setStudents(id, userIds, etag) {
+        await wait(); requireGroups(); findGroup(id); checkEtag(`students:${id}`, etag);
+        const taken = userIds.some(u => groupList().some(g => g.id !== id && D.groupStudents[g.id]?.includes(u)));
+        if (taken) throw new ApiError('Студент уже состоит в другой группе.', 409, 'STUDENT_ALREADY_GROUPED');
+        D.groupStudents[id] = [...userIds];
+        bump(`students:${id}`);
+        return { data: clone(userIds), etag: etagOf(`students:${id}`) };
       },
     };
   };

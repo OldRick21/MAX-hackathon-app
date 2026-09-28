@@ -13,6 +13,9 @@ services:
       USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN:?Set USER_PROFILE_PROVISIONING_TOKEN in .env}
       USER_PROFILE_API_BASE_URL: ${SHELL_ORIGIN}/people/api/v1
       USER_PROFILE_CLIENT_BASE_URL: ${SHELL_ORIGIN}
+      SCHEDULE_PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN:?Set SCHEDULE_PROVISIONING_TOKEN in .env}
+      SCHEDULE_API_BASE_URL: ${SHELL_ORIGIN}/schedule/api/v1
+      SCHEDULE_CLIENT_BASE_URL: ${SHELL_ORIGIN}
       SERVICE_CONFIG_DIR: /srv/services/connected
       CURSOR_SECRET_KEY: ${CURSOR_SECRET_KEY:?Set CURSOR_SECRET_KEY in .env}
       JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env}
@@ -71,6 +74,21 @@ services:
       backend:
         condition: service_healthy
 
+  # Облачный сервис расписания: группы и занятия всех вузов, своя SQLite.
+  schedule:
+    build: ./services/schedule
+    restart: unless-stopped
+    init: true
+    environment:
+      CORE_INTERNAL_URL: http://backend:8000
+      SCHEDULE_PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN}
+      SCHEDULE_DB: /data/schedule.db
+    volumes:
+      - schedule-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+
   web:
     depends_on:
       backend:
@@ -78,6 +96,8 @@ services:
       administration:
         condition: service_healthy
       user-profile:
+        condition: service_healthy
+      schedule:
         condition: service_healthy
     build: ./frontend
     restart: unless-stopped
@@ -112,6 +132,7 @@ services:
       retries: 5
 
 volumes:
+  schedule-data:
   profile-data:
   core-data:
   redis-data:

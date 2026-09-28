@@ -307,20 +307,25 @@ def sync_admin_instance(db: Session, service: ServiceInstance) -> None:
         db.delete(legacy)
 
 
-def sync_profile_instance(db: Session, service: ServiceInstance) -> None:
-    """Приводит облачный user-profile к конфигурации платформы.
+# Облачные типы, чьи адреса, манифест и профили задаёт платформа (administration — отдельно).
+PLATFORM_SYNCED_TYPES = ("schedule", "user-profile")
 
-    Адреса, манифест и профили задаёт платформа: экземпляр, созданный до
-    настройки USER_PROFILE_*_BASE_URL или до переезда, иначе остаётся со
-    старыми адресами. Включение/отключение остаётся за администратором вуза.
+
+def sync_cloud_instance(db: Session, service: ServiceInstance) -> None:
+    """Приводит облачный экземпляр schedule/user-profile к конфигурации платформы.
+
+    Экземпляр, созданный до настройки *_BASE_URL, до переезда или демо-заглушкой,
+    иначе остаётся со старыми адресами и манифестом. Включение/отключение остаётся
+    за администратором вуза.
     """
-    api_url, client_url = settings.cloud_endpoints("user-profile")
+    code = service.service_type
+    api_url, client_url = settings.cloud_endpoints(code)
     if (service.api_base_url, service.client_base_url) != (api_url, client_url):
-        logger.info("user-profile %s: addresses %s -> %s", service.id, service.api_base_url, api_url)
+        logger.info("%s %s: addresses %s -> %s", code, service.id, service.api_base_url, api_url)
     service.api_base_url = api_url
     service.client_base_url = client_url
-    service.manifest = catalog.default_manifest("user-profile")
-    service.supported_profiles = list(catalog.service_type("user-profile")["supported_profiles"])
+    service.manifest = catalog.default_manifest(code)
+    service.supported_profiles = list(catalog.service_type(code)["supported_profiles"])
     create_initial_roles(db, service)
 
 
@@ -354,7 +359,7 @@ def ensure_platform_invariants(db: Session) -> None:
 
     - у каждого вуза есть защищённый экземпляр administration;
     - его адреса, manifest и системные роли совпадают с каталогом;
-    - адреса и manifest облачных user-profile совпадают с настройками платформы;
+    - адреса и manifest облачных schedule/user-profile совпадают с настройками платформы;
     - у облачных экземпляров есть действующий binding (если задан ключ).
     """
     for inst in db.query(Institution).all():
@@ -363,9 +368,9 @@ def ensure_platform_invariants(db: Session) -> None:
             create_cloud_instance(db, inst.id, "administration")
         else:
             sync_admin_instance(db, admin)
-    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type == "user-profile",
+    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type.in_(PLATFORM_SYNCED_TYPES),
                                                     ServiceInstance.deployment == "cloud").all():
-        sync_profile_instance(db, service)
+        sync_cloud_instance(db, service)
     db.flush()
     if not settings.CLOUD_BINDING_KEY:
         logger.warning("CLOUD_BINDING_KEY is not set: cloud services (administration) cannot authenticate to core")

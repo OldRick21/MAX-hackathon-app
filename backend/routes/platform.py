@@ -158,6 +158,8 @@ def get_binding(service_id: str, authorization: Optional[str] = Header(None), db
             service_type = "administration"
         elif constant_time_token_match(token, settings.USER_PROFILE_PROVISIONING_TOKEN):
             service_type = "user-profile"
+        elif constant_time_token_match(token, settings.SCHEDULE_PROVISIONING_TOKEN):
+            service_type = "schedule"
     if service_type is None:
         raise DomainError(404, "RESOURCE_NOT_FOUND", "Ресурс не найден")
     if not is_uuid(service_id):

@@ -361,7 +361,9 @@
     const installed = new Set(services.map(s => s.service_type));
 
     if (manage) {
-      const available = ['schedule', 'user-profile', 'coursework'].filter(c => !installed.has(c));
+      // Только типы с готовой реализацией: курсовые (локальный сервис) ещё не написаны,
+      // и одинокая плашка с ними сбивает с толку. Каталог ядра их по-прежнему знает.
+      const available = ['schedule', 'user-profile'].filter(c => !installed.has(c));
       if (available.length) {
         const select = h('select', {}, available.map(c => h('option', { value: c }, `${title(types[c].titles)} (${types[c].deployment === 'cloud' ? 'облако' : 'локально'})`)));
         const api_ = h('input', { placeholder: 'https://coursework.university.ru/api/v1' });

@@ -85,6 +85,11 @@ export interface Group {
   name: string;
 }
 
+export interface GroupStudents {
+  group_id: UUID;
+  user_ids: UUID[];
+}
+
 export type EventStatus = 'scheduled' | 'cancelled';
 
 export interface ScheduleEvent {

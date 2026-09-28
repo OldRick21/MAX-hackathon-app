@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { ScheduleApi } from '../../api/backend';
 import { humanMessage } from '../../api/http';
 import type { ScheduleEvent, ServiceView } from '../../api/types';
@@ -8,7 +9,7 @@ import { Badge, Button, EmptyState, ErrorState, IconButton, Modal, Select, Skele
 import { useAsync } from '../../hooks/useAsync';
 import { useProfilesApi } from '../../hooks/useServices';
 import { useUserNames } from '../../hooks/useUserNames';
-import { useBackend } from '../../state/session';
+import { useBackend, useSession } from '../../state/session';
 import { addDays, dayKey, formatShort, formatWeekday, now, startOfWeek } from '../../utils/time';
 import p from '../pages.module.css';
 import { EventEditor } from './EventEditor';
@@ -23,6 +24,8 @@ type Editing = { event: ScheduleEvent | null; etag: string | null } | null;
 
 function Schedule({ service }: { service: ServiceView }) {
   const backend = useBackend();
+  const { user } = useSession();
+  const navigate = useNavigate();
   const api: ScheduleApi = useMemo(() => backend.schedule(service), [backend, service]);
   const profiles = useProfilesApi();
   const [weekOffset, setWeekOffset] = useState(0);
@@ -32,7 +35,12 @@ function Schedule({ service }: { service: ServiceView }) {
   const [opening, setOpening] = useState(false);
 
   const isAdmin = service.profile === 'admin';
-  const canWrite = isAdmin && service.permissions.includes('schedule.write');
+  // Занятия задают преподаватели (свои) и редактор расписания (любые).
+  const writesAny = isAdmin && service.permissions.includes('schedule.write');
+  const isTeacher = service.profile === 'teacher';
+  const canWrite = writesAny || isTeacher;
+  const managesGroups = isAdmin && service.permissions.includes('groups.manage');
+  const me = user?.id ?? '';
   const weekStart = addDays(startOfWeek(now()), weekOffset * 7);
   const weekEnd = addDays(weekStart, 7);
 
@@ -65,7 +73,7 @@ function Schedule({ service }: { service: ServiceView }) {
     } finally { setOpening(false); }
   };
 
-  const actionsFor = (e: ScheduleEvent): DropdownItem[] | undefined => canWrite ? [
+  const actionsFor = (e: ScheduleEvent): DropdownItem[] | undefined => writesAny || (isTeacher && e.teacher_ids.includes(me)) ? [
     { key: 'edit', label: 'Изменить', onSelect: () => void openEditor(e) },
     { key: 'delete', label: 'Удалить', danger: true, onSelect: () => setDeleting(e) },
   ] : undefined;
@@ -83,9 +91,10 @@ function Schedule({ service }: { service: ServiceView }) {
           <h1 className={p.title}>Расписание</h1>
           <p className={p.subtitle}>{weekOffset === 0 ? 'Текущая неделя' : weekOffset === 1 ? 'Следующая неделя' : weekOffset === -1 ? 'Прошлая неделя' : weekLabel}</p>
         </div>
-        {canWrite && (
+        {(canWrite || managesGroups) && (
           <div className={p.headActions}>
-            <Button icon={<IconPlus width="1.2em" height="1.2em" />} onClick={() => void openEditor(null)} loading={opening}>Добавить занятие</Button>
+            {managesGroups && <Button variant="secondary" onClick={() => navigate('groups')}>Группы</Button>}
+            {canWrite && <Button icon={<IconPlus width="1.2em" height="1.2em" />} onClick={() => void openEditor(null)} loading={opening}>Добавить занятие</Button>}
           </div>
         )}
       </div>
@@ -120,7 +129,8 @@ function Schedule({ service }: { service: ServiceView }) {
         </div>
       ) : byDay.length === 0 ? (
         <EmptyState icon={<IconCalendarEmpty />} title={weekOffset === 0 ? 'На этой неделе занятий нет' : 'На эту неделю занятий нет'}
-          text={service.profile === 'student' ? 'Если занятия должны быть, проверьте у куратора, что вас добавили в группу.' : undefined} />
+          text={service.profile === 'student' ? 'Если занятия должны быть, проверьте у куратора, что вас добавили в группу.'
+            : isTeacher ? 'Добавьте занятие кнопкой «Добавить занятие» — его увидят студенты выбранных групп.' : undefined} />
       ) : (
         <div className={s.days}>
           {byDay.map(([key, dayEvents]) => {
@@ -158,6 +168,7 @@ function Schedule({ service }: { service: ServiceView }) {
           groups={groups.data ?? []}
           initial={editing.event}
           etag={editing.etag}
+          lockedTeacher={writesAny ? null : me}
           defaultDate={dayKey(weekOffset === 0 ? now() : weekStart)}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); events.reload(); }}

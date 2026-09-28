@@ -5,7 +5,7 @@ import { NotInMaxError } from '../backend';
 import { ApiError, newIdempotencyKey, request, toApiError } from '../http';
 import { initData, loadBridge, maxUserInfo, openExternal } from '../max';
 import type {
-  Group, InstitutionView, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
+  Group, GroupStudents, InstitutionView, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
 } from '../types';
 import { CoreSession, listAll } from './core';
 import { openServiceFrame } from './frame';
@@ -83,6 +83,32 @@ export function createRealBackend(): Backend {
           const params = new URLSearchParams({ limit: '100', ...(cursor ? { cursor } : {}) });
           return (await ss.call<Page<Group>>(`/api/v1/schedule/groups?${params}`, { signal })).data;
         }, g => g.id);
+      },
+      async getGroup(id) {
+        const r = await ss.call<Group>(`/api/v1/schedule/groups/${id}`);
+        return { data: r.data, etag: need(r.etag) };
+      },
+      async createGroup(name) {
+        return (await ss.call<Group>('/api/v1/schedule/groups', {
+          method: 'POST', body: { name }, headers: { 'Idempotency-Key': newIdempotencyKey() },
+        })).data;
+      },
+      async renameGroup(id, name, etag) {
+        const r = await ss.call<Group>(`/api/v1/schedule/groups/${id}`, { method: 'PATCH', body: { name }, headers: { 'If-Match': etag } });
+        return { data: r.data, etag: need(r.etag) };
+      },
+      async deleteGroup(id, etag) {
+        await ss.call(`/api/v1/schedule/groups/${id}`, { method: 'DELETE', headers: { 'If-Match': etag } });
+      },
+      async getStudents(id, signal) {
+        const r = await ss.call<GroupStudents>(`/api/v1/schedule/groups/${id}/students`, { signal });
+        return { data: r.data.user_ids, etag: need(r.etag) };
+      },
+      async setStudents(id, userIds, etag) {
+        const r = await ss.call<GroupStudents>(`/api/v1/schedule/groups/${id}/students`, {
+          method: 'PUT', body: { user_ids: userIds }, headers: { 'If-Match': etag },
+        });
+        return { data: r.data.user_ids, etag: need(r.etag) };
       },
     };
   };

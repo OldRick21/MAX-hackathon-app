@@ -8,12 +8,14 @@ import { useAsync } from '../../hooks/useAsync';
 import { dayKey, formatTime, mskToIso } from '../../utils/time';
 import p from '../pages.module.css';
 
-export function EventEditor({ api, profiles, groups, initial, etag, defaultDate, onClose, onSaved }: {
+export function EventEditor({ api, profiles, groups, initial, etag, lockedTeacher, defaultDate, onClose, onSaved }: {
   api: ScheduleApi;
   profiles: ProfilesApi | null;
   groups: Group[];
   initial: ScheduleEvent | null;
   etag: string | null;
+  /** Преподаватель, который задаёт своё занятие: он всегда остаётся в списке преподавателей. */
+  lockedTeacher: string | null;
   defaultDate: string;
   onClose: () => void;
   onSaved: () => void;
@@ -26,7 +28,8 @@ export function EventEditor({ api, profiles, groups, initial, etag, defaultDate,
   const [description, setDescription] = useState(initial?.description ?? '');
   const [cancelled, setCancelled] = useState(initial?.status === 'cancelled');
   const [groupIds, setGroupIds] = useState<string[]>(initial?.group_ids ?? []);
-  const [teacherIds, setTeacherIds] = useState<string[]>(initial?.teacher_ids ?? []);
+  const [teacherIds, setTeacherIds] = useState<string[]>(
+    initial?.teacher_ids ?? (lockedTeacher ? [lockedTeacher] : []));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +44,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, defaultDate,
     if (!title.trim()) return setError('Укажите название занятия.');
     if (!groupIds.length) return setError('Выберите хотя бы одну группу.');
     if (!teacherIds.length) return setError('Выберите хотя бы одного преподавателя.');
+    if (lockedTeacher && !teacherIds.includes(lockedTeacher)) return setError('Вы должны остаться преподавателем занятия.');
     if (!(start < end)) return setError('Время окончания должно быть позже времени начала.');
     const input: EventInput = {
       title: title.trim(), starts_at: mskToIso(date, start), ends_at: mskToIso(date, end),
@@ -85,6 +89,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, defaultDate,
         <fieldset className={p.fieldset}>
           <legend className={p.legend}>Группы</legend>
           <div className={p.checks}>
+            {!groups.length && <span className={p.muted}>Групп пока нет: их создаёт редактор расписания в разделе «Группы».</span>}
             {groups.map(g => (
               <label key={g.id} className={p.check}>
                 <input type="checkbox" checked={groupIds.includes(g.id)} onChange={() => setGroupIds(l => toggle(l, g.id))} />{g.name}
@@ -98,13 +103,15 @@ export function EventEditor({ api, profiles, groups, initial, etag, defaultDate,
             <div className={p.checks}>
               {knownTeachers.map(c => (
                 <label key={c.user_id} className={p.check}>
-                  <input type="checkbox" checked={teacherIds.includes(c.user_id)} onChange={() => setTeacherIds(l => toggle(l, c.user_id))} />
-                  {c.display_name}
+                  <input type="checkbox" checked={teacherIds.includes(c.user_id)} disabled={c.user_id === lockedTeacher}
+                    onChange={() => setTeacherIds(l => toggle(l, c.user_id))} />
+                  {c.user_id === lockedTeacher ? `${c.display_name} (вы)` : c.display_name}
                 </label>
               ))}
               {extraTeachers.map(id => (
                 <label key={id} className={p.check}>
-                  <input type="checkbox" checked onChange={() => setTeacherIds(l => toggle(l, id))} />Преподаватель без анкеты
+                  <input type="checkbox" checked disabled={id === lockedTeacher} onChange={() => setTeacherIds(l => toggle(l, id))} />
+                  {id === lockedTeacher ? 'Вы' : 'Преподаватель без анкеты'}
                 </label>
               ))}
               {!knownTeachers.length && !extraTeachers.length && <span className={p.muted}>Список людей недоступен: сервис анкет не подключён.</span>}

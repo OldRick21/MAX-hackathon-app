@@ -58,3 +58,10 @@
   .join { grid-column: 1 / -1; }
   .skeletonCard { height: 11rem; border-radius: 1.8rem; }
 }
+
+/* Учебные группы */
+.groupForm { display: flex; gap: 1.6rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 3.2rem; }
+.groupForm > :first-child { flex: 1 1 24rem; min-width: 0; }
+.groupList { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.2rem; }
+.groupRow { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; padding: 2rem 2.4rem; }
+.groupName { font-size: 2.4rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
