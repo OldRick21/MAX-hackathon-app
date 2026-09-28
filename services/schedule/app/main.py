@@ -25,12 +25,30 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import onboarding
 from app.core_client import Binding, BindingMissing, CoreClient, CoreUnavailable
 
-CORE = os.environ.get('CORE_INTERNAL_URL', 'http://backend:8000')
-SECRET = os.environ.get('SCHEDULE_PROVISIONING_TOKEN', '')
+# Как у любого сервиса вуза: адреса и ключ — из .env, строки выдаёт карточка сервиса («Выдать ключ»).
+CORE = os.environ.get('CORE_URL', '').rstrip('/')
+SHELL_ORIGIN = os.environ.get('SHELL_ORIGIN', '').rstrip('/')
+CLIENT_ID = os.environ.get('SERVICE_CLIENT_ID', '')
+SECRET = os.environ.get('SERVICE_CLIENT_SECRET', '')
+API_BASE = os.environ.get('SERVICE_API_BASE_URL', '').rstrip('/')
+CLIENT_BASE = os.environ.get('SERVICE_CLIENT_BASE_URL', '').rstrip('/')
 DB = os.environ.get('SCHEDULE_DB', '/data/schedule.db')
-core = CoreClient(CORE, SECRET)
+core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
+
+# Меню и роль сервиса публикует он сам (как курсовые). Администратор правит всё без ролей;
+# преподавателю правку включает роль «Редактирование расписания».
+MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus': [
+    {'id': 'schedule', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
+     'profiles': ['student', 'teacher', 'admin'], 'required_permissions': [], 'order': 0}]}
+ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактирование расписания', 'en': 'Schedule editing'},
+          'allowed_profiles': ['teacher'], 'permissions': ['schedule.write']}]
+RETIRED_ROLES = ('group_editor',)
+STATE = {'onboarding': 'pending', 'error': None}
 
 MAX_RANGE = timedelta(days=31)
 IDEMPOTENCY_TTL = 24 * 3600
@@ -132,17 +150,27 @@ def prepare():
 
 @asynccontextmanager
 async def lifespan(app):
-    if len(SECRET) < 32:
-        raise RuntimeError('Set SCHEDULE_PROVISIONING_TOKEN (32+ characters)')
+    missing = [name for name, value in (('CORE_URL', CORE), ('SHELL_ORIGIN', SHELL_ORIGIN), ('SERVICE_CLIENT_ID', CLIENT_ID),
+                                        ('SERVICE_CLIENT_SECRET', SECRET), ('SERVICE_API_BASE_URL', API_BASE),
+                                        ('SERVICE_CLIENT_BASE_URL', CLIENT_BASE)) if not value]
+    if missing:
+        raise RuntimeError('Не заданы в .env: ' + ', '.join(missing))
     try:
         prepare()
     except (OSError, sqlite3.Error) as error:
         # Обычная причина — том /data принадлежит root, а процесс работает под uid 10004.
         raise RuntimeError(f'Хранилище {DB} недоступно для записи: {error}') from error
+    onboarding.start(core, MANIFEST, ROLES, STATE, RETIRED_ROLES)
     yield
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Экраны сервиса рисует оболочка на своём origin и ходит сюда напрямую.
+app.add_middleware(CORSMiddleware, allow_origins=[SHELL_ORIGIN] if SHELL_ORIGIN else [], allow_credentials=False,
+                   allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                   allow_headers=['Authorization', 'Content-Type', 'If-Match', 'Idempotency-Key'],
+                   expose_headers=['ETag', 'Location', 'X-Request-ID'], max_age=600)
 
 
 @app.middleware('http')
@@ -362,7 +390,7 @@ class EventInput(BaseModel):
 
 @app.get('/api/v1/health')
 def health():
-    return {'status': 'ok'}
+    return {'status': 'ok', 'onboarding': STATE['onboarding']}
 
 
 def text(titles, locale):
@@ -383,8 +411,8 @@ def service_view(locale: Optional[str] = Query(None, max_length=8), ctx: Ctx = D
             menus.append({'id': item['id'], 'display_name': name, 'locale': used,
                           'entrypoint_path': item['entrypoint_path'], 'order': item.get('order', 0)})
     name, used = text(manifest.get('titles') or {'ru': 'Расписание'}, locale)
-    return {'id': ctx.binding.service_id, 'institution_id': ctx.binding.institution_id, 'service_type': 'schedule',
-            'deployment': 'cloud', 'display_name': name, 'locale': used, 'api_base_url': ctx.binding.api_base_url,
+    return {'id': ctx.binding.service_id, 'institution_id': ctx.binding.institution_id, 'service_type': 'custom.schedule',
+            'deployment': 'local', 'display_name': name, 'locale': used, 'api_base_url': ctx.binding.api_base_url,
             'client_base_url': ctx.binding.client_base_url, 'profile': ctx.profile, 'roles': list(ctx.roles),
             'permissions': permissions, 'menus': menus}
 

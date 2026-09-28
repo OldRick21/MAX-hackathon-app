@@ -12,7 +12,9 @@ from unittest.mock import patch
 
 _tmp = tempfile.TemporaryDirectory()
 os.environ['SCHEDULE_DB'] = _tmp.name + '/schedule.db'
-os.environ['SCHEDULE_PROVISIONING_TOKEN'] = 't' * 48
+os.environ.update(CORE_URL='https://core.test', SHELL_ORIGIN='https://shell.test', SERVICE_CLIENT_ID='client',
+                  SERVICE_CLIENT_SECRET='t' * 48, SERVICE_API_BASE_URL='https://svc.test/api/v1',
+                  SERVICE_CLIENT_BASE_URL='https://svc.test')
 import jwt  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -37,7 +39,8 @@ class Schedule(unittest.TestCase):
     def setUp(self):
         self.actors = {}
         self.service = str(uuid.uuid4())
-        for p in (patch.object(m.core, 'binding', side_effect=lambda sid, fresh=False: binding(sid)),
+        for p in (patch.object(m.onboarding, 'start'),
+                  patch.object(m.core, 'binding', side_effect=lambda sid=None, fresh=False: binding(sid)),
                   patch.object(m.core, 'introspect', side_effect=self.introspect),
                   patch.object(m.core, 'profiles', side_effect=lambda b, uid: PROFILES.get(uid, [])),
                   patch.object(m.core, 'groups', side_effect=lambda b: list(GROUPS))):
@@ -72,6 +75,14 @@ class Schedule(unittest.TestCase):
     def week(self, h, **filters):
         params = {'from': '2026-09-28T00:00:00Z', 'to': '2026-10-05T00:00:00Z', **filters}
         return self.c.get('/api/v1/schedule/events', headers=h, params=params)
+
+    def test_cors_only_for_shell(self):
+        # Экраны рисует оболочка на своём origin и обращается к сервису напрямую.
+        pre = {'Access-Control-Request-Method': 'PUT', 'Access-Control-Request-Headers': 'authorization,if-match'}
+        ok = self.c.options('/api/v1/schedule/events', headers={'Origin': 'https://shell.test', **pre})
+        self.assertEqual(ok.headers.get('access-control-allow-origin'), 'https://shell.test')
+        bad = self.c.options('/api/v1/schedule/events', headers={'Origin': 'https://evil.test', **pre})
+        self.assertIsNone(bad.headers.get('access-control-allow-origin'))
 
     def test_groups_come_from_core(self):
         teacher, student, loner = self.as_(T1, 'teacher'), self.as_(ST1, 'student'), self.as_(ST2, 'student')

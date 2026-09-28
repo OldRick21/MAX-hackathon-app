@@ -9,7 +9,6 @@ from app.core_client import BindingMissing, CoreClient, CoreUnavailable
 
 INST = "11111111-1111-4111-8111-111111111111"
 SRV = "22222222-2222-4222-8222-222222222222"
-PROV = "p" * 40
 
 
 class Stub(BaseHTTPRequestHandler):
@@ -35,19 +34,11 @@ class Stub(BaseHTTPRequestHandler):
     def handle_any(self):
         s = self.state
         s.setdefault("calls", []).append((self.command, self.path, dict(self.headers)))
-        if self.path.startswith("/api/v1/internal/provisioning/bindings/"):
-            if self.headers.get("Authorization") != f"Bearer {PROV}":
-                return self.reply(404, {"error": {"code": "RESOURCE_NOT_FOUND", "message": "x", "request_id": "r"}})
-            if not self.path.endswith(SRV):
-                return self.reply(404, {"error": {"code": "RESOURCE_NOT_FOUND", "message": "x", "request_id": "r"}})
-            return self.reply(200, {"institution_id": INST, "service_id": SRV, "service_type": "administration",
-                                    "api_base_url": "https://a/api/v1", "client_base_url": "https://a",
-                                    "client_id": "cid", "credential_id": "cred", "client_secret": "sec",
-                                    "binding_revision": 1})
         if self.path == "/api/v1/internal/auth/token":
-            s["exchanges"] = s.get("exchanges", 0) + 1
-            assert self.headers["Authorization"] == "Basic " + base64.b64encode(b"cid:sec").decode()
             self.body()
+            if self.headers["Authorization"] != "Basic " + base64.b64encode(b"cid:sec").decode():
+                return self.reply(401, {"error": {"code": "UNAUTHENTICATED", "message": "x", "request_id": "r"}})
+            s["exchanges"] = s.get("exchanges", 0) + 1
             return self.reply(200, {"access_token": f"m{s['exchanges']}", "expires_in": 300, "institution_id": INST,
                                     "service_id": SRV, "scopes": ["institution:manage", "tokens:introspect"]})
         auth = self.headers.get("Authorization")
@@ -83,11 +74,12 @@ class CoreClientTest(unittest.TestCase):
 
     def setUp(self):
         Stub.state.clear()
-        self.client = CoreClient(self.url, PROV, timeout=2)
+        # Ключ процесса из .env — как «Выдать ключ» в пульте.
+        self.client = CoreClient(self.url, "cid", "sec", "https://a/api/v1", "https://a", timeout=2)
 
     def test_binding_and_token_cache(self):
         binding = self.client.binding(SRV)
-        self.assertEqual(binding.institution_id, INST)
+        self.assertEqual((binding.institution_id, binding.api_base_url), (INST, "https://a/api/v1"))
         with self.assertRaises(BindingMissing):
             self.client.binding("33333333-3333-4333-8333-333333333333")
         self.assertTrue(self.client.introspect(binding, "good")["active"])
@@ -118,8 +110,12 @@ class CoreClientTest(unittest.TestCase):
         with self.assertRaises(CoreUnavailable):
             self.client.private(binding, "GET", "/members", "a")
 
+    def test_rejected_key_is_binding_missing(self):
+        with self.assertRaises(BindingMissing):
+            CoreClient(self.url, "cid", "wrong", timeout=2).binding(SRV)
+
     def test_transport_failure_is_unavailable(self):
-        client = CoreClient("http://127.0.0.1:9", PROV, timeout=0.5)
+        client = CoreClient("http://127.0.0.1:9", "cid", "sec", timeout=0.5)
         with self.assertRaises(CoreUnavailable):
             client.binding(SRV)
 

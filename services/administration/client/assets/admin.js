@@ -13,7 +13,7 @@
     'services.read': 'Просмотр сервисов', 'services.manage': 'Управление сервисами',
     'roles.manage': 'Назначение ролей', 'credentials.manage': 'Ключи локальных сервисов',
     'schedule.read_all': 'Чтение всего расписания', 'schedule.write': 'Редактирование расписания',
-    'groups.manage': 'Управление группами', 'profiles.manage': 'Должности и степени в анкетах',
+    'groups.manage': 'Управление группами', 'people.manage': 'Должности и степени в анкетах',
     'coursework.manage': 'Управление курсовыми',
   };
   const ACTIONS = {
@@ -441,18 +441,7 @@
     const installed = new Set(services.map(s => s.service_type));
 
     if (manage) {
-      // Сервисы платформы подключаются одной кнопкой (без выбора и адресов).
-      const cloud = ['schedule', 'user-profile'].filter(c => !installed.has(c));
-      if (cloud.length) {
-        parts.push(h('section', { class: 'card' }, h('h2', {}, 'Сервисы платформы'),
-          h('p', { class: 'muted' }, 'Работают на платформе, подключаются сразу и включены.'),
-          ...cloud.map(c => h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('strong', {}, title(types[c].titles)),
-            h('button', { class: 'primary', onclick: () => guarded(async () => {
-              await api('/services', { method: 'POST', body: { service_type: c, deployment: 'cloud' }, idempotencyKey: crypto.randomUUID() });
-              toast('Сервис подключён и включён.');
-            }, reload) }, 'Подключить'))))));
-      }
-      // Свой сервис вуза — по шагам CORE_API_SPEC.md §7.
+      // Любой сервис вуза (расписание, «Люди», курсовые, свои) — по шагам CORE_API_SPEC.md §7.
       const name = h('input', { placeholder: 'Например, Курсовые работы' });
       const code = h('input', { placeholder: 'coursework', autocomplete: 'off', spellcheck: false });
       const profiles = checkboxGroup('custom-profiles', Object.entries(PROFILES), ['student', 'teacher', 'admin']);
@@ -460,8 +449,9 @@
       const client = h('input', { placeholder: 'https://coursework.university.ru' });
       let key = crypto.randomUUID();
       parts.push(h('section', { class: 'card' }, h('h2', {}, 'Подключить свой сервис'),
-        h('p', { class: 'hint' }, 'Сервис работает на сервере вуза и открывается внутри приложения. Его адрес должен быть на хосте, ' +
-          'который одобрила поддержка платформы. После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
+        h('p', { class: 'hint' }, 'Расписание (код schedule), «Люди» (people), курсовые (coursework) и любые свои сервисы работают ' +
+          'в своём контейнере вуза. Адрес должен быть на хосте, который одобрила поддержка платформы. ' +
+          'После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
         field('Название', name), field('Код', code, 'Латиница, цифры и -. Права сервиса будут вида <код>.<право>.'),
         h('p', {}, 'Кому доступен сервис:'), profiles,
         field('Адрес API', api_), field('Адрес клиента (origin)', client),
@@ -481,7 +471,6 @@
       const type = types[s.service_type];
       const card = h('section', { class: 'card' });
       const badges = [h('span', { class: `badge ${s.enabled ? 'ok' : ''}` }, s.enabled ? 'включён' : 'выключен'),
-        h('span', { class: 'badge' }, s.deployment === 'cloud' ? 'облако' : 'локальный'),
         s.protected ? h('span', { class: 'badge lock' }, 'защищён') : null];
       card.append(h('div', { class: 'row-main' }, h('h2', {}, title(s.manifest.titles) || title(type?.titles)), ...badges),
         h('dl', { class: 'meta' },
@@ -758,9 +747,7 @@
           const options = roles.filter(r => r.allowed_profiles.includes(profileSelect.value)).map(r => [r.code, title(r.titles)]);
           const readOnly = isAdminService && !isOwner();
           const group = checkboxGroup('assign', options, data.roles, readOnly);
-          const noRoles = service.service_type === 'schedule' && profileSelect.value === 'teacher'
-            ? 'Преподавателю роль не нужна: он сам задаёт и меняет свои занятия. Роль «Редактор расписания» — для профиля «Администратор».'
-            : 'Для этого профиля ролей нет.';
+          const noRoles = 'Для этого профиля ролей нет.';
           target.replaceChildren(options.length ? group : h('p', { class: 'muted' }, noRoles),
             h('p', { class: 'muted' }, `Итоговые права: ${data.permissions.map(p => PERMISSION_NAMES[p] || p).join(', ') || 'нет'}`),
             readOnly || !options.length ? null : h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {

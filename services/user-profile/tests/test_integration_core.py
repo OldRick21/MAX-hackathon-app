@@ -16,26 +16,27 @@ BACKEND = Path(__file__).resolve().parents[3] / 'backend'
 sys.path.insert(0, str(BACKEND))
 
 _tmp = tempfile.TemporaryDirectory()
-PROV = 'u' * 48
+HOST = 'people.university.ru'
+API, CLIENT = f'https://{HOST}/api/v1', f'https://{HOST}'
 os.environ.update(
     DATABASE_URL=f'sqlite:///{_tmp.name}/core.db', JWT_ISSUER='https://core.test',
     JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='people-secret-' * 4, MAX_BOT_TOKEN='',
-    ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1',
-    CLOUD_BINDING_KEY='b' * 48, ADMINISTRATION_PROVISIONING_TOKEN='p' * 48,
-    USER_PROFILE_PROVISIONING_TOKEN=PROV, SERVICE_CONFIG_DIR='',
-    USER_PROFILE_API_BASE_URL='https://shell.test/people/api/v1',
-    USER_PROFILE_CLIENT_BASE_URL='https://shell.test',
+    ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1', SERVICE_CONFIG_DIR='',
+    # .env сервиса: строки «Выдать ключ»; настоящий ключ подставляется в тесте после регистрации.
+    CORE_URL='http://core.test', SHELL_ORIGIN='https://shell.test', SERVICE_CLIENT_ID='pending',
+    SERVICE_CLIENT_SECRET='pending', SERVICE_API_BASE_URL=API, SERVICE_CLIENT_BASE_URL=CLIENT,
     PROFILE_DB=f'{_tmp.name}/profiles.db',
 )
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-import manage  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
-from database.tables import Membership, PlatformStaff, ServiceInstance  # noqa: E402
+from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
+from platform_core import registry  # noqa: E402
 from main import app as core_app  # noqa: E402
 
 from app import main as people  # noqa: E402
+from app import onboarding  # noqa: E402
 from app.core_client import CoreClient  # noqa: E402
 
 
@@ -56,12 +57,15 @@ class PeopleAgainstCore(unittest.TestCase):
     def setUpClass(cls):
         cls.core_ctx = TestClient(core_app)
         cls.core = cls.core_ctx.__enter__()
-        people.core = CoreClient('http://core.test', PROV, session=CoreTransport(cls.core))
+        cls.transport = CoreTransport(cls.core)
+        cls.start = onboarding.start
+        onboarding.start = lambda *args, **kwargs: None
         cls.people_ctx = TestClient(people.app)
         cls.people = cls.people_ctx.__enter__()
 
     @classmethod
     def tearDownClass(cls):
+        onboarding.start = cls.start
         cls.people_ctx.__exit__(None, None, None)
         cls.core_ctx.__exit__(None, None, None)
         from database.create_tables import engine
@@ -80,6 +84,12 @@ class PeopleAgainstCore(unittest.TestCase):
         self.assertEqual(created.status_code, 201, created.text)
         return {'Authorization': 'Bearer ' + created.json()['access_token']}
 
+    def issue_key(self, service_id):
+        with session_local() as db:
+            credential, secret = registry.issue_credential(db, db.get(ServiceInstance, service_id))
+            db.commit()
+            return {'client_id': credential.client_id, 'client_secret': secret}
+
     def test_end_to_end(self):
         self.refresh = {}
         owner_id, owner_core = self.login('owner')
@@ -95,11 +105,20 @@ class PeopleAgainstCore(unittest.TestCase):
         inst_id = self.core.post(f'/api/v1/platform/applications/{app_id}/approve',
                                  headers=support_core, json={}).json()['institution_id']
 
-        # Операторская установка сервиса вузу — та же команда, что в README.
-        manage.install_people(inst_id)
+        # «Люди» — свой сервис вуза: одобренный хост, регистрация, ключ; меню и роль публикует сам сервис.
         with session_local() as db:
-            people_id = db.query(ServiceInstance).filter_by(institution_id=inst_id,
-                                                            service_type='user-profile').one().id
+            db.add(InstitutionLocalHost(institution_id=inst_id, hostname=HOST, approved_by=support_id))
+            people_id = registry.create_local_instance(db, inst_id, 'custom.people', API, CLIENT, {'ru': 'Люди'},
+                                                       ['student', 'teacher', 'admin']).id
+            db.commit()
+        key = self.issue_key(people_id)
+        people.core = CoreClient('http://core.test', key['client_id'], key['client_secret'], API, CLIENT,
+                                 session=self.transport)
+        onboarding.sync(people.core, people.MANIFEST, people.ROLES)
+        with session_local() as db:
+            service = db.get(ServiceInstance, people_id)
+            self.assertEqual({r.code: r.permissions for r in service.roles}, {'profile_editor': ['people.manage']})
+            service.enabled = True
             admin_service_id = db.query(ServiceInstance).filter_by(institution_id=inst_id,
                                                                    service_type='administration').one().id
             db.add(Membership(institution_id=inst_id, user_id=teacher_id, profiles=['teacher']))
@@ -112,8 +131,8 @@ class PeopleAgainstCore(unittest.TestCase):
         view = self.people.get('/api/v1/service', headers=teacher_h)
         self.assertEqual(view.status_code, 200, view.text)
         view = view.json()
-        self.assertEqual((view['id'], view['institution_id'], view['service_type']), (people_id, inst_id, 'user-profile'))
-        self.assertEqual(view['api_base_url'], 'https://shell.test/people/api/v1')
+        self.assertEqual((view['id'], view['institution_id'], view['service_type']), (people_id, inst_id, 'custom.people'))
+        self.assertEqual(view['api_base_url'], API)
         self.assertEqual([m['id'] for m in view['menus']], ['home', 'users'])
 
         # Виртуальная карточка, сохранение, каталог.
@@ -141,7 +160,7 @@ class PeopleAgainstCore(unittest.TestCase):
         granted = self.core.put(roles_path, headers={**machine, **actor, 'If-Match': etag},
                                 json={'roles': ['profile_editor']})
         self.assertEqual(granted.status_code, 200, granted.text)
-        self.assertEqual(granted.json()['permissions'], ['profiles.manage'])
+        self.assertEqual(granted.json()['permissions'], ['people.manage'])
 
         # Права берутся из ядра онлайн: прежний токен уже видит новое право.
         updated = self.people.patch(f'/api/v1/profile/users/{teacher_id}',
@@ -176,33 +195,12 @@ class PeopleAgainstCore(unittest.TestCase):
     def admin_headers(self, inst_id, admin_service_id, core_headers):
         """Machine + actor заголовки private API: так владелец назначает роли."""
         actor = self.service_session(inst_id, admin_service_id, core_headers, 'admin')
-        binding = self.core.get(f'/api/v1/internal/provisioning/bindings/{admin_service_id}',
-                                headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        binding = self.issue_key(admin_service_id)
         machine = self.core.post('/api/v1/internal/auth/token',
                                  auth=(binding['client_id'], binding['client_secret']),
                                  json={'grant_type': 'client_credentials'}).json()
         return ({'Authorization': 'Bearer ' + machine['access_token']},
                 {'X-Actor-Token': actor['Authorization'].removeprefix('Bearer ')})
-
-    def test_startup_repairs_stale_addresses(self):
-        # Экземпляр, созданный до настройки адресов, чинится при запуске ядра без install-people.
-        from platform_core import registry
-        with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Старый вуз'}, 'ru')
-            service = registry.create_cloud_instance(db, inst.id, 'user-profile')
-            service.api_base_url = 'https://profiles.platform.example/api/v1'
-            service.client_base_url = 'https://profiles.platform.example'
-            service.enabled = False
-            db.commit()
-            service_id = service.id
-        with session_local() as db:
-            registry.ensure_platform_invariants(db)
-            db.commit()
-        with session_local() as db:
-            service = db.get(ServiceInstance, service_id)
-            self.assertEqual((service.api_base_url, service.client_base_url),
-                             ('https://shell.test/people/api/v1', 'https://shell.test'))
-            self.assertFalse(service.enabled)
 
 
 if __name__ == '__main__':

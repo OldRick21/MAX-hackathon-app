@@ -13,25 +13,27 @@ BACKEND = Path(__file__).resolve().parents[3] / 'backend'
 sys.path.insert(0, str(BACKEND))
 
 _tmp = tempfile.TemporaryDirectory()
-PROV = 's' * 48
+HOST = 'schedule.university.ru'
+API, CLIENT = f'https://{HOST}/api/v1', f'https://{HOST}'
 os.environ.update(
     DATABASE_URL=f'sqlite:///{_tmp.name}/core.db', JWT_ISSUER='https://core.test',
     JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='schedule-secret-' * 4, MAX_BOT_TOKEN='',
-    ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1',
-    CLOUD_BINDING_KEY='b' * 48, ADMINISTRATION_PROVISIONING_TOKEN='p' * 48,
-    SCHEDULE_PROVISIONING_TOKEN=PROV, SERVICE_CONFIG_DIR='',
-    SCHEDULE_API_BASE_URL='https://shell.test/schedule/api/v1', SCHEDULE_CLIENT_BASE_URL='https://shell.test',
+    ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1', SERVICE_CONFIG_DIR='',
+    # .env сервиса: строки «Выдать ключ»; настоящий ключ подставляется в тесте после регистрации.
+    CORE_URL='http://core.test', SHELL_ORIGIN='https://shell.test', SERVICE_CLIENT_ID='pending',
+    SERVICE_CLIENT_SECRET='pending', SERVICE_API_BASE_URL=API, SERVICE_CLIENT_BASE_URL=CLIENT,
     SCHEDULE_DB=f'{_tmp.name}/schedule.db',
 )
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-import manage  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
-from database.tables import Membership, PlatformStaff, ServiceInstance  # noqa: E402
+from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
+from platform_core import registry  # noqa: E402
 from main import app as core_app  # noqa: E402
 
 from app import main as schedule  # noqa: E402
+from app import onboarding  # noqa: E402
 from app.core_client import CoreClient  # noqa: E402
 
 
@@ -52,12 +54,16 @@ class ScheduleAgainstCore(unittest.TestCase):
     def setUpClass(cls):
         cls.core_ctx = TestClient(core_app)
         cls.core = cls.core_ctx.__enter__()
-        schedule.core = CoreClient('http://core.test', PROV, session=CoreTransport(cls.core))
+        cls.transport = CoreTransport(cls.core)
+        # Публикацию меню и ролей тест запускает сам, когда у сервиса появится ключ.
+        cls.start = onboarding.start
+        onboarding.start = lambda *args, **kwargs: None
         cls.svc_ctx = TestClient(schedule.app)
         cls.svc = cls.svc_ctx.__enter__()
 
     @classmethod
     def tearDownClass(cls):
+        onboarding.start = cls.start
         cls.svc_ctx.__exit__(None, None, None)
         cls.core_ctx.__exit__(None, None, None)
         from database.create_tables import engine
@@ -77,12 +83,17 @@ class ScheduleAgainstCore(unittest.TestCase):
 
     def admin_headers(self, inst_id, admin_service_id, core_headers):
         actor = self.service_session(inst_id, admin_service_id, core_headers, 'admin')
-        binding = self.core.get(f'/api/v1/internal/provisioning/bindings/{admin_service_id}',
-                                headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        binding = self.issue_key(admin_service_id)
         machine = self.core.post('/api/v1/internal/auth/token', auth=(binding['client_id'], binding['client_secret']),
                                  json={'grant_type': 'client_credentials'}).json()
         return ({'Authorization': 'Bearer ' + machine['access_token']},
                 {'X-Actor-Token': actor['Authorization'].removeprefix('Bearer ')})
+
+    def issue_key(self, service_id):
+        with session_local() as db:
+            credential, secret = registry.issue_credential(db, db.get(ServiceInstance, service_id))
+            db.commit()
+            return {'client_id': credential.client_id, 'client_secret': secret}
 
     def test_end_to_end(self):
         owner_id, owner_core = self.login('owner')
@@ -98,11 +109,23 @@ class ScheduleAgainstCore(unittest.TestCase):
         inst_id = self.core.post(f'/api/v1/platform/applications/{app_id}/approve',
                                  headers=support_core, json={}).json()['institution_id']
 
-        manage.install_schedule(inst_id)
+        # Расписание — свой сервис вуза: одобренный хост, регистрация, ключ; меню и роль публикует сам сервис.
         with session_local() as db:
-            schedule_id = db.query(ServiceInstance).filter_by(institution_id=inst_id, service_type='schedule').one().id
+            db.add(InstitutionLocalHost(institution_id=inst_id, hostname=HOST, approved_by=support_id))
+            schedule_id = registry.create_local_instance(db, inst_id, 'custom.schedule', API, CLIENT, {'ru': 'Расписание'},
+                                                         ['student', 'teacher', 'admin']).id
             admin_service_id = db.query(ServiceInstance).filter_by(institution_id=inst_id,
                                                                    service_type='administration').one().id
+            db.commit()
+        key = self.issue_key(schedule_id)
+        schedule.core = CoreClient('http://core.test', key['client_id'], key['client_secret'], API, CLIENT,
+                                   session=self.transport)
+        onboarding.sync(schedule.core, schedule.MANIFEST, schedule.ROLES, schedule.RETIRED_ROLES)
+        with session_local() as db:
+            service = db.get(ServiceInstance, schedule_id)
+            self.assertEqual([m['id'] for m in service.manifest['menus']], ['schedule'])
+            self.assertEqual({r.code: r.allowed_profiles for r in service.roles}, {'schedule_editor': ['teacher']})
+            service.enabled = True
             db.add(Membership(institution_id=inst_id, user_id=teacher_id, profiles=['teacher']))
             db.add(Membership(institution_id=inst_id, user_id=student_id, profiles=['student']))
             db.commit()
@@ -113,7 +136,7 @@ class ScheduleAgainstCore(unittest.TestCase):
 
         view = self.svc.get('/api/v1/service', headers=teacher_h)
         self.assertEqual(view.status_code, 200, view.text)
-        self.assertEqual(view.json()['api_base_url'], 'https://shell.test/schedule/api/v1')
+        self.assertEqual(view.json()['api_base_url'], API)
         self.assertEqual([m['id'] for m in view.json()['menus']], ['schedule'])
 
         def catalog():
@@ -174,32 +197,6 @@ class ScheduleAgainstCore(unittest.TestCase):
             db.delete(db.get(Membership, (inst_id, student_id)))
             db.commit()
         self.assertEqual(self.svc.get('/api/v1/schedule/events', headers=student_h, params=week).status_code, 401)
-
-    def test_startup_turns_demo_stub_into_schedule(self):
-        # Прежняя заглушка (адрес 8443, меню home только для студентов) становится настоящим расписанием.
-        from platform_core import registry
-        with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Демо'}, 'ru')
-            db.add(ServiceInstance(id=str(uuid.uuid4()), institution_id=inst.id, service_type='schedule',
-                                   deployment='cloud', enabled=True, protected=False,
-                                   client_base_url='https://195.133.197.144:8443',
-                                   api_base_url='https://195.133.197.144:8443/api/v1', supported_profiles=['student'],
-                                   manifest={'titles': {'ru': 'Расписание — демо'}, 'menus': [
-                                       {'id': 'home', 'titles': {'ru': 'Расписание'}, 'entrypoint_path': '/',
-                                        'profiles': ['student'], 'required_permissions': [], 'order': 0}]}))
-            db.commit()
-            inst_id = inst.id
-        with session_local() as db:
-            registry.ensure_platform_invariants(db)
-            db.commit()
-        with session_local() as db:
-            service = db.query(ServiceInstance).filter_by(institution_id=inst_id, service_type='schedule').one()
-            self.assertEqual(service.api_base_url, 'https://shell.test/schedule/api/v1')
-            self.assertEqual(sorted(service.supported_profiles), ['admin', 'student', 'teacher'])
-            self.assertEqual([m['id'] for m in service.manifest['menus']], ['schedule'])
-            binding = self.core.get(f'/api/v1/internal/provisioning/bindings/{service.id}',
-                                    headers={'Authorization': 'Bearer ' + PROV})
-            self.assertEqual(binding.status_code, 200, binding.text)
 
 
 if __name__ == '__main__':

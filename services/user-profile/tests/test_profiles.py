@@ -7,10 +7,15 @@ from unittest.mock import patch
 
 _tmp=tempfile.TemporaryDirectory()
 os.environ['PROFILE_DB']=_tmp.name+'/profiles.db'
-os.environ['USER_PROFILE_PROVISIONING_TOKEN']='t'*48
+os.environ.update(CORE_URL='https://core.test',SHELL_ORIGIN='https://shell.test',SERVICE_CLIENT_ID='client',
+                  SERVICE_CLIENT_SECRET='t'*48,SERVICE_API_BASE_URL='https://p.example/api/v1',
+                  SERVICE_CLIENT_BASE_URL='https://p.example')
 from fastapi.testclient import TestClient
 import jwt
 from app import main as m
+
+# Публикацию меню и ролей здесь не проверяем: заглушки ядра нет.
+m.onboarding.start=lambda *a,**k:None
 
 U='11111111-1111-4111-8111-111111111111'
 V='22222222-2222-4222-8222-222222222222'
@@ -23,7 +28,7 @@ BINDING=SimpleNamespace(service_id=S,institution_id=I,api_base_url='https://p.ex
 MANIFEST={'titles':{'ru':'Люди','en':'People'},'menus':[
     {'id':'users','titles':{'ru':'Пользователи','en':'Users'},'entrypoint_path':'/users','profiles':['admin','teacher','student'],'required_permissions':[],'order':10},
     {'id':'home','titles':{'ru':'Главная'},'entrypoint_path':'/home','profiles':['admin','teacher','student'],'required_permissions':[],'order':0},
-    {'id':'staff','titles':{'ru':'Кадры'},'entrypoint_path':'/staff','profiles':['admin'],'required_permissions':['profiles.manage'],'order':20},
+    {'id':'staff','titles':{'ru':'Кадры'},'entrypoint_path':'/staff','profiles':['admin'],'required_permissions':['people.manage'],'order':20},
 ]}
 
 
@@ -67,7 +72,7 @@ class Profiles(unittest.TestCase):
             state.update(info('admin'))
             admin=head('admin')
             self.assertEqual(c.patch('/api/v1/profile/users/'+U,headers={**admin,'If-Match':current.headers['etag']},json=academic).status_code,403)
-            state.update(info('admin',['profiles.manage']))
+            state.update(info('admin',['people.manage']))
             self.assertEqual(c.patch('/api/v1/profile/users/'+U,headers={**admin,'If-Match':current.headers['etag']},json=academic).status_code,200)
             self.assertEqual(len(c.get('/api/v1/profile/users?q=доцент',headers=admin).json()['items']),1)
             member.return_value=False
@@ -78,17 +83,17 @@ class Profiles(unittest.TestCase):
             member.side_effect=None;member.return_value=True
             state['active']=False
             self.assertEqual(c.get('/api/v1/profile/me',headers=admin).status_code,401)
-            state.update(info('admin',['profiles.manage']),institution_id=V)
+            state.update(info('admin',['people.manage']),institution_id=V)
             self.assertEqual(c.get('/api/v1/profile/me',headers=admin).status_code,401)
             # Профиль и сессия из токена обязаны совпадать с introspection.
-            state.update(info('admin',['profiles.manage']))
+            state.update(info('admin',['people.manage']))
             self.assertEqual(c.get('/api/v1/profile/me',headers=head('teacher')).status_code,401)
-            state.update(info('admin',['profiles.manage']),session_id=PSID)
+            state.update(info('admin',['people.manage']),session_id=PSID)
             self.assertEqual(c.get('/api/v1/profile/me',headers=admin).status_code,401)
-            state.update(info('admin',['profiles.manage']))
+            state.update(info('admin',['people.manage']))
             # Другой вуз того же типа не видит сохранённые карточки.
             with patch.object(m.core,'binding',return_value=SimpleNamespace(service_id=S,institution_id=V,api_base_url='x',client_base_url='y')):
-                state.update(info('admin',['profiles.manage']),institution_id=V)
+                state.update(info('admin',['people.manage']),institution_id=V)
                 self.assertEqual(c.get('/api/v1/profile/users',headers=admin).json()['items'],[])
 
     def test_registered_name_without_card(self):
@@ -106,7 +111,7 @@ class Profiles(unittest.TestCase):
             self.assertEqual([x['display_name'] for x in c.get('/api/v1/profile/users',headers=h).json()['items']],['Мария Ильина'])
             self.assertEqual(len(c.get('/api/v1/profile/users?q=ильина',headers=h).json()['items']),1)
             # Правка должности администратором не записывает имя из регистрации в анкету.
-            state.update(info('admin',['profiles.manage']))
+            state.update(info('admin',['people.manage']))
             saved=c.patch('/api/v1/profile/users/'+U,headers={**head('admin'),'If-Match':me.headers['etag']},json={'position':'Староста'})
             self.assertEqual(saved.json()['display_name'],'Мария Ильина')
             with m.database() as db:
@@ -171,7 +176,7 @@ class Profiles(unittest.TestCase):
              patch.object(m.core,'manifest',return_value=MANIFEST), TestClient(m.app) as c:
             self.assertEqual(c.get('/api/v1/service').status_code,401)
             view=c.get('/api/v1/service',headers=h).json()
-            self.assertEqual((view['id'],view['institution_id'],view['service_type'],view['deployment']),(S,I,'user-profile','cloud'))
+            self.assertEqual((view['id'],view['institution_id'],view['service_type'],view['deployment']),(S,I,'custom.people','local'))
             self.assertEqual((view['display_name'],view['locale'],view['profile']),('Люди','ru','teacher'))
             self.assertEqual(view['api_base_url'],BINDING.api_base_url)
             # Сортировка (order,id); меню с required_permissions скрыто без права.
@@ -180,10 +185,10 @@ class Profiles(unittest.TestCase):
             self.assertEqual(en['display_name'],'People')
             self.assertEqual([(x['id'],x['display_name'],x['locale']) for x in en['menus']],
                              [('home','Главная','ru'),('users','Users','en')])
-            state.update(info('admin',['profiles.manage']))
+            state.update(info('admin',['people.manage']))
             admin=c.get('/api/v1/service',headers=head('admin')).json()
             self.assertEqual([x['id'] for x in admin['menus']],['home','users','staff'])
-            self.assertEqual(admin['permissions'],['profiles.manage'])
+            self.assertEqual(admin['permissions'],['people.manage'])
             bad=c.get('/api/v1/service?locale=de',headers=head('admin'))
             self.assertEqual((bad.status_code,bad.json()['error']['code']),(422,'VALIDATION_ERROR'))
 

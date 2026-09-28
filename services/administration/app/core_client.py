@@ -45,15 +45,19 @@ class Upstream:
 
 
 class CoreClient:
-    BINDING_TTL = 30.0
     TOKEN_MARGIN = 30.0
 
-    def __init__(self, base_url: str, provisioning_token: str, timeout: float = 3.0, session=None):
+    def __init__(self, base_url: str, client_id: str, client_secret: str, api_base_url: str = "",
+                 client_base_url: str = "", timeout: float = 3.0, session=None):
+        """Ключ процесса — из .env (выдан в карточке сервиса), как у любого сервиса вуза."""
         self.base_url = base_url.rstrip("/")
-        self.provisioning_token = provisioning_token
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.api_base_url = api_base_url.rstrip("/")
+        self.client_base_url = client_base_url.rstrip("/")
+        self._own: Optional[Binding] = None
         self.timeout = timeout
         self.http = session or requests.Session()
-        self._bindings: Dict[str, Tuple[float, Binding]] = {}
         self._tokens: Dict[Tuple[str, int], Tuple[float, str]] = {}
         self._locks: Dict[Tuple[str, int], threading.Lock] = {}
         self._guard = threading.Lock()
@@ -81,29 +85,29 @@ class CoreClient:
 
     # --- Bindings ---
 
-    def binding(self, service_id: str, fresh: bool = False) -> Binding:
-        now = time.monotonic()
-        cached = self._bindings.get(service_id)
-        if cached and not fresh and cached[0] > now:
-            return cached[1]
-        response = self._call("GET", f"/api/v1/internal/provisioning/bindings/{service_id}",
-                              headers={"Authorization": f"Bearer {self.provisioning_token}"})
-        if response.status_code == 404:
-            self._bindings.pop(service_id, None)
+    def binding(self, service_id: Optional[str] = None, fresh: bool = False) -> Binding:
+        """Свой экземпляр: вуз и UUID сервиса ядро сообщает при обмене ключа. Чужой service_id — BindingMissing."""
+        with self._guard:
+            own = self._own
+        if own is None or fresh:
+            response = self._call("POST", "/api/v1/internal/auth/token", json={"grant_type": "client_credentials"},
+                                  auth=(self.client_id, self.client_secret))
+            if response.status_code in (400, 401, 403):
+                raise BindingMissing("service key rejected")
+            if response.status_code != 200:
+                raise CoreUnavailable(f"machine exchange failed: {response.status_code}")
+            data = self._json(response) or {}
+            token = data.get("access_token")
+            if not isinstance(token, str) or not data.get("service_id") or not data.get("institution_id"):
+                raise CoreUnavailable("malformed machine token")
+            own = Binding(data["institution_id"], data["service_id"], "", self.api_base_url, self.client_base_url,
+                          self.client_id, self.client_id, self.client_secret, 0)
+            with self._guard:
+                self._own = own
+                self._tokens[(own.credential_id, own.revision)] = (time.time() + float(data.get("expires_in", 300)), token)
+        if service_id is not None and own.service_id != service_id:
             raise BindingMissing(service_id)
-        if response.status_code != 200:
-            raise CoreUnavailable(f"binding lookup failed: {response.status_code}")
-        data = self._json(response) or {}
-        try:
-            binding = Binding(data["institution_id"], data["service_id"], data["service_type"], data["api_base_url"],
-                              data["client_base_url"], data["client_id"], data["credential_id"],
-                              data["client_secret"], int(data["binding_revision"]))
-        except (KeyError, TypeError, ValueError):
-            raise CoreUnavailable("malformed binding")
-        if binding.service_id != service_id or binding.service_type != "administration":
-            raise CoreUnavailable("binding of another service")
-        self._bindings[service_id] = (now + self.BINDING_TTL, binding)
-        return binding
+        return own
 
     # --- Machine token (кэш по credential/revision, обмены одного credential объединяются) ---
 

@@ -19,7 +19,7 @@ os.environ.update(
     DATABASE_URL=f'sqlite:///{_tmp.name}/core.db', JWT_ISSUER='https://core.test',
     JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='coursework-secret-' * 4, MAX_BOT_TOKEN='',
     ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1',
-    CLOUD_BINDING_KEY='b' * 48, ADMINISTRATION_PROVISIONING_TOKEN='p' * 48, SERVICE_CONFIG_DIR='',
+    SERVICE_CONFIG_DIR='',
     SERVICE_DATA=f'{_tmp.name}/coursework', CORE_URL='http://core.test', SERVICE_CLIENT_ID='pending',
     SERVICE_CLIENT_SECRET='pending', SERVICE_API_BASE_URL='https://coursework.university.ru/api/v1',
     SERVICE_CLIENT_BASE_URL='https://coursework.university.ru', SHELL_ORIGIN='https://shell.test',
@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
 from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
 from main import app as core_app  # noqa: E402
+from platform_core import registry  # noqa: E402
 
 from app import main as coursework, sdk  # noqa: E402
 
@@ -93,8 +94,11 @@ class CourseworkAgainstCore(unittest.TestCase):
 
         # Администратор через фасад administration: регистрация и ключ.
         admin_core = self.service_session(inst_id, admin_service_id, owner_core, 'admin')
-        binding = self.core.get(f'/api/v1/internal/provisioning/bindings/{admin_service_id}',
-                                headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        # Ключ контейнера администрирования вуза выдаёт оператор.
+        with session_local() as db:
+            credential, secret = registry.issue_credential(db, db.get(ServiceInstance, admin_service_id))
+            binding = {'client_id': credential.client_id, 'client_secret': secret}
+            db.commit()
         machine = self.core.post('/api/v1/internal/auth/token', auth=(binding['client_id'], binding['client_secret']),
                                  json={'grant_type': 'client_credentials'}).json()
         private = {'Authorization': 'Bearer ' + machine['access_token'],

@@ -1,4 +1,4 @@
-"""People cloud service: isolated SQLite storage, online core introspection."""
+"""Сервис «Люди» вуза: своя SQLite, online introspection ядра. Один контейнер — один вуз."""
 import hashlib
 import hmac
 import json
@@ -15,12 +15,31 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import onboarding
 from app.core_client import CoreClient, CoreUnavailable, BindingMissing
 
-CORE = os.environ.get('CORE_INTERNAL_URL', 'http://backend:8000')
-SECRET = os.environ.get('USER_PROFILE_PROVISIONING_TOKEN', '')
+# Как у любого сервиса вуза: адреса и ключ — из .env, строки выдаёт карточка сервиса («Выдать ключ»).
+CORE = os.environ.get('CORE_URL', '').rstrip('/')
+SHELL_ORIGIN = os.environ.get('SHELL_ORIGIN', '').rstrip('/')
+CLIENT_ID = os.environ.get('SERVICE_CLIENT_ID', '')
+SECRET = os.environ.get('SERVICE_CLIENT_SECRET', '')
+API_BASE = os.environ.get('SERVICE_API_BASE_URL', '').rstrip('/')
+CLIENT_BASE = os.environ.get('SERVICE_CLIENT_BASE_URL', '').rstrip('/')
 DB = os.environ.get('PROFILE_DB', '/data/profiles.db')
-core = CoreClient(CORE, SECRET)
+core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
+
+# Меню и роль сервиса публикует он сам (как курсовые). Экраны рисует оболочка по id меню.
+MANAGE = 'people.manage'
+MANIFEST = {'titles': {'ru': 'Люди', 'en': 'People'}, 'menus': [
+    {'id': 'home', 'titles': {'ru': 'Главная', 'en': 'Home'}, 'entrypoint_path': '/home',
+     'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 0},
+    {'id': 'users', 'titles': {'ru': 'Пользователи', 'en': 'Users'}, 'entrypoint_path': '/users',
+     'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 10}]}
+ROLES = [{'code': 'profile_editor', 'titles': {'ru': 'Редактор анкет', 'en': 'Profile editor'},
+          'allowed_profiles': ['admin'], 'permissions': [MANAGE]}]
+STATE = {'onboarding': 'pending', 'error': None}
 
 @contextmanager
 def database():
@@ -42,13 +61,17 @@ def database():
 
 @asynccontextmanager
 async def lifespan(app):
-    if len(SECRET) < 32:
-        raise RuntimeError('Set USER_PROFILE_PROVISIONING_TOKEN (32+ characters)')
+    missing = [name for name, value in (('CORE_URL', CORE), ('SHELL_ORIGIN', SHELL_ORIGIN), ('SERVICE_CLIENT_ID', CLIENT_ID),
+                                        ('SERVICE_CLIENT_SECRET', SECRET), ('SERVICE_API_BASE_URL', API_BASE),
+                                        ('SERVICE_CLIENT_BASE_URL', CLIENT_BASE)) if not value]
+    if missing:
+        raise RuntimeError('Не заданы в .env: ' + ', '.join(missing))
     try:
         prepare()
     except (OSError, sqlite3.Error) as error:
         # Обычная причина — том /data принадлежит root, а процесс работает под uid 10003.
         raise RuntimeError(f'Хранилище {DB} недоступно для записи: {error}') from error
+    onboarding.start(core, MANIFEST, ROLES, STATE)
     yield
 
 
@@ -66,6 +89,12 @@ def prepare():
         db.commit()
 
 app = FastAPI(lifespan=lifespan)
+
+# Экраны сервиса рисует оболочка на своём origin и ходит сюда напрямую.
+app.add_middleware(CORSMiddleware, allow_origins=[SHELL_ORIGIN] if SHELL_ORIGIN else [], allow_credentials=False,
+                   allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+                   allow_headers=['Authorization', 'Content-Type', 'If-Match', 'Idempotency-Key'],
+                   expose_headers=['ETag', 'Location', 'X-Request-ID'], max_age=600)
 
 @app.middleware('http')
 async def headers(request, call_next):
@@ -214,7 +243,7 @@ def patch_card(ctx,user_id,values,if_match):
     return JSONResponse(value,headers={'ETag':new_tag})
 
 @app.get('/api/v1/health')
-def health(): return {'status':'ok'}
+def health(): return {'status':'ok','onboarding':STATE['onboarding']}
 
 def text(titles, locale):
     # Обязателен перевод ru; остальные локали падают на него (SDK SPEC §2).
@@ -234,8 +263,8 @@ def service_view(locale:str|None=Query(None,max_length=8),ctx=Depends(authentica
             menus.append({'id':item['id'],'display_name':name,'locale':used,
                           'entrypoint_path':item['entrypoint_path'],'order':item.get('order',0)})
     name,used=text(manifest.get('titles') or {'ru':'Люди'},locale)
-    return {'id':binding.service_id,'institution_id':binding.institution_id,'service_type':'user-profile',
-            'deployment':'cloud','display_name':name,'locale':used,'api_base_url':binding.api_base_url,
+    return {'id':binding.service_id,'institution_id':binding.institution_id,'service_type':'custom.people',
+            'deployment':'local','display_name':name,'locale':used,'api_base_url':binding.api_base_url,
             'client_base_url':binding.client_base_url,'profile':info['profile'],
             'roles':list(info.get('roles') or []),'permissions':permissions,'menus':menus}
 
@@ -251,7 +280,7 @@ def user(user_id:UUID,ctx=Depends(authenticate)): return get_card(ctx,str(user_i
 
 @app.patch('/api/v1/profile/users/{user_id}')
 def update_user(user_id:UUID,patch:AcademicPatch,if_match:str|None=Header(None),ctx=Depends(authenticate)):
-    if ctx[1]['profile']!='admin' or 'profiles.manage' not in ctx[1].get('permissions',[]):
+    if ctx[1]['profile']!='admin' or MANAGE not in ctx[1].get('permissions',[]):
         raise HTTPException(403,'Нет права редактирования академических сведений')
     return patch_card(ctx,str(user_id),patch.model_dump(exclude_unset=True),if_match)
 

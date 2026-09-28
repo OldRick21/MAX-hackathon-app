@@ -45,7 +45,8 @@ def cfg() -> config_module.Config:
 def core() -> CoreClient:
     if "core" not in _state:
         c = cfg()
-        _state["core"] = CoreClient(c.core_internal_url, c.provisioning_token, c.core_timeout)
+        _state["core"] = CoreClient(c.core_url, c.client_id, c.client_secret, c.public_api_base_url,
+                                    c.public_client_base_url, c.core_timeout)
     return _state["core"]
 
 
@@ -178,7 +179,7 @@ def service_view(request: Request, locale: Optional[str] = None):
                           "entrypoint_path": m["entrypoint_path"], "order": m.get("order", 0)})
     name, used = _text(manifest.get("titles") or {"ru": "Администрирование"}, locale)
     return {"id": ctx.service_id, "institution_id": ctx.institution_id, "service_type": "administration",
-            "deployment": "cloud", "display_name": name, "locale": used,
+            "deployment": "local", "display_name": name, "locale": used,
             "api_base_url": ctx.binding.api_base_url, "client_base_url": ctx.binding.client_base_url,
             "profile": ctx.profile, "roles": ctx.roles, "permissions": ctx.permissions, "menus": menus}
 

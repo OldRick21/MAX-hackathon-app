@@ -146,7 +146,7 @@ export function createMockBackend(): Backend {
       },
       async patchUser(id, patch, etag) {
         await wait();
-        if (s.profile !== 'admin' || !has(s, 'profiles.manage')) throw new ApiError('Нет доступа к этому действию.', 403);
+        if (s.profile !== 'admin' || !has(s, 'people.manage')) throw new ApiError('Нет доступа к этому действию.', 403);
         checkEtag(key(id), etag);
         const c = { ...card(id), ...patch };
         save(c);
