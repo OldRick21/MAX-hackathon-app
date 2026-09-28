@@ -356,6 +356,21 @@ def sync_cloud_instance(db: Session, service: ServiceInstance) -> None:
                 if retired in (row.roles or []):
                     row.roles = [r for r in row.roles if r != retired]
             db.delete(old)
+    # Права, которых у типа больше нет (например, ведение групп в расписании), снимаются со всех ролей
+    # экземпляра, в том числе созданных вручную; роль без единого права удаляется вместе с назначениями.
+    known = set(catalog.service_type(code)["permission_codes"])
+    for other in db.query(ServiceRole).filter(ServiceRole.service_id == service.id).all():
+        kept = [p for p in (other.permissions or []) if p in known]
+        if kept == list(other.permissions or []):
+            continue
+        if kept:
+            other.permissions = kept
+            continue
+        for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id):
+            if other.code in (row.roles or []):
+                row.roles = [r for r in row.roles if r != other.code]
+        db.delete(other)
+    db.flush()
     for role in catalog.service_type(code)["initial_roles"]:
         existing = db.get(ServiceRole, (service.id, role["code"]))
         if existing and existing.permissions != role["permissions"]:

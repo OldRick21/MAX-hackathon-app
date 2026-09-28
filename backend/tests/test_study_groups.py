@@ -220,6 +220,10 @@ class StudyGroups(unittest.TestCase):
             role.allowed_profiles = ['admin', 'teacher']
             db.add(RoleAssignment(service_id=schedule_id, user_id=t1, profile='teacher', roles=['group_editor', 'schedule_editor']))
             db.add(RoleAssignment(service_id=schedule_id, user_id=admin, profile='admin', roles=['schedule_editor']))
+            # Роль, созданная вручную в прежней версии, с правом на группы, которого больше нет.
+            db.add(ServiceRole(service_id=schedule_id, code='groups_teacher', titles={'ru': 'Создание групп'},
+                               allowed_profiles=['teacher'], permissions=['schedule.groups', 'groups.manage'], system=False))
+            db.add(RoleAssignment(service_id=schedule_id, user_id=s1, profile='teacher', roles=['groups_teacher']))
             db.commit()
         manage.install_schedule(inst)
         with session_local() as db:
@@ -227,6 +231,8 @@ class StudyGroups(unittest.TestCase):
             self.assertEqual(db.get(ServiceRole, (schedule_id, 'schedule_editor')).allowed_profiles, ['teacher'])
             self.assertEqual(db.get(RoleAssignment, (schedule_id, t1, 'teacher')).roles, ['schedule_editor'])
             self.assertEqual(db.get(RoleAssignment, (schedule_id, admin, 'admin')).roles, [])
+            self.assertIsNone(db.get(ServiceRole, (schedule_id, 'groups_teacher')))
+            self.assertEqual(db.get(RoleAssignment, (schedule_id, s1, 'teacher')).roles, [])
 
 if __name__ == '__main__':
     unittest.main()
