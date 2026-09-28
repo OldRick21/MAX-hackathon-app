@@ -347,12 +347,21 @@ def sync_cloud_instance(db: Session, service: ServiceInstance) -> None:
     service.manifest = catalog.default_manifest(code)
     service.supported_profiles = list(catalog.service_type(code)["supported_profiles"])
     create_initial_roles(db, service)
-    # Начальные роли задаёт платформа: права и профили приводятся к каталогу. Если профиль
-    # из роли убран (роли расписания — только администраторам), роль снимается с этого профиля.
+    # Начальные роли задаёт платформа: права, названия и профили приводятся к каталогу. Если профиль
+    # из роли убран, роль снимается с этого профиля; роли прежних версий удаляются совсем.
+    for retired in catalog.service_type(code).get("retired_roles", []):
+        old = db.get(ServiceRole, (service.id, retired))
+        if old:
+            for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id):
+                if retired in (row.roles or []):
+                    row.roles = [r for r in row.roles if r != retired]
+            db.delete(old)
     for role in catalog.service_type(code)["initial_roles"]:
         existing = db.get(ServiceRole, (service.id, role["code"]))
         if existing and existing.permissions != role["permissions"]:
             existing.permissions = list(role["permissions"])
+        if existing and existing.titles != role["titles"]:
+            existing.titles = dict(role["titles"])
         if existing and existing.allowed_profiles != role["allowed_profiles"]:
             existing.allowed_profiles = list(role["allowed_profiles"])
             for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id,

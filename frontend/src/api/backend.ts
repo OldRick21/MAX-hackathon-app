@@ -73,7 +73,7 @@ export interface Backend {
   listServices(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<ServiceView[]>;
   /** Учебные группы из ядра: все группы вуза с составом — любому участнику. */
   listGroups(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<GroupDirectory>;
-  /** Правка групп — роль «Редактор групп» расписания. Возвращают группу с новыми ETag. */
+  /** Правка групп — любой администратор вуза. */
   createGroup(institutionId: string, profile: Profile, name: string): Promise<GroupEntry>;
   renameGroup(institutionId: string, profile: Profile, group: GroupEntry, name: string): Promise<void>;
   deleteGroup(institutionId: string, profile: Profile, group: GroupEntry): Promise<void>;

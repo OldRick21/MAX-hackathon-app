@@ -123,7 +123,7 @@ export interface Group {
 /** Группа в справочнике ядра: состав виден всем участникам вуза. */
 export interface GroupEntry extends Group {
   user_ids: UUID[];
-  /** Только редактору групп: версии для If-Match. */
+  /** Только администратору: версии для If-Match. */
   etag?: string;
   members_etag?: string;
 }
@@ -131,10 +131,10 @@ export interface GroupEntry extends Group {
 /** Справочник групп вуза для выбранного профиля. */
 export interface GroupDirectory {
   items: GroupEntry[];
-  /** Роль «Редактор групп» (или groups.manage у администратора). */
+  /** Группы правит любой администратор вуза. */
   can_manage: boolean;
   my_group_ids: UUID[];
-  /** Только редактору групп: все студенты вуза для выбора состава. */
+  /** Только администратору: все студенты вуза для выбора состава. */
   students?: UUID[];
 }
 

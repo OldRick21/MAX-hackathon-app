@@ -63,8 +63,8 @@ export function createMockBackend(): Backend {
       if (!e) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
       return e;
     };
-    // Занятия меняет только администратор-редактор расписания (schedule.write), как сервис.
-    function writesAny() { return s.profile === 'admin' && has(s, 'schedule.write'); }
+    // Как сервис: администратор правит всегда, преподаватель — если ему включили schedule.write.
+    function writesAny() { return s.profile === 'admin' || (s.profile === 'teacher' && has(s, 'schedule.write')); }
     const requireWrite = (_input?: Omit<ScheduleEvent, 'id'>, _existing?: string) => {
       if (!writesAny()) throw new ApiError('Нет доступа к этому действию.', 403);
     };
@@ -229,8 +229,8 @@ export function createMockBackend(): Backend {
     };
   };
 
-  const canManageGroups = (id: string, profile: Profile) => profile === 'admin' &&
-    (D.serviceSeeds[id] ?? []).some(x => x.service_type === 'schedule' && x.access[profile]?.permissions.includes('schedule.groups'));
+  // Группы правит любой администратор вуза.
+  const canManageGroups = (_id: string, profile: Profile) => profile === 'admin';
   const requireGroups = (id: string, profile: Profile) => {
     if (!canManageGroups(id, profile)) throw new ApiError('Нет доступа к этому действию.', 403);
   };

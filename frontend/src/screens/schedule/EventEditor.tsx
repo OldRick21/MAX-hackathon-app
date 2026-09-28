@@ -1,4 +1,4 @@
-// Создание и изменение занятия — администратор с ролью «Редактор расписания» (schedule.write).
+// Создание и изменение занятия — администратор или преподаватель с включённым редактированием (schedule.write).
 import { useState, type FormEvent } from 'react';
 import type { ProfilesApi, ScheduleApi } from '../../api/backend';
 import { humanMessage, isUUID } from '../../api/http';
@@ -106,7 +106,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
           <legend className={p.legend}>Группы{groupIds.length ? ` · выбрано ${groupIds.length}` : ''}</legend>
           {groups.length > 8 && <SearchInput placeholder="Найти группу" value={groupQuery} onChange={e => setGroupQuery(e.target.value)} />}
           <div className={`${p.checks} ${s.scrollChecks}`}>
-            {!groups.length && <span className={p.muted}>Групп пока нет: их создаёт редактор групп в разделе «Группы».</span>}
+            {!groups.length && <span className={p.muted}>Групп пока нет: их создаёт администратор в разделе «Группы».</span>}
             {shownGroups.map(g => (
               <label key={g.id} className={p.check}>
                 <input type="checkbox" checked={groupIds.includes(g.id)} onChange={() => setGroupIds(l => toggle(l, g.id))} />{g.name}

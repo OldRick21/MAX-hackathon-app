@@ -163,10 +163,10 @@ class StudyGroups(unittest.TestCase):
         self.assertEqual(self.c.get(f'{base}/{moved}/members', headers=p).json()['user_ids'], [s2])
 
 
-    def test_group_editor_role_in_schedule(self):
+    def test_admins_manage_groups_others_view(self):
         owner_id, owner = self.login('owner')
         support_id, support = self.login('support')
-        editor, editor_core = self.login('editor')
+        admin, admin_core = self.login('admin')
         t1, t1_core = self.login('t1')
         s1, s1_core = self.login('s1')
         with session_local() as db:
@@ -177,37 +177,32 @@ class StudyGroups(unittest.TestCase):
         inst = self.c.post(f'/api/v1/platform/applications/{app_id}/approve', headers=support, json={}).json()['institution_id']
         manage.install_schedule(inst)
         with session_local() as db:
-            for uid, profiles in ((s1, ['student']), (t1, ['teacher']), (editor, ['admin'])):
+            for uid, profiles in ((s1, ['student']), (t1, ['teacher']), (admin, ['admin'])):
                 db.add(Membership(institution_id=inst, user_id=uid, profiles=profiles))
             schedule = db.query(ServiceInstance).filter_by(institution_id=inst, service_type='schedule').one()
             schedule_id = schedule.id
             roles = {r.code: r.allowed_profiles for r in schedule.roles}
             db.commit()
-        # Роли расписания — только администраторам: преподаватель и студент только смотрят.
-        self.assertEqual(roles, {'schedule_editor': ['admin'], 'group_editor': ['admin']})
+        # В расписании одна роль — включённое редактирование для преподавателя.
+        self.assertEqual(roles, {'schedule_editor': ['teacher']})
         base = f'/api/v1/institution/{inst}/groups'
         q = {'profile': 'admin'}
 
-        self.assertEqual(self.c.post(base, params=q, headers=editor_core, json={'name': 'ПИ-1'}).status_code, 403)
-        self.assertFalse(self.c.get(base, params=q, headers=editor_core).json()['can_manage'])
-        with session_local() as db:
-            db.add(RoleAssignment(service_id=schedule_id, user_id=editor, profile='admin', roles=['group_editor']))
-            db.commit()
-
-        view = self.c.get(base, params=q, headers=editor_core).json()
+        # Любой администратор ведёт группы без ролей.
+        view = self.c.get(base, params=q, headers=admin_core).json()
         self.assertTrue(view['can_manage'])
         self.assertEqual(view['students'], [s1])
-        created = self.c.post(base, params=q, headers=editor_core, json={'name': 'ПИ-1'})
+        created = self.c.post(base, params=q, headers=admin_core, json={'name': 'ПИ-1'})
         self.assertEqual(created.status_code, 201, created.text)
         group = created.json()['id']
-        item = next(g for g in self.c.get(base, params=q, headers=editor_core).json()['items'] if g['id'] == group)
-        members = self.c.put(f'{base}/{group}/members', params=q, headers={**editor_core, 'If-Match': item['members_etag']},
+        item = next(g for g in self.c.get(base, params=q, headers=admin_core).json()['items'] if g['id'] == group)
+        members = self.c.put(f'{base}/{group}/members', params=q, headers={**admin_core, 'If-Match': item['members_etag']},
                              json={'user_ids': [s1]})
         self.assertEqual(members.status_code, 200, members.text)
-        renamed = self.c.patch(f'{base}/{group}', params=q, headers={**editor_core, 'If-Match': item['etag']},
+        renamed = self.c.patch(f'{base}/{group}', params=q, headers={**admin_core, 'If-Match': item['etag']},
                                json={'name': 'ПИ-11'})
         self.assertEqual(renamed.status_code, 200, renamed.text)
-        self.assertEqual(self.c.delete(f'{base}/{group}', params=q, headers={**editor_core, 'If-Match': renamed.headers['ETag']})
+        self.assertEqual(self.c.delete(f'{base}/{group}', params=q, headers={**admin_core, 'If-Match': renamed.headers['ETag']})
                          .json()['error']['code'], 'GROUP_IN_USE')
 
         # Студент и преподаватель видят группу и состав, но не правят.
@@ -217,17 +212,21 @@ class StudyGroups(unittest.TestCase):
             self.assertFalse(view['can_manage'])
             self.assertEqual(self.c.post(base, params={'profile': profile}, headers=uid_core, json={'name': 'X'}).status_code, 403)
 
-        # Роль, выданная преподавателю до этого изменения, снимается при синхронизации и не действует.
+        # Роли прежних версий удаляются при синхронизации вместе с назначениями.
         with session_local() as db:
-            role = db.get(ServiceRole, (schedule_id, 'group_editor'))
+            db.add(ServiceRole(service_id=schedule_id, code='group_editor', titles={'ru': 'Редактор групп'},
+                               allowed_profiles=['admin', 'teacher'], permissions=['schedule.write'], system=False))
+            role = db.get(ServiceRole, (schedule_id, 'schedule_editor'))
             role.allowed_profiles = ['admin', 'teacher']
             db.add(RoleAssignment(service_id=schedule_id, user_id=t1, profile='teacher', roles=['group_editor', 'schedule_editor']))
+            db.add(RoleAssignment(service_id=schedule_id, user_id=admin, profile='admin', roles=['schedule_editor']))
             db.commit()
-        self.assertEqual(self.c.post(base, params={'profile': 'teacher'}, headers=t1_core, json={'name': 'X'}).status_code, 403)
         manage.install_schedule(inst)
         with session_local() as db:
-            self.assertEqual(db.get(ServiceRole, (schedule_id, 'group_editor')).allowed_profiles, ['admin'])
+            self.assertIsNone(db.get(ServiceRole, (schedule_id, 'group_editor')))
+            self.assertEqual(db.get(ServiceRole, (schedule_id, 'schedule_editor')).allowed_profiles, ['teacher'])
             self.assertEqual(db.get(RoleAssignment, (schedule_id, t1, 'teacher')).roles, ['schedule_editor'])
+            self.assertEqual(db.get(RoleAssignment, (schedule_id, admin, 'admin')).roles, [])
 
 if __name__ == '__main__':
     unittest.main()

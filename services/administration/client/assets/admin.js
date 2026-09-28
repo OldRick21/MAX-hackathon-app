@@ -12,7 +12,7 @@
     'members.read': 'Просмотр участников', 'members.manage': 'Управление участниками', 'groups.manage': 'Управление группами',
     'services.read': 'Просмотр сервисов', 'services.manage': 'Управление сервисами',
     'roles.manage': 'Назначение ролей', 'credentials.manage': 'Ключи локальных сервисов',
-    'schedule.read_all': 'Чтение всего расписания', 'schedule.write': 'Изменение занятий', 'schedule.groups': 'Ведение учебных групп',
+    'schedule.read_all': 'Чтение всего расписания', 'schedule.write': 'Редактирование расписания',
     'groups.manage': 'Управление группами', 'profiles.manage': 'Должности и степени в анкетах',
     'coursework.manage': 'Управление курсовыми',
   };

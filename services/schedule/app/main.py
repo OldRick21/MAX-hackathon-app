@@ -2,7 +2,7 @@
 
 Контракт — docs/services/schedule/SPEC.md и OPENAPI.yaml; отличия — IMPLEMENTATION.md.
 Смотреть расписание любой группы и все группы может любой участник вуза. Менять занятия —
-только администратор с правом schedule.write (роль «Редактор расписания»).
+администратор (без ролей) и преподаватель, которому администратор включил «Редактирование расписания».
 """
 import base64
 import hashlib
@@ -204,8 +204,8 @@ class Ctx:
 
     @property
     def writes_any(self):
-        """Редактор расписания: администратор с правом schedule.write. Преподаватель только смотрит."""
-        return self.profile == 'admin' and 'schedule.write' in self.permissions
+        """Занятия правит любой администратор; преподаватель — если ему включили schedule.write."""
+        return self.profile == 'admin' or (self.profile == 'teacher' and 'schedule.write' in self.permissions)
 
 
 def authenticate(request: Request) -> Ctx:
@@ -462,9 +462,9 @@ def event_response(ctx, row, value, status=200, extra=None):
 
 
 def need_writer(ctx: Ctx):
-    """Занятия меняет только редактор расписания (schedule.write), преподаватель без роли — нет."""
+    """Занятия меняет администратор или преподаватель с включённым редактированием."""
     if not ctx.writes_any:
-        raise forbidden('Нужна роль «Редактор расписания»')
+        raise forbidden('Редактирование расписания вам не включено')
 
 
 def checked_event(ctx: Ctx, body: EventInput) -> dict:

@@ -21,7 +21,7 @@ from app import main as m  # noqa: E402
 I = '44444444-4444-4444-8444-444444444444'
 ADMIN, EDITOR, T1, T2, ST1, ST2 = (str(uuid.UUID(int=n)) for n in range(1, 7))
 PROFILES = {ADMIN: ['admin'], EDITOR: ['admin'], T1: ['teacher'], T2: ['teacher'], ST1: ['student'], ST2: ['student']}
-EDITOR_PERMS = ['schedule.read_all', 'schedule.write']
+EDITOR_PERMS = ['schedule.write']
 GA, GB = str(uuid.uuid4()), str(uuid.uuid4())
 GROUPS = [{'id': GA, 'name': 'ИВТ-21'}, {'id': GB, 'name': 'ИВТ-22'}]
 # Группы студентов ведёт ядро и сообщает их в introspection.
@@ -94,10 +94,16 @@ class Schedule(unittest.TestCase):
         # Студент без группы — пустое расписание, не ошибка.
         self.assertEqual(self.week(st2).json(), {'items': [], 'next_cursor': None})
 
-        # Пишет только администратор с ролью «Редактор расписания». Преподаватель только смотрит —
-        # даже если право каким-то образом оказалось у профиля teacher.
-        for who in (t1, teacher_editor, st1, plain_admin):
+        # Администратор пишет всегда, без ролей; преподаватель — только если ему включили правку.
+        for who in (t1, t2, st1, self.as_(ST1, 'student', EDITOR_PERMS)):
             self.assertEqual(self.post(who, self.event([GA], [T1])).status_code, 403)
+        by_admin = self.post(plain_admin, self.event([GB], [T2], start='2026-10-01T06:00:00Z', end='2026-10-01T07:00:00Z'))
+        self.assertEqual(by_admin.status_code, 201, by_admin.text)
+        by_teacher = self.post(teacher_editor, self.event([GB], [T2], start='2026-10-01T08:00:00Z', end='2026-10-01T09:00:00Z'))
+        self.assertEqual(by_teacher.status_code, 201, by_teacher.text)
+        for made in (by_admin, by_teacher):
+            self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{made.json()["id"]}',
+                                           headers={**teacher_editor, 'If-Match': made.headers['etag']}).status_code, 204)
         self.assertEqual(self.post(editor, self.event([GA], [T1, ST1])).json()['error']['code'], 'INVALID_REFERENCE')
         self.assertEqual(self.post(editor, self.event([GA], [T1], start='2026-09-28T08:00:00Z')).json()['error']['code'],
                          'INVALID_TIME_RANGE')
@@ -127,8 +133,6 @@ class Schedule(unittest.TestCase):
                                     json=self.event([GA], [T1], status='cancelled')).status_code, 403)
         self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{event["id"]}', headers={**t2, 'If-Match': tag}).status_code, 403)
 
-        self.assertEqual(self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**teacher_editor, 'If-Match': tag},
-                                    json=self.event([GA], [T1])).status_code, 403)
 
         # Редактор отменяет; отменённое видно студенту; устаревший ETag — 412.
         cancelled = self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**editor, 'If-Match': tag},

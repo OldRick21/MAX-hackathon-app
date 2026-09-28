@@ -156,7 +156,7 @@ class AdministrationFlow(unittest.TestCase):
                                      json=body).json()["error"]["code"], "SERVICE_ALREADY_EXISTS")
         schedule_id = first.json()["id"]
         roles = self.c.get(f"{base}/services/{schedule_id}/roles", headers=owner_h).json()["items"]
-        self.assertEqual([r["code"] for r in roles], ["group_editor", "schedule_editor"])
+        self.assertEqual([r["code"] for r in roles], ["schedule_editor"])
 
         # Local: только одобренные хосты.
         local = {"service_type": "coursework", "deployment": "local",

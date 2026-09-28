@@ -116,21 +116,18 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(view.json()['api_base_url'], 'https://shell.test/schedule/api/v1')
         self.assertEqual([m['id'] for m in view.json()['menus']], ['schedule'])
 
-        # Ядро не показывает admin пункт расписания без schedule.read_all, иначе shell открыл бы раздел с 403.
         def catalog():
             items = self.core.get(f'/api/v1/institution/{inst_id}/service', params={'profile': 'admin'},
                                   headers=owner_core).json()['items']
             return next(x for x in items if x['id'] == schedule_id)
-        # Расписание видно администратору и без роли; роль даёт только правку.
+        # Расписание видно администратору без ролей; ролей для admin в расписании нет вовсе.
         self.assertEqual(([m['id'] for m in catalog()['menus']], catalog()['permissions']), (['schedule'], []))
         roles_path = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{owner_id}/profiles/admin/roles'
         machine, actor = self.admin_headers(inst_id, admin_service_id, owner_core)
         private = {**machine, **actor}
         etag = self.core.get(roles_path, headers=private).headers['ETag']
-        granted = self.core.put(roles_path, headers={**private, 'If-Match': etag}, json={'roles': ['schedule_editor']})
-        self.assertEqual(granted.status_code, 200, granted.text)
-        self.assertEqual([m['id'] for m in catalog()['menus']], ['schedule'])
-        self.assertEqual(catalog()['permissions'], ['schedule.read_all', 'schedule.write'])
+        refused = self.core.put(roles_path, headers={**private, 'If-Match': etag}, json={'roles': ['schedule_editor']})
+        self.assertIn(refused.status_code, (409, 422), refused.text)
 
         # Группы ведёт администрирование ядра; расписание их только читает.
         base = f'/api/v1/institution/{inst_id}/internal/groups'
@@ -152,16 +149,20 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(denied.status_code, 403, denied.text)
         teacher_roles = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{teacher_id}/profiles/teacher/roles'
         tag = self.core.get(teacher_roles, headers=private).headers['ETag']
-        refused = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
-        self.assertIn(refused.status_code, (409, 422), refused.text)
-        # Занятие ставит администратор с ролью «Редактор расписания» (выдана выше).
-        editor_h = self.service_session(inst_id, schedule_id, owner_core, 'admin')
+        # Администратор включает преподавателю редактирование — тот ставит занятие.
+        granted = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
+        self.assertEqual(granted.status_code, 200, granted.text)
+        editor_h = teacher_h
+        by_admin = self.svc.post('/api/v1/schedule/events', headers={**self.service_session(inst_id, schedule_id, owner_core, 'admin'),
+                                                                   'Idempotency-Key': str(uuid.uuid4())},
+                                 json={**event, 'starts_at': '2026-10-01T06:00:00Z', 'ends_at': '2026-10-01T07:00:00Z'})
+        self.assertEqual(by_admin.status_code, 201, by_admin.text)
         created = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},
                                 json=event)
         self.assertEqual(created.status_code, 201, created.text)
         week = {'from': '2026-09-28T00:00:00Z', 'to': '2026-10-05T00:00:00Z'}
         seen = self.svc.get('/api/v1/schedule/events', headers=student_h, params=week).json()['items']
-        self.assertEqual([e['id'] for e in seen], [created.json()['id']])
+        self.assertEqual([e['id'] for e in seen], [created.json()['id'], by_admin.json()['id']])
 
         # Студент в преподаватели не годится — проверка идёт через ядро.
         bad = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},

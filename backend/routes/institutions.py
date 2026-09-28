@@ -106,18 +106,8 @@ def _member(db: Session, institution_id: str, user_id: str, profile: str) -> Mem
 
 
 def manages_groups(db: Session, institution_id: str, user_id: str, profile: str) -> bool:
-    """Группы ведёт администратор: «Редактор групп» расписания или groups.manage в администрировании."""
-    if profile != "admin":
-        return False
-    schedule = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
-                                                ServiceInstance.service_type == "schedule",
-                                                ServiceInstance.enabled.is_(True)).first()
-    if schedule and "schedule.groups" in registry.permissions_for(
-            db, schedule.id, registry.assigned_roles(db, schedule.id, user_id, profile)):
-        return True
-    admin = registry.admin_service_of(db, institution_id)
-    return bool(admin and "groups.manage" in registry.permissions_for(
-        db, admin.id, registry.assigned_roles(db, admin.id, user_id, "admin")))
+    """Группы ведёт любой администратор вуза; остальные только смотрят."""
+    return profile == "admin"
 
 
 @router.get("/api/v1/institution/{institution_id}/groups")
@@ -129,7 +119,7 @@ def list_my_groups(
 ):
     """Учебные группы для интерфейса: все группы вуза с составом — любому участнику.
 
-    Редактору групп дополнительно: can_manage, ETag групп и список студентов вуза для выбора состава.
+    Администратору дополнительно: can_manage, ETag групп и список студентов вуза для выбора состава.
     """
     user, _ = session_data
     _member(db, institution_id, user.id, profile)
@@ -158,7 +148,7 @@ def _group_actor(db: Session, request: Request, institution_id: str, user_id: st
     if not institution or institution.status != "active":
         raise DomainError(409, "RESOURCE_INACTIVE", "Вуз не активен")
     if not manages_groups(db, institution_id, user_id, profile):
-        raise DomainError(403, "FORBIDDEN", "Нужна роль «Редактор групп»")
+        raise DomainError(403, "FORBIDDEN", "Группы ведёт администратор вуза")
     admin = registry.admin_service_of(db, institution_id)
     return ActorContext(institution_id=institution_id, admin_service_id=admin.id if admin else "", actor_id=user_id,
                         roles=[], permissions=["groups.manage", "members.read"], credential_id=None,

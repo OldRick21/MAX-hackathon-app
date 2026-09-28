@@ -74,20 +74,20 @@ SERVICE_TYPES: Dict[str, dict] = {
         "deployment": "cloud",
         "titles": {"ru": "Расписание", "en": "Schedule"},
         "supported_profiles": ["admin", "teacher", "student"],
-        # Смотреть расписание и группы может любой участник — это не право, а часть сервиса.
-        # Права дают только правку администраторам: schedule.write — занятия, schedule.groups — группы.
-        "permission_codes": ["schedule.read_all", "schedule.write", "schedule.groups"],
+        # Смотреть расписание и группы может любой участник. Администратор правит занятия и группы
+        # всегда, без ролей. Преподавателю правку занятий включает администратор — роль ниже.
+        "permission_codes": ["schedule.read_all", "schedule.write"],
         "protected": False,
         "menus": [
             {"id": "schedule", "titles": {"ru": "Расписание", "en": "Schedule"}, "entrypoint_path": "/schedule",
              "profiles": ["student", "teacher", "admin"], "required_permissions": [], "order": 0},
         ],
         "initial_roles": [
-            {"code": "schedule_editor", "titles": {"ru": "Редактор расписания", "en": "Schedule editor"},
-             "allowed_profiles": ["admin"], "permissions": ["schedule.read_all", "schedule.write"]},
-            {"code": "group_editor", "titles": {"ru": "Редактор групп", "en": "Group editor"},
-             "allowed_profiles": ["admin"], "permissions": ["schedule.groups"]},
+            {"code": "schedule_editor", "titles": {"ru": "Редактирование расписания", "en": "Schedule editing"},
+             "allowed_profiles": ["teacher"], "permissions": ["schedule.write"]},
         ],
+        # Начальные роли прежних версий: удаляются при запуске вместе с назначениями.
+        "retired_roles": ["group_editor"],
         "system_roles": False,
     },
     "user-profile": {

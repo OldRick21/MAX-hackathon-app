@@ -196,7 +196,8 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
       { student: basic(['home', 'users']), teacher: basic(['home', 'users']) }),
     svc('5e000000-0000-4000-8000-000000000102', 'schedule', 'Расписание', 'cloud', 'schedule.platform.example',
       [m('schedule', 'Расписание', '/schedule')],
-      { student: basic(['schedule']), teacher: basic(['schedule']) }),
+      // Преподавателю МИФИ администратор включил редактирование расписания.
+      { student: basic(['schedule']), teacher: { roles: ['schedule_editor'], permissions: ['schedule.write'], menus: ['schedule'] } }),
     svc('5e000000-0000-4000-8000-000000000103', 'coursework', 'Курсовые работы', 'local', 'coursework.mephi.example',
       [m('coursework', 'Курсовые', '/coursework')],
       { student: basic(['coursework']), teacher: basic(['coursework']) }),
@@ -208,7 +209,7 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
     svc('5e000000-0000-4000-8000-000000000202', 'schedule', 'Расписание', 'cloud', 'schedule.platform.example',
       [m('schedule', 'Расписание', '/schedule'), m('schedule_admin', 'Расписание', '/schedule')],
       { teacher: basic(['schedule']),
-        admin: { roles: ['schedule_editor', 'group_editor'], permissions: ['schedule.read_all', 'schedule.write', 'schedule.groups'], menus: ['schedule_admin'] } }),
+        admin: basic(['schedule_admin']) }),
     svc('5e000000-0000-4000-8000-000000000203', 'administration', 'Администрирование', 'cloud', 'admin.platform.example',
       [m('administration', 'Администрирование', '/admin')],
       { admin: { roles: ['owner'], permissions: ['institution.read', 'members.read', 'members.manage'], menus: ['administration'] } }),
