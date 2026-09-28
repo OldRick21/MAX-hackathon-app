@@ -196,5 +196,9 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
     svc('5e000000-0000-4000-8000-000000000203', 'administration', 'Администрирование', 'cloud', 'admin.platform.example',
       [m('administration', 'Администрирование', '/admin')],
       { admin: { roles: ['owner'], permissions: ['institution.read', 'members.read', 'members.manage'], menus: ['administration'] } }),
+    // Свой сервис вуза, подключённый через пульт: открывается в iframe.
+    svc('5e000000-0000-4000-8000-000000000204', 'custom.coursework', 'Курсовые работы', 'local', 'coursework.mtuci.example',
+      [m('coursework', 'Курсовые работы', '/')],
+      { teacher: basic(['coursework']), admin: basic(['coursework']) }),
   ],
 };

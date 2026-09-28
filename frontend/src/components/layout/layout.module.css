@@ -24,6 +24,8 @@
 /* Активный пункт в макете не нарисован — выделяем цветом текста, без смены раскладки. */
 .navLink.active { color: var(--text); font-weight: 600; }
 .navIconSmall { padding: .9rem 1rem; }
+/* Длинные названия своих сервисов не ломают колонку. */
+.navLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 1.6rem; }
 
 /* ---------- Main ---------- */
 .main {

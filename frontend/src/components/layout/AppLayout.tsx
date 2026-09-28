@@ -2,7 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import logo from '../../assets/logo-buildings.png';
 import { useInstitution } from '../../state/institution';
 import { Wordmark } from '../icons/figma';
-import { bottomNav, buildNav, type NavItem } from './navigation';
+import { bottomNav, buildNav, sideNav, type NavItem } from './navigation';
 import { AccountSwitcher, ProfileSwitcher } from './Switchers';
 import s from './layout.module.css';
 
@@ -12,7 +12,7 @@ function SidebarItem({ item }: { item: NavItem }) {
   return (
     <NavLink to={item.to} end={item.end} className={({ isActive }) => cx(s.navLink, isActive && s.active)}>
       <item.Icon className={item.small ? s.navIconSmall : undefined} strokeWidth={item.small ? 2.6 : undefined} />
-      <span>{item.label}</span>
+      <span className={s.navLabel} title={item.label}>{item.label}</span>
     </NavLink>
   );
 }
@@ -50,7 +50,7 @@ export function AppLayout() {
   const items = buildNav(base, catalog.status === 'ready' ? catalog.value : undefined);
   return (
     <div className={s.shell}>
-      <Sidebar items={items} home={base} />
+      <Sidebar items={sideNav(items)} home={base} />
       <main className={s.main}>
         <header className={s.header}>
           <Link to={base} className={s.mobileLogo} aria-label="Вузы России — на главную">
