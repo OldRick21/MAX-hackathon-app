@@ -73,6 +73,31 @@ class OperatorPanel(unittest.TestCase):
         self.assertEqual(forged.get('/api/overview').status_code, 401)
         op.post('/api/logout', headers=W)
 
+    def test_delete_user_without_institutions(self):
+        op = self.signed_in()
+        lonely, lonely_h = self.login_user('lonely')
+        member, _ = self.login_user('member')
+        staff, _ = self.login_user('staffer')
+        inst = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Удаляемый тест'}, 'owner_user_id': member})
+        self.assertEqual(inst.status_code, 201, inst.text)
+        self.assertEqual(op.post(f'/api/users/{staff}/staff', headers=W).status_code, 200)
+
+        # Состоит в вузе или работает в поддержке — не удаляется.
+        self.assertEqual(op.delete(f'/api/users/{member}', headers=W).json()['error']['code'], 'USER_HAS_MEMBERSHIPS')
+        self.assertEqual(op.delete(f'/api/users/{staff}', headers=W).json()['error']['code'], 'USER_IS_STAFF')
+        self.assertEqual(op.delete(f'/api/users/{uuid.uuid4()}', headers=W).status_code, 404)
+        self.assertEqual(op.delete(f'/api/users/{lonely}').status_code, 403)  # без заголовка панели
+
+        # Без вузов — удаляется, токены сразу перестают действовать.
+        self.assertEqual(self.core.get('/api/v1/auth/me', headers=lonely_h).status_code, 200)
+        deleted = op.delete(f'/api/users/{lonely}', headers=W)
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.assertEqual(self.core.get('/api/v1/auth/me', headers=lonely_h).status_code, 401)
+        self.assertNotIn(lonely, [u['id'] for u in op.get('/api/users').json()['items']])
+        self.assertEqual(op.delete(f'/api/users/{lonely}', headers=W).status_code, 404)
+        with session_local() as db:
+            self.assertTrue(db.query(AuditEvent).filter_by(action='user.delete', target_id=lonely).first())
+
     def test_platform_and_institution_management(self):
         op = self.signed_in()
         applicant, applicant_h = self.login_user('rector')

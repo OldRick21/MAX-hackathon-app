@@ -17,7 +17,7 @@
     'application.reject': 'Заявка вуза отклонена', 'application.withdraw': 'Заявка вуза отозвана',
     'institution.provision': 'Вуз подключён', 'institution.status': 'Изменён статус вуза', 'institution.update': 'Изменены настройки вуза',
     'institution.local_hosts': 'Изменены одобренные хосты', 'institution.initial_owner': 'Назначен владелец',
-    'owner.initial_assign': 'Назначен владелец', 'staff.grant': 'Выданы права поддержки', 'staff.revoke': 'Отозваны права поддержки',
+    'owner.initial_assign': 'Назначен владелец', 'staff.grant': 'Выданы права поддержки', 'staff.revoke': 'Отозваны права поддержки', 'user.delete': 'Удалён пользователь',
     'member.add': 'Добавлен участник', 'member.remove': 'Удалён участник', 'member.profiles.replace': 'Изменены профили',
     'member.group.set': 'Изменена группа студента', 'group.create': 'Создана группа', 'group.rename': 'Группа переименована',
     'group.delete': 'Группа удалена', 'group.members.replace': 'Изменён состав группы',
@@ -628,7 +628,12 @@
             h('button', { class: 'quiet', onclick: () => addToInstitution(u, institutions) }, 'Добавить в вуз'),
             u.staff
               ? h('button', { class: 'danger', onclick: () => act(() => api(`/users/${u.id}/staff`, { method: 'DELETE' }), 'Права поддержки отозваны.') }, 'Отозвать поддержку')
-              : h('button', { class: 'quiet', onclick: () => act(() => api(`/users/${u.id}/staff`, { method: 'POST' }), 'Права поддержки выданы.') }, 'Сделать сотрудником поддержки')))));
+              : h('button', { class: 'quiet', onclick: () => act(() => api(`/users/${u.id}/staff`, { method: 'POST' }), 'Права поддержки выданы.') }, 'Сделать сотрудником поддержки'),
+            // Удалить можно только того, кто не состоит ни в одном вузе и не работает в поддержке.
+            !u.memberships.length && !u.staff ? h('button', { class: 'danger', onclick: async () => {
+              if (!await confirmDanger('Удалить пользователя?', 'Будут удалены его сессии, аватар и заявки. При следующем входе через MAX он появится заново с новым UUID.', 'Удалить')) return;
+              act(() => api(`/users/${u.id}`, { method: 'DELETE' }), 'Пользователь удалён.');
+            } }, 'Удалить') : null))));
       if (!items.length) list.append(h('p', { class: 'muted' }, 'Никого не найдено.'));
     }
     let timer = null;

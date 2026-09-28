@@ -554,6 +554,17 @@ def revoke_staff(user_id: str, _: str = Depends(operator), db: Session = Depends
     return run(db, revoke)
 
 
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: str, _: str = Depends(operator), db: Session = Depends(get_db)):
+    def remove():
+        if not is_uuid(user_id):
+            raise not_found("Пользователь не найден")
+        platform_ops.delete_user(db, user_id)
+        db.commit()
+        return Result({"deleted": True})
+    return run(db, remove)
+
+
 # --------------------------------------------------------------------------
 # Журнал и служебные команды
 # --------------------------------------------------------------------------

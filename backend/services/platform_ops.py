@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from database.tables import CloudBinding, PlatformRole, PlatformStaff, ServiceInstance, User
+from database.tables import CloudBinding, Membership, PlatformRole, PlatformStaff, ServiceInstance, User
 from platform_core import registry
 from platform_core.errors import DomainError
 
@@ -65,3 +65,22 @@ def revoke_staff(db: Session, user_id: str) -> bool:
     registry.audit(db, scope="platform", action="staff.revoke", actor_user_id=None, actor_kind="operator",
                    target_type="user", target_id=user_id)
     return True
+
+
+def delete_user(db: Session, user_id: str) -> None:
+    """Удаляет пользователя, не состоящего ни в одном вузе.
+
+    Вместе с ним каскадом уходят сессии (токены сразу перестают действовать), аватар,
+    заявки на вступление и заявки на подключение вуза. Следующий вход через MAX создаст
+    нового пользователя с новым UUID.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise DomainError(404, "RESOURCE_NOT_FOUND", "Пользователь не найден")
+    if db.query(Membership).filter(Membership.user_id == user_id).first():
+        raise DomainError(409, "USER_HAS_MEMBERSHIPS", "Пользователь состоит в вузе. Сначала удалите его из всех вузов")
+    if db.get(PlatformStaff, user_id):
+        raise DomainError(409, "USER_IS_STAFF", "Сначала отзовите права поддержки платформы")
+    db.delete(user)
+    registry.audit(db, scope="platform", action="user.delete", actor_user_id=None, actor_kind="operator",
+                   target_type="user", target_id=user_id)
