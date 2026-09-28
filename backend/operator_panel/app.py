@@ -13,6 +13,7 @@ Nginx по HTTPS (порт 8445) и, для SSH-туннеля, на 127.0.0.1:8
 ключ и адреса администрирования вуза и служебные команды manage.py.
 """
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import contextlib
 import hashlib
 import hmac
@@ -256,27 +257,45 @@ def logout():
 # Сводка
 # --------------------------------------------------------------------------
 
-HEALTH_TARGETS = {
-    "Ядро": "http://backend:8000/api/v1/health",
-    "Администрирование": "http://administration:8100/api/v1/health",
-    "Люди": "http://user-profile:8200/api/v1/health",
-    "Расписание": "http://schedule:8300/api/v1/health",
-}
+CORE_HEALTH = "http://backend:8000/api/v1/health"
+
+
+def _health_targets() -> dict:
+    """Ядро и каждый включённый сервис каждого вуза — по его настоящему адресу (свой контейнер вуза).
+
+    OPERATOR_HEALTH_TARGETS (JSON «имя → URL») заменяет список целиком — для тестов и особых схем.
+    """
+    if os.environ.get("OPERATOR_HEALTH_TARGETS"):
+        return json.loads(os.environ["OPERATOR_HEALTH_TARGETS"])
+    targets = {"Ядро": CORE_HEALTH}
+    with session_local() as db:
+        insts = {i.id: _inst_name(i) for i in db.query(Institution)}
+        services = db.query(ServiceInstance).filter(ServiceInstance.enabled.is_(True)).all()
+        many = len({s.institution_id for s in services}) > 1
+        for s in sorted(services, key=lambda x: (insts.get(x.institution_id, ""), x.service_type)):
+            title = (s.manifest or {}).get("titles", {}).get("ru") or s.service_type
+            name = f"{insts.get(s.institution_id, 'ВУЗ')} · {title}" if many else title
+            targets[name] = s.api_base_url.rstrip("/") + "/health"
+    return targets
+
+
+def _check(item) -> dict:
+    name, url = item
+    started = time.monotonic()
+    try:
+        with urllib.request.urlopen(url, timeout=3) as r:
+            ok = r.status == 200
+    except Exception:
+        ok = False
+    return {"name": name, "ok": ok, "ms": int((time.monotonic() - started) * 1000)}
 
 
 def _health() -> list:
-    targets = json.loads(os.environ["OPERATOR_HEALTH_TARGETS"]) if os.environ.get("OPERATOR_HEALTH_TARGETS") \
-        else HEALTH_TARGETS
-    result = []
-    for name, url in targets.items():
-        started = time.monotonic()
-        try:
-            with urllib.request.urlopen(url, timeout=2) as r:
-                ok = r.status == 200
-        except Exception:
-            ok = False
-        result.append({"name": name, "ok": ok, "ms": int((time.monotonic() - started) * 1000)})
-    return result
+    targets = list(_health_targets().items())
+    if not targets:
+        return []
+    with ThreadPoolExecutor(max_workers=min(16, len(targets))) as pool:
+        return list(pool.map(_check, targets))
 
 
 @app.get("/api/overview")

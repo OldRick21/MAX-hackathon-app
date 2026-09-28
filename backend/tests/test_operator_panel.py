@@ -178,5 +178,24 @@ class OperatorPanel(unittest.TestCase):
         self.assertTrue(op.get(f'/api/audit?institution_id={inst}').json()['items'])
 
 
+    def test_health_checks_every_enabled_service(self):
+        from unittest.mock import patch
+        from operator_panel import app as panel
+        from platform_core import registry
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Проверочный'}, 'ru')
+            svc = registry.create_local_instance(db, inst.id, 'custom.schedule', 'https://schedule.check.ru/api/v1',
+                                                 'https://schedule.check.ru', {'ru': 'Расписание'}, ['student', 'admin'])
+            svc.enabled = True
+            off = registry.create_local_instance(db, inst.id, 'custom.people', 'https://people.check.ru/api/v1',
+                                                 'https://people.check.ru', {'ru': 'Люди'}, ['admin'])
+            db.commit()
+        with patch.dict(os.environ, {'OPERATOR_HEALTH_TARGETS': ''}):
+            targets = panel._health_targets()
+        self.assertEqual(targets[next(k for k in targets if k.endswith('Расписание'))], 'https://schedule.check.ru/api/v1/health')
+        self.assertIn('Ядро', targets)
+        self.assertNotIn('https://people.check.ru/api/v1/health', targets.values())  # выключенный не проверяется
+        self.assertTrue(any(v.endswith('/api/v1/health') and 'administration' in v for v in targets.values()))
+
 if __name__ == '__main__':
     unittest.main()

@@ -225,7 +225,7 @@
         stat(c.users, 'пользователей', '#/users'),
         stat(c.memberships, 'членств в вузах', '#/users'),
         stat(c.staff, 'сотрудников поддержки', '#/users')),
-      h('section', { class: 'card' }, h('h2', {}, 'Сервисы платформы'),
+      h('section', { class: 'card' }, h('h2', {}, 'Ядро и сервисы вузов'),
         h('div', { class: 'health' }, data.health.map(s => badge(h('span', {}, h('span', { class: `dot ${s.ok ? 'ok' : ''}` }),
           `${s.name}: ${s.ok ? `работает (${s.ms} мс)` : 'не отвечает'}`), s.ok ? 'ok' : 'danger')))),
       h('section', { class: 'card' }, h('h2', {}, 'Требует внимания'),
