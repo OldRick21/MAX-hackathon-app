@@ -10,19 +10,12 @@ services:
     build: ./backend
     environment: &core-env
       DATABASE_URL: sqlite:////data/core-jwt.db
-      USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN:?Set USER_PROFILE_PROVISIONING_TOKEN in .env}
-      USER_PROFILE_API_BASE_URL: ${SHELL_ORIGIN}/people/api/v1
-      USER_PROFILE_CLIENT_BASE_URL: ${SHELL_ORIGIN}
-      SCHEDULE_PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN:?Set SCHEDULE_PROVISIONING_TOKEN in .env}
-      SCHEDULE_API_BASE_URL: ${SHELL_ORIGIN}/schedule/api/v1
-      SCHEDULE_CLIENT_BASE_URL: ${SHELL_ORIGIN}
       SERVICE_CONFIG_DIR: /srv/services/connected
       CURSOR_SECRET_KEY: ${CURSOR_SECRET_KEY:?Set CURSOR_SECRET_KEY in .env}
       JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env}
       JWT_KEYRING_PATH: /data/jwt/keys.json
       MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
-      CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Set CLOUD_BINDING_KEY in .env}
-      ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN:?Set ADMINISTRATION_PROVISIONING_TOKEN in .env}
+      # Адреса администрирования нового вуза по умолчанию; оператор меняет их в пульте.
       ADMINISTRATION_API_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN:?Set ADMINISTRATION_PUBLIC_ORIGIN in .env}/api/v1
       ADMINISTRATION_CLIENT_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN}
       REDIS_HOST: redis
@@ -69,67 +62,18 @@ services:
       timeout: 5s
       retries: 3
 
-  # Облачный сервис «Администрирование»: один процесс на все вузы.
-  # Только он обращается к private API ядра (http://backend:8000/api/v1/institution/*/internal).
-  administration:
-    build: ./services/administration
-    environment:
-      CORE_INTERNAL_URL: http://backend:8000
-      ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN}
-      ADMINISTRATION_API_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN}/api/v1
-      SHELL_ORIGIN: ${SHELL_ORIGIN:?Set SHELL_ORIGIN in .env}
-      FRAME_ANCESTORS: https://web.max.ru
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    init: true
-
-  user-profile:
-    build: ./services/user-profile
-    restart: unless-stopped
-    init: true
-    environment:
-      CORE_INTERNAL_URL: http://backend:8000
-      USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN}
-      PROFILE_DB: /data/profiles.db
-    volumes:
-      - profile-data:/data
-    depends_on:
-      backend:
-        condition: service_healthy
-
-  # Облачный сервис расписания: группы и занятия всех вузов, своя SQLite.
-  schedule:
-    build: ./services/schedule
-    restart: unless-stopped
-    init: true
-    environment:
-      CORE_INTERNAL_URL: http://backend:8000
-      SCHEDULE_PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN}
-      SCHEDULE_DB: /data/schedule.db
-    volumes:
-      - schedule-data:/data
-    depends_on:
-      backend:
-        condition: service_healthy
+  # Сервисы вуза — администрирование, «Люди», расписание, курсовые — здесь не запускаются:
+  # у каждого вуза свои контейнеры со своим ключом (services/<сервис>/compose.yaml, test-data/coursework).
 
   web:
     depends_on:
       backend:
-        condition: service_healthy
-      administration:
-        condition: service_healthy
-      user-profile:
-        condition: service_healthy
-      schedule:
         condition: service_healthy
     build: ./frontend
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-      - "8444:8444"
       - "8445:8445"
     volumes:
       - ./web/configs/docker-nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -156,7 +100,5 @@ services:
       retries: 5
 
 volumes:
-  schedule-data:
-  profile-data:
   core-data:
   redis-data:

@@ -1,0 +1,45 @@
+# Администрирование — сервис вуза. Как курсовые: один контейнер — один вуз, свой ключ, свой HTTPS.
+# Для каждого вуза свой файл настроек:
+#   cp administration.env.example administration-<вуз>.env && nano administration-<вуз>.env
+#   docker compose --env-file administration-<вуз>.env up -d --build
+# С ядром сервис общается только по HTTPS через CORE_URL и ключ из карточки сервиса.
+name: administration-${INSTANCE:?Run compose with --env-file administration-<вуз>.env}
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      CORE_URL: ${CORE_URL:?Set CORE_URL in administration-<вуз>.env}
+      SHELL_ORIGIN: ${SHELL_ORIGIN:?Set SHELL_ORIGIN in administration-<вуз>.env}
+      SERVICE_CLIENT_ID: ${SERVICE_CLIENT_ID:?Set SERVICE_CLIENT_ID in administration-<вуз>.env}
+      SERVICE_CLIENT_SECRET: ${SERVICE_CLIENT_SECRET:?Set SERVICE_CLIENT_SECRET in administration-<вуз>.env}
+      SERVICE_API_BASE_URL: ${SERVICE_API_BASE_URL:?Set SERVICE_API_BASE_URL in administration-<вуз>.env}
+      SERVICE_CLIENT_BASE_URL: ${SERVICE_CLIENT_BASE_URL:?Set SERVICE_CLIENT_BASE_URL in administration-<вуз>.env}
+      FRAME_ANCESTORS: ${FRAME_ANCESTORS:-}
+
+  # HTTPS-вход на DNS-имени вуза, одобренном в пульте оператора.
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${SERVICE_PORT:?Set SERVICE_PORT}:443"
+    environment:
+      SERVICE_HOST: ${SERVICE_HOST:?Set SERVICE_HOST}
+      CERT_NAME: ${CERT_NAME:?Set CERT_NAME}
+      APP_PORT: "8100"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./letsencrypt:/etc/letsencrypt:ro
+
+  # Выпуск и продление сертификата; хранится в ./letsencrypt рядом с сервисом.
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["tools"]
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ${ACME_WEBROOT:-/var/lib/max-miniapp/acme}:/var/www/acme

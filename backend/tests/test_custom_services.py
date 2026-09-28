@@ -175,5 +175,44 @@ class CustomServices(unittest.TestCase):
             self.assertFalse(db.get(CloudBinding, legacy.id).active)
             self.assertIsNotNone(db.get(ServiceCredential, cred.id).revoked_at)
 
+    def test_connect_service_for_the_script(self):
+        from database.tables import InstitutionLocalHost, ServiceCredential
+        from platform_core import registry
+        from services import platform_ops
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Автоподключение'}, 'ru').id
+            db.commit()
+            first = platform_ops.connect_service(db, inst, 'schedule', 'schedule-x.1-2-3-4.sslip.io', 9445)
+            db.commit()
+            env = first['env']
+            self.assertEqual(env['SERVICE_API_BASE_URL'], 'https://schedule-x.1-2-3-4.sslip.io:9445/api/v1')
+            self.assertEqual(env['CORE_URL'], 'https://core.test')
+            service = db.get(ServiceInstance, first['service_id'])
+            self.assertEqual((service.service_type, service.enabled), ('custom.schedule', False))
+            self.assertIsNotNone(db.get(InstitutionLocalHost, (inst, 'schedule-x.1-2-3-4.sslip.io')))
+            # Ключ рабочий: ядро меняет его на machine token этого сервиса.
+            token = self.c.post('/api/v1/internal/auth/token', auth=(env['SERVICE_CLIENT_ID'], env['SERVICE_CLIENT_SECRET']),
+                                json={'grant_type': 'client_credentials'}).json()
+            self.assertEqual((token['service_id'], token['institution_id']), (service.id, inst))
+            # Меню ещё нет — не включается; после публикации — включается.
+            self.assertFalse(platform_ops.enable_service(db, inst, 'schedule'))
+            service.manifest = {'titles': {'ru': 'Расписание'}, 'menus': [
+                {'id': 'schedule', 'titles': {'ru': 'Расписание'}, 'entrypoint_path': '/', 'profiles': ['student'],
+                 'required_permissions': [], 'order': 0}]}
+            self.assertTrue(platform_ops.enable_service(db, inst, 'schedule'))
+            db.commit()
+            # Повторный запуск: тот же сервис, старый ключ отозван.
+            again = platform_ops.connect_service(db, inst, 'schedule', 'schedule-x.1-2-3-4.sslip.io', 9445)
+            db.commit()
+            self.assertEqual(again['service_id'], service.id)
+            old = db.query(ServiceCredential).filter_by(client_id=env['SERVICE_CLIENT_ID']).one()
+            self.assertIsNotNone(old.revoked_at)
+            self.assertTrue(db.get(ServiceInstance, service.id).enabled)  # адреса те же — не выключается
+            # Администрирование: адреса защищённого экземпляра и ключ.
+            admin = platform_ops.connect_service(db, inst, 'administration', 'admin-x.1-2-3-4.sslip.io', 9444)
+            db.commit()
+            self.assertEqual(db.get(ServiceInstance, admin['service_id']).client_base_url, 'https://admin-x.1-2-3-4.sslip.io:9444')
+            self.assertTrue(platform_ops.enable_service(db, inst, 'administration'))
+
 if __name__ == '__main__':
     unittest.main()

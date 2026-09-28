@@ -9,6 +9,8 @@
     python manage.py import-groups < groups.json
     python manage.py list-institutions
     python manage.py ensure-invariants
+    python manage.py connect-service INSTITUTION_UUID CODE HOST PORT   # печатает строки .env сервиса
+    python manage.py enable-service INSTITUTION_UUID CODE              # код выхода 3 — меню ещё нет
 
 Пользователь должен хотя бы раз войти через MAX: UUID показан в приложении.
 """
@@ -62,6 +64,36 @@ def assign_owner(institution_id: str, user_id: str) -> None:
                        actor_kind="operator", institution_id=institution_id, target_type="member", target_id=user_id)
         db.commit()
     print("Владелец назначен: профиль admin и роль owner в сервисе администрирования.")
+
+
+def connect_service(institution_id: str, code: str, host: str, port: int) -> None:
+    """Подключение сервиса вуза для scripts/connect-services.sh: в stdout — только строки .env."""
+    from platform_core.errors import DomainError
+    from services.platform_ops import connect_service as connect
+    with session_local() as db:
+        if not db.get(Institution, institution_id):
+            raise SystemExit("Вуз не найден; изменений нет.")
+        try:
+            result = connect(db, institution_id, code, host, port)
+        except DomainError as error:
+            raise SystemExit(f"{error.message}; изменений нет.")
+        db.commit()
+    for key, value in result["env"].items():
+        print(f"{key}={value}")
+
+
+def enable_service(institution_id: str, code: str) -> None:
+    from platform_core.errors import DomainError
+    from services.platform_ops import enable_service as enable
+    with session_local() as db:
+        try:
+            ready = enable(db, institution_id, code)
+        except DomainError as error:
+            raise SystemExit(error.message)
+        db.commit()
+    if not ready:
+        sys.exit(3)
+    print("Сервис включён.")
 
 
 def import_groups(stream) -> None:
@@ -120,6 +152,14 @@ def main(argv=None) -> None:
     owner = sub.add_parser("assign-owner")
     owner.add_argument("institution_id")
     owner.add_argument("user_id")
+    connect = sub.add_parser("connect-service")
+    connect.add_argument("institution_id")
+    connect.add_argument("code")
+    connect.add_argument("host")
+    connect.add_argument("port", type=int)
+    enable = sub.add_parser("enable-service")
+    enable.add_argument("institution_id")
+    enable.add_argument("code")
     sub.add_parser("import-groups", help="JSON групп из расписания на stdin")
     sub.add_parser("list-institutions")
     sub.add_parser("ensure-invariants")
@@ -133,6 +173,10 @@ def main(argv=None) -> None:
         revoke(_uuid(args.user_id))
     elif args.command == "assign-owner":
         assign_owner(_uuid(args.institution_id), _uuid(args.user_id))
+    elif args.command == "connect-service":
+        connect_service(_uuid(args.institution_id), args.code, args.host, args.port)
+    elif args.command == "enable-service":
+        enable_service(_uuid(args.institution_id), args.code)
     elif args.command == "import-groups":
         import_groups(sys.stdin)
     elif args.command == "list-institutions":
