@@ -1,10 +1,9 @@
-import { PlatformLinks } from '../../platform/PlatformScreen';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import logo from '../../assets/logo-buildings.png';
 import { useInstitution } from '../../state/institution';
 import { Wordmark } from '../icons/figma';
 import { bottomNav, buildNav, type NavItem } from './navigation';
-import { ProfileSwitcher, UniversitySwitcher } from './Switchers';
+import { AccountSwitcher, ProfileSwitcher } from './Switchers';
 import s from './layout.module.css';
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ');
@@ -59,12 +58,11 @@ export function AppLayout() {
             <Wordmark />
           </Link>
           <div className={s.switchers}>
-            <UniversitySwitcher />
             <ProfileSwitcher />
           </div>
+          <div className={s.accountSlot}><AccountSwitcher /></div>
         </header>
         <div className={s.content}>
-          <PlatformLinks />
           <Outlet />
         </div>
       </main>

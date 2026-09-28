@@ -13,6 +13,7 @@ from database.create_tables import get_db
 from auth.authorization import ActorContext, private_actor
 from platform_core.errors import DomainError
 from services import institution_admin as svc
+from services import join_requests
 
 PREFIX = "/api/v1/institution/{institution_id}/internal"
 router_private = APIRouter(prefix=PREFIX, tags=["Private institution administration"])
@@ -103,6 +104,26 @@ def replace_profiles(user_id: str, payload: Any = Body(None), if_match: Optional
 def set_member_group(user_id: str, payload: Any = Body(None), ctx: ActorContext = Depends(private_actor),
                      db: Session = Depends(get_db)):
     return mutate(db, ctx, "member.group.set", user_id, lambda: svc.set_member_group(db, ctx, user_id, payload))
+
+
+# --- Заявки на вступление ---
+
+@router_private.get("/join-requests")
+def list_join_requests(status: Optional[str] = Query(None), ctx: ActorContext = Depends(private_actor),
+                       db: Session = Depends(get_db)):
+    return respond(join_requests.list_for_institution(db, ctx, status))
+
+
+@router_private.post("/join-requests/{request_id}/approve")
+def approve_join_request(request_id: str, ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return mutate(db, ctx, "join_request.approve", request_id, lambda: join_requests.approve(db, ctx, request_id))
+
+
+@router_private.post("/join-requests/{request_id}/reject")
+def reject_join_request(request_id: str, payload: Any = Body(None), ctx: ActorContext = Depends(private_actor),
+                        db: Session = Depends(get_db)):
+    return mutate(db, ctx, "join_request.reject", request_id,
+                  lambda: join_requests.reject(db, ctx, request_id, payload))
 
 
 # --- Учебные группы ---

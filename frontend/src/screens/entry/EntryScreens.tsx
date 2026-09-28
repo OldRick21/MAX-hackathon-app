@@ -9,7 +9,7 @@ import { PROFILE_LABEL } from '../../state/institution';
 import { useSession } from '../../state/session';
 import s from './entry.module.css';
 
-function Frame({ children }: { children: ReactNode }) {
+export function Frame({ children }: { children: ReactNode }) {
   return (
     <div className={s.screen}>
       <div className={s.brand} aria-label="Вузы России">

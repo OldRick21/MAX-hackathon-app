@@ -17,6 +17,7 @@ from platform_core.concurrency import constant_time_token_match, derive_binding_
 from platform_core.errors import DomainError
 from routes.private_admin import respond
 from services import platform_support as svc
+from services import join_requests
 from settings.config import settings
 from database.tables import PlatformStaff
 
@@ -70,6 +71,32 @@ def withdraw_application(application_id: str, request: Request,
                          session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
     user, _ = session_data
     return respond(svc.withdraw_application(db, user, application_id, getattr(request.state, "request_id", None)))
+
+
+@router_platform.get("/api/v1/join/institutions")
+def join_options(session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    user, _ = session_data
+    return respond(join_requests.join_options(db, user))
+
+
+@router_platform.get("/api/v1/join-requests")
+def my_join_requests(session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    user, _ = session_data
+    return respond(join_requests.my_requests(db, user))
+
+
+@router_platform.post("/api/v1/join-requests")
+def submit_join_requests(payload: Any = Body(None), session_data=Depends(get_current_core_session),
+                         db: Session = Depends(get_db)):
+    user, _ = session_data
+    return respond(join_requests.submit(db, user, payload))
+
+
+@router_platform.post("/api/v1/join-requests/{request_id}/withdraw")
+def withdraw_join_request(request_id: str, session_data=Depends(get_current_core_session),
+                          db: Session = Depends(get_db)):
+    user, _ = session_data
+    return respond(join_requests.withdraw(db, user, request_id))
 
 
 # --- Поддержка платформы ---

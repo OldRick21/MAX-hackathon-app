@@ -5,7 +5,7 @@ import { NotInMaxError } from '../backend';
 import { ApiError, newIdempotencyKey, request, toApiError } from '../http';
 import { initData, loadBridge, maxUserInfo, openExternal } from '../max';
 import type {
-  Group, InstitutionView, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
+  Group, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
 } from '../types';
 import { CoreSession, listAll } from './core';
 import { openServiceFrame } from './frame';
@@ -179,6 +179,12 @@ export function createRealBackend(): Backend {
       return core.call<Page<InstitutionView>>(`/api/v1/institution?${params}`, { signal });
     }, i => i.id),
     getInstitution: (id, signal) => core.call<InstitutionView>(`/api/v1/institution/${id}`, { signal }),
+    listJoinOptions: async signal => (await core.call<Page<JoinOption>>('/api/v1/join/institutions', { signal })).items,
+    listJoinRequests: async signal => (await core.call<Page<JoinRequest>>('/api/v1/join-requests', { signal })).items,
+    async submitJoinRequests(full_name, items) {
+      return (await core.call<Page<JoinRequest>>('/api/v1/join-requests', { method: 'POST', body: { full_name, items } })).items;
+    },
+    withdrawJoinRequest: id => core.call<JoinRequest>(`/api/v1/join-requests/${id}/withdraw`, { method: 'POST' }),
     async getProfiles(id, signal) {
       const list = await core.call<ProfileList>(`/api/v1/institution/${id}/profiles`, { signal });
       return PROFILE_ORDER.filter(p => list.profiles.includes(p));

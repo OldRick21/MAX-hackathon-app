@@ -32,6 +32,41 @@ export interface InstitutionView {
   profiles: Profile[];
 }
 
+// ---------- Заявки на вступление ----------
+
+/** Вуз, в который можно подать заявку: только зарегистрированные вузы и их группы. */
+export interface JoinOption {
+  id: UUID;
+  display_name: string;
+  groups: { id: UUID; name: string }[];
+  /** Профили, которые у пользователя уже есть в этом вузе. */
+  profiles: Profile[];
+}
+
+export type JoinProfile = 'student' | 'teacher';
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface JoinRequestItem {
+  institution_id: UUID;
+  profile: JoinProfile;
+  group_id?: UUID;
+}
+
+export interface JoinRequest {
+  id: UUID;
+  institution_id: UUID;
+  institution_name: string;
+  user_id: UUID;
+  full_name: string;
+  profile: JoinProfile;
+  group_id: UUID | null;
+  group_name: string | null;
+  status: JoinRequestStatus;
+  decision_reason: string | null;
+  created_at: DateTime;
+  reviewed_at: DateTime | null;
+}
+
 export interface ProfileList {
   user_id: UUID;
   institution_id: UUID;

@@ -56,16 +56,19 @@ function UserProfile({ service }: { service: ServiceView }) {
           <Avatar name={name} src={isMe ? maxUser?.photo_url : undefined} size="var(--avatar)" className={s.photo} />
           <div className={s.headText}>
             <h1 className={s.name}>{name}</h1>
-            <p className={s.meta}>{isMe ? PROFILE_LABEL[profile] : [c.position, c.academic_degree].filter(Boolean).join(' · ') || 'Участник вуза'}</p>
+            <p className={s.meta}>{isMe ? <MyStatus /> : [c.position, c.academic_degree].filter(Boolean).join(' · ') || 'Участник вуза'}</p>
+            {isMe && (c.position || c.academic_degree) && <p className={s.meta}>{[c.position, c.academic_degree].filter(Boolean).join(' · ')}</p>}
             <p className={s.uni}>{institution.display_name}</p>
           </div>
         </section>
 
         <section className={s.details} aria-label="Данные профиля">
+          {/* Только поля, которые здесь же можно изменить: «О себе» — сам участник,
+              должность и степень — администратор с profiles.manage. */}
           <dl className={s.dl}>
-            <dt>Должность</dt><dd>{c.position || '—'}</dd>
-            <dt>Учёная степень</dt><dd>{c.academic_degree || '—'}</dd>
             <dt>О себе</dt><dd>{c.about || (isMe ? 'Расскажите о себе — это увидят другие участники вуза.' : '—')}</dd>
+            {canManage && <><dt>Должность</dt><dd>{c.position || '—'}</dd></>}
+            {canManage && <><dt>Учёная степень</dt><dd>{c.academic_degree || '—'}</dd></>}
           </dl>
           {(isMe || canManage) && (
             <div className={s.actions}>
@@ -75,7 +78,6 @@ function UserProfile({ service }: { service: ServiceView }) {
           )}
         </section>
 
-        {isMe && <AboutMe userId={user?.id ?? ''} />}
       </div>
 
       {editSelf && <EditSelf api={api} card={card.data!} onClose={() => setEditSelf(false)} onSaved={v => { card.mutate(() => v); setEditSelf(false); }} />}
@@ -87,41 +89,14 @@ function UserProfile({ service }: { service: ServiceView }) {
   );
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Владелец вуза', technical_admin: 'Технический администратор', membership_admin: 'Администратор участников',
-  schedule_editor: 'Редактор расписания', profile_editor: 'Редактор анкет', coursework_manager: 'Менеджер курсовых',
-};
-
-/** Всё о себе в вузе: профили, роли в сервисах, учебная группа и ID для администратора. */
-function AboutMe({ userId }: { userId: string }) {
-  const { institution, profiles, profile, catalog } = useInstitution();
+/** Статус в вузе под именем: профиль и, для студента, учебная группа. */
+function MyStatus() {
+  const { profile } = useInstitution();
   const schedule = useScheduleApi();
   // Своя группа видна только студенту: преподавателю сервис отдаёт все группы вуза.
   const group = useAsync(async signal => (schedule && profile === 'student'
-    ? (await schedule.api.listGroups(signal))[0]?.name ?? null : undefined), [schedule, profile]);
-  const roles = (catalog.status === 'ready' ? catalog.value : [])
-    .flatMap(svc => svc.roles.map(r => `${ROLE_LABEL[r] ?? r} (${svc.display_name})`));
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(userId); toast('ID скопирован'); }
-    catch { toast('Не удалось скопировать. Выделите ID вручную.', true); }
-  };
-  return (
-    <section className={s.details} aria-label="Участие в вузе">
-      <dl className={s.dl}>
-        <dt>Вуз</dt><dd>{institution.display_name}</dd>
-        <dt>Профили</dt><dd>{profiles.map(x => PROFILE_LABEL[x]).join(', ')} · сейчас: {PROFILE_LABEL[profile]}</dd>
-        {profile === 'student' && schedule && (
-          <><dt>Учебная группа</dt><dd>{group.status === 'loading' ? '…' : group.data ?? 'Пока не назначена — обратитесь к куратору'}</dd></>
-        )}
-        <dt>Роли</dt><dd>{roles.length ? roles.join(', ') : 'Нет дополнительных ролей в текущем профиле'}</dd>
-        <dt>ID пользователя</dt><dd><code style={{ wordBreak: 'break-all' }}>{userId}</code></dd>
-      </dl>
-      <div className={s.actions}>
-        <Button variant="secondary" onClick={copy}>Скопировать ID</Button>
-      </div>
-      <p className={p.muted}>ID нужен администратору, чтобы добавить вас в вуз или в учебную группу.</p>
-    </section>
-  );
+    ? (await schedule.api.listGroups(signal))[0]?.name ?? null : null), [schedule, profile]);
+  return <>{PROFILE_LABEL[profile]}{group.data ? ` · группа ${group.data}` : ''}</>;
 }
 
 function EditSelf({ api, card, onClose, onSaved }: { api: ProfilesApi; card: Versioned<ProfileCard>; onClose: () => void; onSaved: (v: Versioned<ProfileCard>) => void }) {

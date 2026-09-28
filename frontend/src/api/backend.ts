@@ -2,7 +2,8 @@
 // а реализация выбирается в api/index.ts: настоящая (real/) или тестовая (mock/).
 
 import type {
-  AcademicCardPatch, EventInput, Group, InstitutionView, MaxUserInfo, Page, Profile, ProfileCard,
+  AcademicCardPatch, EventInput, Group, InstitutionView, JoinOption, JoinRequest, JoinRequestItem, MaxUserInfo, Page,
+  Profile, ProfileCard,
   ReviewInput, ScheduleEvent, SelfCardPatch, ServiceView, Submission, SubmissionStatus, User, Versioned,
 } from './types';
 
@@ -58,6 +59,11 @@ export interface Backend {
   login(): Promise<User>;
   listInstitutions(signal?: AbortSignal): Promise<InstitutionView[]>;
   getInstitution(id: string, signal?: AbortSignal): Promise<InstitutionView>;
+  /** Заявки на вступление: зарегистрированные вузы с группами, свои заявки, подача и отзыв. */
+  listJoinOptions(signal?: AbortSignal): Promise<JoinOption[]>;
+  listJoinRequests(signal?: AbortSignal): Promise<JoinRequest[]>;
+  submitJoinRequests(fullName: string, items: JoinRequestItem[]): Promise<JoinRequest[]>;
+  withdrawJoinRequest(id: string): Promise<JoinRequest>;
   getProfiles(institutionId: string, signal?: AbortSignal): Promise<Profile[]>;
   listServices(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<ServiceView[]>;
   /** Учебные группы из ядра: студенту — своя, преподавателю и админу — все с составом (user_ids). */

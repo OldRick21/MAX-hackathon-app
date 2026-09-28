@@ -26,6 +26,10 @@ interface InstitutionValue {
 const Ctx = createContext<InstitutionValue | null>(null);
 
 const storeKey = (id: string) => `vuzy.profile.${id}`;
+/** Запомнить профиль вуза до перехода в него: InstitutionProvider откроет именно его. */
+export function rememberProfile(id: string, p: Profile) {
+  try { sessionStorage.setItem(storeKey(id), p); } catch { /* приватный режим */ }
+}
 function rememberedProfile(id: string): Profile | null {
   try { return sessionStorage.getItem(storeKey(id)) as Profile | null; } catch { return null; }
 }

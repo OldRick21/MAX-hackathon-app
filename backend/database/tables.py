@@ -107,6 +107,33 @@ class StudyGroupMember(table_class):
     group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="CASCADE"), nullable=False, index=True)
 
 
+class JoinRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
+class JoinRequest(table_class):
+    """Заявка пользователя на вступление в вуз. Членство появляется только после одобрения
+    администратором вуза с правом members.manage. На вуз — не больше одной ожидающей заявки."""
+    __tablename__ = "join_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    institution_id = Column(String(36), ForeignKey("institutions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    full_name = Column(String(200), nullable=False)
+    profile = Column(String(20), nullable=False)  # student | teacher
+    # Группа, которую выбрал студент. Удаление группы не удаляет заявку.
+    group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="SET NULL"), nullable=True)
+    group_name = Column(String(100), nullable=True)  # название на момент подачи — для карточки
+    status = Column(String(20), nullable=False, default=JoinRequestStatus.PENDING.value, index=True)
+    decision_reason = Column(Text, nullable=True)
+    reviewed_by = Column(String(36), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
 class ServiceInstance(table_class):
     """Экземпляр сервиса в рамках ВУЗа (компонент AdminService в OpenAPI)."""
     __tablename__ = "services"
