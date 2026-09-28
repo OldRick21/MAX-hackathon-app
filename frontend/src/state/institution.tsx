@@ -72,6 +72,24 @@ export function InstitutionProvider({ institutionId, children, fallback }: {
     return () => { ctrl.abort(); backend.releaseServices(); };
   }, [backend, institutionId, profile, ready, blocked, catalogAttempt]);
 
+  // Роли выдают в администрировании, пока приложение открыто в MAX. При возвращении
+  // во вкладку перечитываем каталог без экрана загрузки: права и меню обновятся на месте.
+  useEffect(() => {
+    if (!ready || !profile || blocked) return;
+    let busy = false;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || busy) return;
+      busy = true;
+      backend.listServices(institutionId, profile)
+        .then(v => setCatalog(c => (c.status === 'ready' && JSON.stringify(c.value) === JSON.stringify(v) ? c : { status: 'ready', value: v })))
+        .catch(() => { /* тихое обновление: при ошибке остаётся прежний каталог */ })
+        .finally(() => { busy = false; });
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => { document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh); };
+  }, [backend, institutionId, profile, ready, blocked]);
+
   const setProfile = useCallback((p: Profile) => {
     if (!ready?.profiles.includes(p)) return;
     try { sessionStorage.setItem(storeKey(institutionId), p); } catch { /* приватный режим */ }

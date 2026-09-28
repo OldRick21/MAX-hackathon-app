@@ -325,24 +325,35 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
         _body(payload, {"service_type", "deployment"}, {"service_type", "deployment"})
         if service_type not in catalog.CLOUD_INSTALLABLE:
             raise validation("Через интерфейс устанавливаются облачные типы schedule и user-profile", "service_type")
+    elif deployment == "local" and catalog.is_custom(service_type):
+        # Свой сервис вуза: код, название и профили задаёт администратор, меню и роли
+        # публикует сам сервис через machine API после выдачи ключа.
+        _body(payload, {"service_type", "deployment", "api_base_url", "client_base_url", "titles", "supported_profiles"},
+              {"service_type", "deployment", "api_base_url", "client_base_url", "titles", "supported_profiles"})
+        titles = catalog.check_localized(payload["titles"], "titles")
+        profiles = catalog.check_profiles(payload["supported_profiles"], "supported_profiles")
+        api_url = catalog.check_api_url(payload["api_base_url"], approved)
+        client_url = catalog.check_origin(payload["client_base_url"], approved)
     elif deployment == "local":
         _body(payload, {"service_type", "deployment", "api_base_url", "client_base_url"},
               {"service_type", "deployment", "api_base_url", "client_base_url"})
         if service_type not in catalog.LOCAL_INSTALLABLE:
-            raise validation("Локально устанавливается только coursework", "service_type")
+            raise validation("Локально устанавливаются coursework и свои сервисы custom.<код>", "service_type")
         api_url = catalog.check_api_url(payload["api_base_url"], approved)
         client_url = catalog.check_origin(payload["client_base_url"], approved)
+        titles, profiles = None, None
     else:
         raise validation("deployment: cloud или local", "deployment")
 
     if db.query(ServiceInstance).filter(ServiceInstance.institution_id == ctx.institution_id,
                                         ServiceInstance.service_type == service_type).first():
-        raise DomainError(409, "SERVICE_ALREADY_EXISTS", "Экземпляр этого типа уже установлен в вузе")
+        raise DomainError(409, "SERVICE_ALREADY_EXISTS", "Сервис с таким кодом уже подключён в вузе")
 
     if deployment == "cloud":
         service = registry.create_cloud_instance(db, ctx.institution_id, service_type)
     else:
-        service = registry.create_local_instance(db, ctx.institution_id, service_type, api_url, client_url)
+        service = registry.create_local_instance(db, ctx.institution_id, service_type, api_url, client_url,
+                                                 titles, profiles)
     view = service_view(service)
     db.add(IdempotencyRecord(actor_user_id=ctx.actor_id, institution_id=ctx.institution_id, method="POST",
                              path=path, key=key, request_hash=digest, resource_id=service.id,

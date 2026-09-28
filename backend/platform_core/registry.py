@@ -258,13 +258,15 @@ def create_cloud_instance(db: Session, institution_id: str, service_type: str) -
     return service
 
 
-def create_local_instance(db: Session, institution_id: str, service_type: str, api_url: str, client_url: str) -> ServiceInstance:
+def create_local_instance(db: Session, institution_id: str, service_type: str, api_url: str, client_url: str,
+                          titles: Optional[dict] = None, profiles: Optional[List[str]] = None) -> ServiceInstance:
+    """Local создаётся выключенным с пустым меню; своему сервису название и профили задаёт вуз."""
     t = catalog.service_type(service_type)
     service = ServiceInstance(
         id=generate_uuid(), institution_id=institution_id, service_type=service_type, deployment="local",
         enabled=False, protected=False, api_base_url=api_url, client_base_url=client_url,
-        supported_profiles=list(t["supported_profiles"]),
-        manifest={"titles": dict(t["titles"]), "menus": []},
+        supported_profiles=list(profiles or t["supported_profiles"]),
+        manifest={"titles": dict(titles or t["titles"]), "menus": []},
     )
     db.add(service)
     db.flush()

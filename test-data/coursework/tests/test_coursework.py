@@ -1,6 +1,6 @@
 """Сервис курсовых против заглушки ядра: права, состояния, версии, файлы, idempotency, очистка.
 
-    cd services/coursework && python -m unittest discover -s tests -t . -v
+    cd test-data/coursework && python -m unittest discover -s tests -t . -v
 """
 import os
 import tempfile

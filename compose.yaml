@@ -94,7 +94,7 @@ services:
   #   docker compose --profile coursework up -d --build coursework
   # Настройки (COURSEWORK_*, CORE_URL) выдаёт админка на шаге «Ключ доступа».
   coursework:
-    build: ./services/coursework
+    build: ./test-data/coursework
     profiles: ["coursework"]
     restart: unless-stopped
     init: true

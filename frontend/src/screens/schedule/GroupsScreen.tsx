@@ -33,7 +33,16 @@ function Groups({ service }: { service: ServiceView }) {
   const [composing, setComposing] = useState<Group | null>(null);
 
   const back = <Link to={`/institution/${institution.id}/schedule`} className={p.back}><IconArrowLeft />Расписание</Link>;
-  if (service.profile !== 'admin' || !service.permissions.includes('groups.manage')) {
+  const manages = service.profile === 'admin' && service.permissions.includes('groups.manage');
+  const readOnly = service.profile === 'teacher';
+  if (!manages && !readOnly) {
+    // Студент видит свою группу; admin без роли — подсказку, где взять права.
+    if (service.profile === 'student') {
+      return <>{back}{groups.status === 'loading' ? <LoadingState /> : (
+        <EmptyState icon={<IconUsers />} title={groups.data?.[0] ? `Моя группа: ${groups.data[0].name}` : 'Группа пока не назначена'}
+          text={groups.data?.[0] ? 'Вы видите занятия этой группы в расписании.' : 'Обратитесь к куратору: он добавит вас в учебную группу.'} />
+      )}</>;
+    }
     return <>{back}<EmptyState icon={<IconLock />} title="Нет доступа"
       text="Группы ведёт администратор с ролью «Редактор расписания». Роль назначает владелец вуза в администрировании." /></>;
   }
@@ -65,20 +74,22 @@ function Groups({ service }: { service: ServiceView }) {
       <div className={p.pageHead}>
         <div>
           <h1 className={p.title}>Учебные группы</h1>
-          <p className={p.subtitle}>Студент видит занятия своей группы. Один студент — одна группа.</p>
+          <p className={p.subtitle}>{readOnly ? 'Группы вуза и их студенты. Состав меняет редактор расписания.'
+            : 'Студент видит занятия своей группы. Один студент — одна группа.'}</p>
         </div>
       </div>
 
-      <form className={`${p.card} ${p.cardPad} ${s.groupForm}`} onSubmit={create}>
+      {manages && <form className={`${p.card} ${p.cardPad} ${s.groupForm}`} onSubmit={create}>
         <Input label="Новая группа" placeholder="Например, ИВТ-21" value={name} maxLength={100}
           onChange={e => setName(e.target.value)} />
         <Button type="submit" icon={<IconPlus width="1.2em" height="1.2em" />} loading={creating} disabled={!name.trim()}>Создать</Button>
-      </form>
+      </form>}
 
       {groups.status === 'error' ? (
         <ErrorState title="Не удалось загрузить группы" text={humanMessage(groups.error)} onRetry={groups.reload} />
       ) : groups.status === 'loading' && !groups.data ? <LoadingState /> : !groups.data?.length ? (
-        <EmptyState icon={<IconUsers />} title="Групп пока нет" text="Создайте первую группу и добавьте в неё студентов." />
+        <EmptyState icon={<IconUsers />} title="Групп пока нет"
+          text={manages ? 'Создайте первую группу и добавьте в неё студентов.' : 'Группы создаёт редактор расписания.'} />
       ) : (
         <ul className={s.groupList}>
           {groups.data.map(g => (
@@ -86,8 +97,8 @@ function Groups({ service }: { service: ServiceView }) {
               <span className={s.groupName}>{g.name}</span>
               <span className={s.spacer} />
               <Button size="small" onClick={() => setComposing(g)}>Состав</Button>
-              <Button size="small" variant="secondary" onClick={() => setRenaming(g)}>Переименовать</Button>
-              <Button size="small" variant="ghost" onClick={() => void remove(g)}>Удалить</Button>
+              {manages && <Button size="small" variant="secondary" onClick={() => setRenaming(g)}>Переименовать</Button>}
+              {manages && <Button size="small" variant="ghost" onClick={() => void remove(g)}>Удалить</Button>}
             </li>
           ))}
         </ul>
@@ -95,9 +106,29 @@ function Groups({ service }: { service: ServiceView }) {
 
       {renaming && <RenameGroup api={api} group={renaming} onClose={() => setRenaming(null)}
         onDone={() => { setRenaming(null); groups.reload(); }} />}
-      {composing && <GroupStudents api={api} profiles={profiles?.api ?? null} scope={profiles?.service.id ?? ''}
-        group={composing} onClose={() => setComposing(null)} />}
+      {composing && (manages
+        ? <GroupStudents api={api} profiles={profiles?.api ?? null} scope={profiles?.service.id ?? ''} group={composing} onClose={() => setComposing(null)} />
+        : <GroupRoster api={api} profiles={profiles?.api ?? null} scope={profiles?.service.id ?? ''} group={composing} onClose={() => setComposing(null)} />)}
     </div>
+  );
+}
+
+/** Состав группы только для чтения — преподавателю. */
+function GroupRoster({ api, profiles, scope, group, onClose }: {
+  api: ScheduleApi; profiles: ProfilesApi | null; scope: string; group: Group; onClose: () => void;
+}) {
+  const roster = useAsync(signal => api.getStudents(group.id, signal), [api, group.id]);
+  const ids = roster.data?.data ?? [];
+  const names = useUserNames(profiles, scope, ids);
+  return (
+    <Modal title={`Группа «${group.name}»`} onClose={onClose} actions={<Button onClick={onClose}>Закрыть</Button>}>
+      {roster.status === 'error' ? <ErrorState text={humanMessage(roster.error)} onRetry={roster.reload} />
+        : roster.status === 'loading' ? <LoadingState /> : !ids.length ? <p className={p.muted}>В группе пока нет студентов.</p> : (
+          <ul className={p.formGrid} style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {ids.map(id => <li key={id}>{names[id] || `Студент без анкеты · ${id.slice(0, 8)}`}</li>)}
+          </ul>
+        )}
+    </Modal>
   );
 }
 

@@ -123,12 +123,49 @@ SERVICE_TYPES: Dict[str, dict] = {
 CLOUD_INSTALLABLE = ("schedule", "user-profile")
 LOCAL_INSTALLABLE = ("coursework",)
 
+# Свой локальный сервис вуза: тип custom.<код>. Каталог его заранее не знает — вуз
+# регистрирует сервис на одобренном хосте, а сервис сам публикует меню и роли через
+# machine API (CORE_API_SPEC.md §7). Права такого сервиса живут в своём пространстве
+# <код>.*, поэтому он не может выдать себе права расписания или администрирования.
+CUSTOM_RE = re.compile(r"^custom\.([a-z][a-z0-9-]{1,39})$")
+
+
+class PermissionNamespace:
+    """Словарь прав своего сервиса: любые коды вида '<prefix><имя>'."""
+
+    def __init__(self, prefix: str):
+        self.prefix = prefix
+
+    def __contains__(self, code) -> bool:
+        return isinstance(code, str) and code.startswith(self.prefix) and len(code) > len(self.prefix)
+
+    def __iter__(self):
+        return iter(())
+
+
+def is_custom(code) -> bool:
+    return isinstance(code, str) and bool(CUSTOM_RE.match(code))
+
+
+def custom_code(slug) -> str:
+    code = f"custom.{slug}" if isinstance(slug, str) else ""
+    if not is_custom(code):
+        raise validation("Код сервиса: латиница в нижнем регистре, цифры и -, 2–40 символов, с буквы", "code")
+    return code
+
 
 def service_type(code: str) -> dict:
     item = SERVICE_TYPES.get(code)
-    if not item:
-        raise validation("Неизвестный тип сервиса", "service_type")
-    return item
+    if item:
+        return item
+    match = CUSTOM_RE.match(code) if isinstance(code, str) else None
+    if match:
+        return {
+            "code": code, "deployment": "local", "titles": {"ru": "Свой сервис", "en": "Custom service"},
+            "supported_profiles": list(PROFILES), "permission_codes": PermissionNamespace(f"{match.group(1)}."),
+            "protected": False, "menus": [], "initial_roles": [], "system_roles": False,
+        }
+    raise validation("Неизвестный тип сервиса", "service_type")
 
 
 def public_service_types() -> List[dict]:
@@ -189,11 +226,13 @@ def check_profiles(values, path: str = "profiles", allowed: Iterable[str] = PROF
 def check_permissions(values, vocabulary: Iterable[str], path: str = "permissions") -> List[str]:
     if not isinstance(values, list) or len(values) > 128:
         raise validation("Нужен список permissions (до 128)", path)
-    vocab = set(vocabulary)
+    vocab = vocabulary if isinstance(vocabulary, PermissionNamespace) else set(vocabulary)
     result: List[str] = []
     for i, code in enumerate(values):
         check_code(code, f"{path}[{i}]")
         if code not in vocab:
+            if isinstance(vocab, PermissionNamespace):
+                raise validation(f"Права этого сервиса должны начинаться с '{vocab.prefix}'", f"{path}[{i}]")
             raise validation(f"Permission '{code}' не входит в словарь типа сервиса", f"{path}[{i}]")
         if code in result:
             raise validation("Permissions не должны повторяться", f"{path}[{i}]")

@@ -2,7 +2,7 @@
 
 Регистрация → ключ → сервис сам создаёт роль и публикует меню → включение → загрузка работы.
 
-    cd services/coursework && PYTHONPATH=../../backend python -m unittest tests.test_integration_core -v
+    cd test-data/coursework && PYTHONPATH=../../backend python -m unittest tests.test_integration_core -v
 """
 import os
 import sys

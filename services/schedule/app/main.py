@@ -564,7 +564,9 @@ def students_response(db, ctx, row):
 
 @app.get('/api/v1/schedule/groups/{group_id}/students')
 def get_students(group_id: UUID, ctx: Ctx = Depends(authenticate)):
-    need_groups_manage(ctx)
+    # Состав читает и преподаватель (кого он учит), менять его может только groups.manage.
+    if not (ctx.manages_groups or ctx.profile == 'teacher'):
+        raise forbidden('Состав группы видят преподаватели и редакторы расписания')
     with database() as db:
         row = group_row(db, ctx, str(group_id))
         if not row:

@@ -141,7 +141,9 @@ export function createMockBackend(): Backend {
         D.groups[inst] = groupList().filter(g => g.id !== id);
       },
       async getStudents(id) {
-        await wait(150); requireGroups(); findGroup(id);
+        await wait(150);
+        if (s.profile !== 'teacher') requireGroups();
+        findGroup(id);
         return { data: clone(D.groupStudents[id] ?? []), etag: etagOf(`students:${id}`) };
       },
       async setStudents(id, userIds, etag) {

@@ -1,6 +1,6 @@
 # Сервис курсовых: реализация
 
-Код — `services/coursework/`. Контракт — [SPEC.md](SPEC.md) и [OPENAPI.yaml](OPENAPI.yaml); здесь то, что в реализации уточнено или упрощено.
+Код — `test-data/coursework/` (тестовый сторонний сервис, будет переписан отдельно). Контракт — [SPEC.md](SPEC.md) и [OPENAPI.yaml](OPENAPI.yaml); здесь то, что в реализации уточнено или упрощено.
 
 ## Подключение (SPEC §2, CORE_API_SPEC §7)
 

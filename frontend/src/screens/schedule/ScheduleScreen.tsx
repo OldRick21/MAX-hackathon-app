@@ -90,10 +90,13 @@ function Schedule({ service }: { service: ServiceView }) {
         <div>
           <h1 className={p.title}>Расписание</h1>
           <p className={p.subtitle}>{weekOffset === 0 ? 'Текущая неделя' : weekOffset === 1 ? 'Следующая неделя' : weekOffset === -1 ? 'Прошлая неделя' : weekLabel}</p>
+          {service.profile === 'student' && groups.status !== 'loading' && (
+            <p className={s.myGroup}>{groups.data?.[0] ? <>Моя группа: <strong>{groups.data[0].name}</strong></> : 'Группа пока не назначена — обратитесь к куратору'}</p>
+          )}
         </div>
         {(canWrite || managesGroups) && (
           <div className={p.headActions}>
-            {managesGroups && <Button variant="secondary" onClick={() => navigate('groups')}>Группы</Button>}
+            {(managesGroups || isTeacher) && <Button variant="secondary" onClick={() => navigate('groups')}>Группы</Button>}
             {canWrite && <Button icon={<IconPlus width="1.2em" height="1.2em" />} onClick={() => void openEditor(null)} loading={opening}>Добавить занятие</Button>}
           </div>
         )}

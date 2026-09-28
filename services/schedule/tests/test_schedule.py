@@ -116,6 +116,14 @@ class Schedule(unittest.TestCase):
         self.assertEqual(self.c.put(f'/api/v1/schedule/groups/{b}/students', headers=editor,
                                     json={'user_ids': []}).status_code, 428)
 
+        # Состав читает преподаватель, но не студент и не admin без роли; менять — только редактор.
+        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=teacher).json()['user_ids'], [ST1])
+        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=student).status_code, 403)
+        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=plain_admin).status_code, 403)
+        teacher_tag = self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=teacher).headers['etag']
+        self.assertEqual(self.c.put(f'/api/v1/schedule/groups/{a}/students', headers={**teacher, 'If-Match': teacher_tag},
+                                    json={'user_ids': []}).status_code, 403)
+
         # Видимость групп: преподаватель — все, студент — только своя, admin без роли — 403.
         self.assertEqual(len(self.c.get('/api/v1/schedule/groups', headers=teacher).json()['items']), 2)
         self.assertEqual([g['id'] for g in self.c.get('/api/v1/schedule/groups', headers=student).json()['items']], [a])

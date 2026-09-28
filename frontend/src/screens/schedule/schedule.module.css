@@ -65,3 +65,5 @@
 .groupList { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.2rem; }
 .groupRow { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; padding: 2rem 2.4rem; }
 .groupName { font-size: 2.4rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.myGroup { margin-top: 1rem; font-size: 2.2rem; }
+@media (max-width: 767px) { .myGroup { font-size: 1.6rem; } }

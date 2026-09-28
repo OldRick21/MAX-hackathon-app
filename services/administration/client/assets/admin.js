@@ -361,27 +361,42 @@
     const installed = new Set(services.map(s => s.service_type));
 
     if (manage) {
-      const available = ['schedule', 'user-profile', 'coursework'].filter(c => !installed.has(c));
-      if (available.length) {
-        const select = h('select', {}, available.map(c => h('option', { value: c }, `${title(types[c].titles)} (${types[c].deployment === 'cloud' ? 'облако' : 'локально'})`)));
-        const api_ = h('input', { placeholder: 'https://coursework.university.ru/api/v1' });
-        const client = h('input', { placeholder: 'https://coursework.university.ru' });
-        const localFields = h('div', {}, h('p', { class: 'hint' },
-          'Локальный сервис работает на сервере вуза. Его адрес должен быть на хосте, который одобрила поддержка платформы.'),
-          field('Адрес API', api_), field('Адрес клиента (origin)', client));
-        const sync = () => { localFields.hidden = types[select.value].deployment !== 'local'; };
-        select.addEventListener('change', sync); sync();
-        const key = crypto.randomUUID();
-        parts.push(h('section', { class: 'card' }, h('h2', {}, 'Подключить сервис'), field('Тип', select), localFields,
-          h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
-            const type = types[select.value];
-            const body = type.deployment === 'cloud' ? { service_type: type.code, deployment: 'cloud' }
-              : { service_type: type.code, deployment: 'local', api_base_url: api_.value.trim(), client_base_url: client.value.trim() };
-            await api('/services', { method: 'POST', body, idempotencyKey: key });
-            toast(type.deployment === 'cloud' ? 'Сервис подключён и включён.'
-              : 'Сервис зарегистрирован. Дальше — шаги в его карточке: ключ, запуск на сервере вуза, включение.');
-          }, reload) }, 'Подключить'))));
-      }
+      // Облачные сервисы платформы подключаются одной кнопкой; любой свой сервис вуза —
+      // по шагам из CORE_API_SPEC.md §7: адрес на одобренном хосте → ключ → сервис сам
+      // публикует меню и роли → включение.
+      const CUSTOM = 'custom';
+      const cloud = ['schedule', 'user-profile'].filter(c => !installed.has(c));
+      const select = h('select', {},
+        cloud.map(c => h('option', { value: c }, `${title(types[c].titles)} — сервис платформы`)),
+        h('option', { value: CUSTOM }, 'Свой сервис — работает на сервере вуза'));
+      const name = h('input', { placeholder: 'Например, Библиотека' });
+      const code = h('input', { placeholder: 'library', autocomplete: 'off', spellcheck: false });
+      const profiles = checkboxGroup('custom-profiles', Object.entries(PROFILES), ['student', 'teacher', 'admin']);
+      const api_ = h('input', { placeholder: 'https://library.university.ru/api/v1' });
+      const client = h('input', { placeholder: 'https://library.university.ru' });
+      const customFields = h('div', {}, h('p', { class: 'hint' },
+        'Свой сервис работает на сервере вуза и открывается внутри приложения. Его адрес должен быть на хосте, ' +
+        'который одобрила поддержка платформы. После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
+        field('Название', name), field('Код', code, 'Латиница, цифры и -. Права сервиса будут вида <код>.<право>.'),
+        h('p', {}, 'Кому доступен сервис:'), profiles,
+        field('Адрес API', api_), field('Адрес клиента (origin)', client));
+      const sync = () => { customFields.hidden = select.value !== CUSTOM; };
+      select.addEventListener('change', sync); sync();
+      let key = crypto.randomUUID();
+      parts.push(h('section', { class: 'card' }, h('h2', {}, 'Подключить сервис'), field('Сервис', select), customFields,
+        h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
+          const custom = select.value === CUSTOM;
+          const body = custom ? {
+            service_type: `custom.${code.value.trim().toLowerCase()}`, deployment: 'local',
+            titles: { ru: name.value.trim() }, supported_profiles: checked(profiles, 'custom-profiles'),
+            api_base_url: api_.value.trim(), client_base_url: client.value.trim(),
+          } : { service_type: select.value, deployment: 'cloud' };
+          if (custom && !name.value.trim()) throw new ApiError('Укажите название сервиса.');
+          await api('/services', { method: 'POST', body, idempotencyKey: key });
+          key = crypto.randomUUID();
+          toast(custom ? 'Сервис зарегистрирован. Дальше — шаги в его карточке: ключ, запуск на сервере вуза, включение.'
+            : 'Сервис подключён и включён.');
+        }, reload) }, 'Подключить'))));
     }
 
     for (const s of services) {
@@ -477,7 +492,7 @@
   }
 
   function envBlock(s, data) {
-    const prefix = s.service_type.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+    const prefix = s.service_type.startsWith('custom.') ? 'SERVICE' : s.service_type.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
     return [
       `CORE_URL=${BOOT.shell_origin}`,
       `SHELL_ORIGIN=${BOOT.shell_origin}`,
@@ -573,7 +588,12 @@
       const target = h('div', {});
       memberSelect.addEventListener('change', () => {
         const m = eligible.find(x => x.user_id === memberSelect.value);
-        profileSelect.replaceChildren(...(m ? m.profiles.filter(p => service.supported_profiles.includes(p)).map(p => h('option', { value: p }, PROFILES[p])) : []));
+        const available = m ? m.profiles.filter(p => service.supported_profiles.includes(p)) : [];
+        profileSelect.replaceChildren(...available.map(p => h('option', { value: p }, PROFILES[p])));
+        // Роль назначается на профиль. Сразу выбираем профиль, для которого у сервиса есть роли,
+        // иначе у участника «Преподаватель + Администратор» открывался бы профиль без ролей.
+        const withRoles = available.find(p => roles.some(r => r.allowed_profiles.includes(p)));
+        if (withRoles) profileSelect.value = withRoles;
         profileSelect.disabled = !m; target.replaceChildren();
         if (m) loadAssignment();
       });
@@ -585,11 +605,14 @@
           const options = roles.filter(r => r.allowed_profiles.includes(profileSelect.value)).map(r => [r.code, title(r.titles)]);
           const readOnly = isAdminService && !isOwner();
           const group = checkboxGroup('assign', options, data.roles, readOnly);
-          target.replaceChildren(options.length ? group : h('p', { class: 'muted' }, 'Для этого профиля ролей нет.'),
+          const noRoles = service.service_type === 'schedule' && profileSelect.value === 'teacher'
+            ? 'Преподавателю роль не нужна: он сам задаёт и меняет свои занятия. Роль «Редактор расписания» — для профиля «Администратор».'
+            : 'Для этого профиля ролей нет.';
+          target.replaceChildren(options.length ? group : h('p', { class: 'muted' }, noRoles),
             h('p', { class: 'muted' }, `Итоговые права: ${data.permissions.map(p => PERMISSION_NAMES[p] || p).join(', ') || 'нет'}`),
             readOnly || !options.length ? null : h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
               await api(path, { method: 'PUT', body: { roles: checked(group, 'assign') }, etag });
-              toast('Роли обновлены. Они действуют со следующего запроса пользователя.');
+              toast('Роли обновлены. Пользователь увидит новые возможности, вернувшись в приложение.');
             }, loadAssignment) }, 'Сохранить роли')));
         });
       }
@@ -603,13 +626,19 @@
     const code = h('input', { value: role?.code || '', disabled: !!role, placeholder: 'например, schedule_viewer' });
     const ru = h('input', { value: role?.titles.ru || '' }); const en = h('input', { value: role?.titles.en || '' });
     const profiles = checkboxGroup('role-profiles', service.supported_profiles.map(p => [p, PROFILES[p]]), role?.allowed_profiles || []);
-    const perms = checkboxGroup('role-perms', type.permission_codes.map(p => [p, PERMISSION_NAMES[p] || p]), role?.permissions || []);
+    const custom = service.service_type.startsWith('custom.');
+    const prefix = custom ? service.service_type.slice('custom.'.length) + '.' : '';
+    const perms = custom
+      ? h('input', { value: (role?.permissions || []).join(', '), placeholder: `${prefix}read, ${prefix}write` })
+      : checkboxGroup('role-perms', type.permission_codes.map(p => [p, PERMISSION_NAMES[p] || p]), role?.permissions || []);
     const body = [field('Код', code, 'Латиница в нижнем регистре, цифры, _ . -'), field('Название (рус.)', ru), field('Название (англ.)', en),
-      h('p', {}, 'Профили, которым можно назначить роль:'), profiles, h('p', {}, 'Права:'), perms];
+      h('p', {}, 'Профили, которым можно назначить роль:'), profiles,
+      h('p', {}, custom ? `Права (через запятую, каждое начинается с «${prefix}»):` : 'Права:'), perms];
     if (!await confirmDialog(role ? 'Изменить роль' : 'Новая роль', body, 'Сохранить')) return;
     await guarded(async () => {
       const titles = { ru: ru.value.trim() }; if (en.value.trim()) titles.en = en.value.trim();
-      const data = { titles, allowed_profiles: checked(profiles, 'role-profiles'), permissions: checked(perms, 'role-perms') };
+      const permissions = custom ? perms.value.split(/[\s,]+/).map(x => x.trim()).filter(Boolean) : checked(perms, 'role-perms');
+      const data = { titles, allowed_profiles: checked(profiles, 'role-profiles'), permissions };
       if (role) {
         const { etag } = await api(`/services/${service.id}/roles/${role.code}`);
         await api(`/services/${service.id}/roles/${role.code}`, { method: 'PATCH', body: data, etag });
