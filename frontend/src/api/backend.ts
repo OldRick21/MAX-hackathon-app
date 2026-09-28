@@ -2,7 +2,7 @@
 // а реализация выбирается в api/index.ts: настоящая (real/) или тестовая (mock/).
 
 import type {
-  AcademicCardPatch, EventInput, Group, InstitutionView, JoinOption, JoinRequest, JoinRequestItem, MaxUserInfo, Page,
+  AcademicCardPatch, EventInput, Group, GroupDirectory, GroupEntry, InstitutionView, JoinOption, JoinRequest, JoinRequestItem, MaxUserInfo, Page,
   Profile, ProfileCard,
   ReviewInput, ScheduleEvent, SelfCardPatch, ServiceView, Submission, SubmissionStatus, User, Versioned,
 } from './types';
@@ -71,8 +71,13 @@ export interface Backend {
   withdrawJoinRequest(id: string): Promise<JoinRequest>;
   getProfiles(institutionId: string, signal?: AbortSignal): Promise<Profile[]>;
   listServices(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<ServiceView[]>;
-  /** Учебные группы из ядра: студенту — своя, преподавателю и админу — все с составом (user_ids). */
-  listGroups(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<(Group & { user_ids?: string[] })[]>;
+  /** Учебные группы из ядра: все группы вуза с составом — любому участнику. */
+  listGroups(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<GroupDirectory>;
+  /** Правка групп — роль «Редактор групп» расписания. Возвращают группу с новыми ETag. */
+  createGroup(institutionId: string, profile: Profile, name: string): Promise<GroupEntry>;
+  renameGroup(institutionId: string, profile: Profile, group: GroupEntry, name: string): Promise<void>;
+  deleteGroup(institutionId: string, profile: Profile, group: GroupEntry): Promise<void>;
+  setGroupMembers(institutionId: string, profile: Profile, group: GroupEntry, userIds: string[]): Promise<void>;
 
   schedule(service: ServiceView): ScheduleApi;
   profiles(service: ServiceView): ProfilesApi;

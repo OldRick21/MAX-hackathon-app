@@ -98,9 +98,12 @@ class StudyGroups(unittest.TestCase):
         clash = self.c.put(f'{base}/{other}/members', headers={**p, 'If-Match': other_tag}, json={'user_ids': [s1, s2]})
         self.assertEqual(clash.json()['error']['code'], 'STUDENT_ALREADY_GROUPED')
 
-        # Приложение: студент видит свою группу, преподаватель — все с составом.
+        # Приложение: любой участник видит все группы с составом; своя группа — в my_group_ids.
         mine = self.c.get(f'/api/v1/institution/{inst}/groups', params={'profile': 'student'}, headers=s1_core).json()
-        self.assertEqual(mine['items'], [{'id': group, 'name': 'ИВТ-21'}])
+        self.assertEqual({g['name']: g['user_ids'] for g in mine['items']}, {'ИВТ-21': [s1], 'ИВТ-22': []})
+        self.assertEqual(mine['my_group_ids'], [group])
+        self.assertFalse(mine['can_manage'])
+        self.assertNotIn('students', mine)
         self.assertEqual(self.c.get(f'/api/v1/institution/{inst}/profiles', headers=s1_core).json()['groups'],
                          [{'id': group, 'name': 'ИВТ-21'}])
         teacher_view = self.c.get(f'/api/v1/institution/{inst}/groups', params={'profile': 'teacher'}, headers=t1_core).json()
@@ -159,6 +162,60 @@ class StudyGroups(unittest.TestCase):
         manage.import_groups(io.StringIO(dump))
         self.assertEqual(self.c.get(f'{base}/{moved}/members', headers=p).json()['user_ids'], [s2])
 
+
+    def test_group_editor_role_in_schedule(self):
+        owner_id, owner = self.login('owner')
+        support_id, support = self.login('support')
+        t1, t1_core = self.login('t1')
+        s1, s1_core = self.login('s1')
+        with session_local() as db:
+            db.add(PlatformStaff(user_id=support_id, role='platform_support', granted_by='test'))
+            db.commit()
+        app_id = self.c.post('/api/v1/institution-applications', headers=owner,
+                             json={'titles': {'ru': 'Вуз групп'}, 'contact': 'r@example.ru'}).json()['id']
+        inst = self.c.post(f'/api/v1/platform/applications/{app_id}/approve', headers=support, json={}).json()['institution_id']
+        manage.install_schedule(inst)
+        with session_local() as db:
+            for uid, profiles in ((s1, ['student']), (t1, ['teacher'])):
+                db.add(Membership(institution_id=inst, user_id=uid, profiles=profiles))
+            schedule = db.query(ServiceInstance).filter_by(institution_id=inst, service_type='schedule').one()
+            schedule_id = schedule.id
+            roles = {r.code: r.allowed_profiles for r in schedule.roles}
+            db.commit()
+        # Обе роли расписания можно выдать и преподавателю.
+        self.assertEqual(roles, {'schedule_editor': ['admin', 'teacher'], 'group_editor': ['admin', 'teacher']})
+        base = f'/api/v1/institution/{inst}/groups'
+        q = {'profile': 'teacher'}
+
+        # Без роли преподаватель группы только смотрит.
+        self.assertEqual(self.c.post(base, params=q, headers=t1_core, json={'name': 'ПИ-1'}).status_code, 403)
+        self.assertFalse(self.c.get(base, params=q, headers=t1_core).json()['can_manage'])
+        with session_local() as db:
+            db.add(RoleAssignment(service_id=schedule_id, user_id=t1, profile='teacher', roles=['group_editor']))
+            db.commit()
+
+        view = self.c.get(base, params=q, headers=t1_core).json()
+        self.assertTrue(view['can_manage'])
+        self.assertEqual(view['students'], [s1])
+        created = self.c.post(base, params=q, headers=t1_core, json={'name': 'ПИ-1'})
+        self.assertEqual(created.status_code, 201, created.text)
+        group = created.json()['id']
+        item = next(g for g in self.c.get(base, params=q, headers=t1_core).json()['items'] if g['id'] == group)
+        members = self.c.put(f'{base}/{group}/members', params=q, headers={**t1_core, 'If-Match': item['members_etag']},
+                             json={'user_ids': [s1]})
+        self.assertEqual(members.status_code, 200, members.text)
+        renamed = self.c.patch(f'{base}/{group}', params=q, headers={**t1_core, 'If-Match': item['etag']},
+                               json={'name': 'ПИ-11'})
+        self.assertEqual(renamed.status_code, 200, renamed.text)
+        self.assertEqual(self.c.delete(f'{base}/{group}', params=q, headers={**t1_core, 'If-Match': renamed.headers['ETag']})
+                         .json()['error']['code'], 'GROUP_IN_USE')
+
+        # Студент видит группу и свой состав, но не правит.
+        student = self.c.get(base, params={'profile': 'student'}, headers=s1_core).json()
+        self.assertEqual(student['items'], [{'id': group, 'name': 'ПИ-11', 'user_ids': [s1]}])
+        self.assertEqual(self.c.post(base, params={'profile': 'student'}, headers=s1_core, json={'name': 'X'}).status_code, 403)
+        # Чужой профиль не подходит.
+        self.assertEqual(self.c.post(base, params={'profile': 'admin'}, headers=t1_core, json={'name': 'X'}).status_code, 403)
 
 if __name__ == '__main__':
     unittest.main()

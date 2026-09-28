@@ -120,6 +120,24 @@ export interface Group {
   name: string;
 }
 
+/** Группа в справочнике ядра: состав виден всем участникам вуза. */
+export interface GroupEntry extends Group {
+  user_ids: UUID[];
+  /** Только редактору групп: версии для If-Match. */
+  etag?: string;
+  members_etag?: string;
+}
+
+/** Справочник групп вуза для выбранного профиля. */
+export interface GroupDirectory {
+  items: GroupEntry[];
+  /** Роль «Редактор групп» (или groups.manage у администратора). */
+  can_manage: boolean;
+  my_group_ids: UUID[];
+  /** Только редактору групп: все студенты вуза для выбора состава. */
+  students?: UUID[];
+}
+
 export interface GroupStudents {
   group_id: UUID;
   user_ids: UUID[];

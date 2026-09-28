@@ -74,17 +74,19 @@ SERVICE_TYPES: Dict[str, dict] = {
         "deployment": "cloud",
         "titles": {"ru": "Расписание", "en": "Schedule"},
         "supported_profiles": ["admin", "teacher", "student"],
-        "permission_codes": ["schedule.read_all", "schedule.write"],
+        # Смотреть расписание и группы может любой участник — это не право, а часть сервиса.
+        # Права дают только правку: schedule.write — занятия, schedule.groups — группы.
+        "permission_codes": ["schedule.read_all", "schedule.write", "schedule.groups"],
         "protected": False,
         "menus": [
             {"id": "schedule", "titles": {"ru": "Расписание", "en": "Schedule"}, "entrypoint_path": "/schedule",
-             "profiles": ["student", "teacher"], "required_permissions": [], "order": 0},
-            {"id": "schedule_admin", "titles": {"ru": "Расписание", "en": "Schedule"}, "entrypoint_path": "/schedule",
-             "profiles": ["admin"], "required_permissions": ["schedule.read_all"], "order": 0},
+             "profiles": ["student", "teacher", "admin"], "required_permissions": [], "order": 0},
         ],
         "initial_roles": [
             {"code": "schedule_editor", "titles": {"ru": "Редактор расписания", "en": "Schedule editor"},
-             "allowed_profiles": ["admin"], "permissions": ["schedule.read_all", "schedule.write"]},
+             "allowed_profiles": ["admin", "teacher"], "permissions": ["schedule.read_all", "schedule.write"]},
+            {"code": "group_editor", "titles": {"ru": "Редактор групп", "en": "Group editor"},
+             "allowed_profiles": ["admin", "teacher"], "permissions": ["schedule.groups"]},
         ],
         "system_roles": False,
     },

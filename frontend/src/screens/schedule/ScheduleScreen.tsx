@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { ScheduleApi } from '../../api/backend';
 import { humanMessage } from '../../api/http';
 import type { ScheduleEvent, ServiceView } from '../../api/types';
@@ -9,7 +9,8 @@ import { Badge, Button, EmptyState, ErrorState, IconButton, Modal, Select, Skele
 import { useAsync } from '../../hooks/useAsync';
 import { useProfilesApi } from '../../hooks/useServices';
 import { useUserNames } from '../../hooks/useUserNames';
-import { useBackend, useSession } from '../../state/session';
+import { useInstitution } from '../../state/institution';
+import { useBackend } from '../../state/session';
 import { addDays, dayKey, formatShort, formatWeekday, now, startOfWeek } from '../../utils/time';
 import p from '../pages.module.css';
 import { EventEditor } from './EventEditor';
@@ -24,30 +25,33 @@ type Editing = { event: ScheduleEvent | null; etag: string | null } | null;
 
 function Schedule({ service }: { service: ServiceView }) {
   const backend = useBackend();
-  const { user } = useSession();
+  const { institution } = useInstitution();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const api: ScheduleApi = useMemo(() => backend.schedule(service), [backend, service]);
   const profiles = useProfilesApi();
   const [weekOffset, setWeekOffset] = useState(0);
-  const [groupId, setGroupId] = useState('');
+  // Выбранная группа живёт в адресе (?group=): на неё ведёт «Расписание группы» со страницы групп.
+  const groupId = params.get('group') ?? '';
+  const setGroupId = (id: string) => setParams(id ? { group: id } : {}, { replace: true });
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<ScheduleEvent | null>(null);
   const [opening, setOpening] = useState(false);
 
-  const isAdmin = service.profile === 'admin';
-  // Занятия задают преподаватели (свои) и редактор расписания (любые).
-  const writesAny = isAdmin && service.permissions.includes('schedule.write');
+  // Смотреть может любой участник; менять — только «Редактор расписания» (админ или преподаватель).
+  const canWrite = service.permissions.includes('schedule.write');
   const isTeacher = service.profile === 'teacher';
-  const canWrite = writesAny || isTeacher;
-  const managesGroups = isAdmin && service.permissions.includes('groups.manage');
-  const me = user?.id ?? '';
   const weekStart = addDays(startOfWeek(now()), weekOffset * 7);
   const weekEnd = addDays(weekStart, 7);
 
   const events = useAsync(signal => api.listEvents({
     from: weekStart.toISOString(), to: weekEnd.toISOString(), group_id: groupId || undefined,
   }, signal), [api, weekStart.getTime(), groupId]);
-  const groups = useAsync(signal => api.listGroups(signal).catch(() => []), [api]);
+  // Группы — из справочника ядра: там же своя группа студента.
+  const directory = useAsync(signal => backend.listGroups(institution.id, service.profile, signal), [backend, institution.id, service.profile]);
+  const groups = { status: directory.status, data: directory.data?.items };
+  const myGroups = (directory.data?.items ?? []).filter(g => directory.data?.my_group_ids.includes(g.id));
+  const mineLabel = service.profile === 'student' ? 'Моя группа' : isTeacher ? 'Мои занятия' : 'Все группы';
 
   const list = events.data ?? [];
   const teacherNames = useUserNames(profiles?.api ?? null, profiles?.service.id ?? '', list.flatMap(e => e.teacher_ids));
@@ -73,9 +77,9 @@ function Schedule({ service }: { service: ServiceView }) {
     } finally { setOpening(false); }
   };
 
-  const actionsFor = (e: ScheduleEvent): DropdownItem[] | undefined => writesAny || (isTeacher && e.teacher_ids.includes(me)) ? [
-    { key: 'edit', label: 'Изменить', onSelect: () => void openEditor(e) },
-    { key: 'delete', label: 'Удалить', danger: true, onSelect: () => setDeleting(e) },
+  const actionsFor = (_e: ScheduleEvent): DropdownItem[] | undefined => canWrite ? [
+    { key: 'edit', label: 'Изменить', onSelect: () => void openEditor(_e) },
+    { key: 'delete', label: 'Удалить', danger: true, onSelect: () => setDeleting(_e) },
   ] : undefined;
 
   const todayKey = dayKey(now());
@@ -90,16 +94,14 @@ function Schedule({ service }: { service: ServiceView }) {
         <div>
           <h1 className={p.title}>Расписание</h1>
           <p className={p.subtitle}>{weekOffset === 0 ? 'Текущая неделя' : weekOffset === 1 ? 'Следующая неделя' : weekOffset === -1 ? 'Прошлая неделя' : weekLabel}</p>
-          {service.profile === 'student' && groups.status !== 'loading' && (
-            <p className={s.myGroup}>{groups.data?.[0] ? <>Моя группа: <strong>{groups.data[0].name}</strong></> : 'Группа пока не назначена — обратитесь к куратору'}</p>
+          {service.profile === 'student' && directory.status === 'ready' && (
+            <p className={s.myGroup}>{myGroups[0] ? <>Моя группа: <strong>{myGroups[0].name}</strong></> : 'Группа пока не назначена — обратитесь к куратору'}</p>
           )}
         </div>
-        {(canWrite || managesGroups) && (
-          <div className={p.headActions}>
-            {(managesGroups || isTeacher) && <Button variant="secondary" onClick={() => navigate('groups')}>Группы</Button>}
-            {canWrite && <Button icon={<IconPlus width="1.2em" height="1.2em" />} onClick={() => void openEditor(null)} loading={opening}>Добавить занятие</Button>}
-          </div>
-        )}
+        <div className={p.headActions}>
+          <Button variant="secondary" onClick={() => navigate('groups')}>Группы</Button>
+          {canWrite && <Button icon={<IconPlus width="1.2em" height="1.2em" />} onClick={() => void openEditor(null)} loading={opening}>Добавить занятие</Button>}
+        </div>
       </div>
 
       <div className={s.toolbar}>
@@ -110,9 +112,9 @@ function Schedule({ service }: { service: ServiceView }) {
         </div>
         {weekOffset !== 0 && <Button variant="ghost" size="small" onClick={() => setWeekOffset(0)}>К текущей неделе</Button>}
         <span className={s.spacer} />
-        {isAdmin && (groups.data?.length ?? 0) > 0 && (
+        {(groups.data?.length ?? 0) > 0 && (
           <Select aria-label="Группа" className={s.groupFilter} value={groupId} onChange={e => setGroupId(e.target.value)}>
-            <option value="">Все группы</option>
+            <option value="">{mineLabel}</option>
             {groups.data!.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
         )}
@@ -133,7 +135,7 @@ function Schedule({ service }: { service: ServiceView }) {
       ) : byDay.length === 0 ? (
         <EmptyState icon={<IconCalendarEmpty />} title={weekOffset === 0 ? 'На этой неделе занятий нет' : 'На эту неделю занятий нет'}
           text={service.profile === 'student' ? 'Если занятия должны быть, проверьте у куратора, что вас добавили в группу.'
-            : isTeacher ? 'Добавьте занятие кнопкой «Добавить занятие» — его увидят студенты выбранных групп.' : undefined} />
+            : canWrite ? 'Добавьте занятие кнопкой «Добавить занятие» — его увидят студенты выбранных групп.' : undefined} />
       ) : (
         <div className={s.days}>
           {byDay.map(([key, dayEvents]) => {
@@ -151,7 +153,7 @@ function Schedule({ service }: { service: ServiceView }) {
                         event={e}
                         teacherNames={e.teacher_ids.some(id => teacherNames[id] === undefined) ? null : e.teacher_ids.map(id => teacherNames[id]).filter((n): n is string => !!n)}
                         groupNames={e.group_ids.map(id => groupName.get(id) ?? '').filter(Boolean)}
-                        showGroups={service.profile !== 'student'}
+                        showGroups={service.profile !== 'student' || !!groupId}
                         onJoin={backend.openLink}
                         actions={actionsFor(e)}
                       />
@@ -171,7 +173,7 @@ function Schedule({ service }: { service: ServiceView }) {
           groups={groups.data ?? []}
           initial={editing.event}
           etag={editing.etag}
-          lockedTeacher={writesAny ? null : me}
+          lockedTeacher={null}
           defaultDate={dayKey(weekOffset === 0 ? now() : weekStart)}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); events.reload(); }}

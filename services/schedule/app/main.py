@@ -1,7 +1,8 @@
 """Schedule cloud service: учебные группы и занятия, своя SQLite, online introspection ядра.
 
 Контракт — docs/services/schedule/SPEC.md и OPENAPI.yaml; отличия — IMPLEMENTATION.md.
-Главное отличие: занятия задают преподаватели (свои), а не только admin со schedule.write.
+Смотреть расписание любой группы и все группы может любой участник вуза. Менять занятия —
+только с правом schedule.write (роль «Редактор расписания», её выдают администратору или преподавателю).
 """
 import base64
 import hashlib
@@ -201,16 +202,10 @@ class Ctx:
     def tenant(self):
         return (self.binding.institution_id, self.binding.service_id)
 
-    def admin_can(self, permission):
-        return self.profile == 'admin' and permission in self.permissions
-
-    @property
-    def reads_all(self):
-        return self.admin_can('schedule.read_all')
-
     @property
     def writes_any(self):
-        return self.admin_can('schedule.write')
+        """Редактор расписания: право schedule.write в любом профиле (admin или teacher)."""
+        return 'schedule.write' in self.permissions
 
 
 def authenticate(request: Request) -> Ctx:
@@ -399,18 +394,9 @@ def service_view(locale: Optional[str] = Query(None, max_length=8), ctx: Ctx = D
 # ведёт группы администратор вуза в администрировании.
 # --------------------------------------------------------------------------
 
-def reads_all_groups(ctx: Ctx) -> bool:
-    """Все группы нужны преподавателю (выбор в своих занятиях) и редактору расписания."""
-    return ctx.profile == 'teacher' or ctx.reads_all or ctx.writes_any
-
-
 def visible_groups(ctx: Ctx) -> list:
-    groups = core.groups(ctx.binding)
-    if reads_all_groups(ctx):
-        return groups
-    if ctx.profile == 'student':
-        return [g for g in groups if g['id'] in ctx.group_ids]
-    raise forbidden('Нужна роль «Редактор расписания»')
+    """Все группы вуза видны любому участнику: просмотр — часть сервиса, а не право."""
+    return core.groups(ctx.binding)
 
 
 @app.get('/api/v1/schedule/groups')
@@ -466,13 +452,8 @@ def load_event(db, ctx: Ctx, event_id: str):
 
 
 def sees_event(db, ctx: Ctx, event: dict) -> bool:
-    if ctx.reads_all or ctx.writes_any:
-        return True
-    if ctx.profile == 'teacher':
-        return ctx.sub in event['teacher_ids']
-    if ctx.profile == 'student':
-        return any(g in event['group_ids'] for g in ctx.group_ids)
-    return False
+    """Любое занятие вуза видно любому участнику."""
+    return True
 
 
 def event_response(ctx, row, value, status=200, extra=None):
@@ -481,21 +462,18 @@ def event_response(ctx, row, value, status=200, extra=None):
 
 
 def need_writer(ctx: Ctx):
-    """Занятия пишут преподаватели (только свои) и admin с schedule.write (любые)."""
-    if not (ctx.writes_any or ctx.profile == 'teacher'):
-        raise forbidden('Расписание меняют преподаватели и редакторы расписания')
+    """Занятия меняет только редактор расписания (schedule.write), преподаватель без роли — нет."""
+    if not ctx.writes_any:
+        raise forbidden('Нужна роль «Редактор расписания»')
 
 
 def checked_event(ctx: Ctx, body: EventInput) -> dict:
-    """Проверки, не требующие локальной БД: время, своё участие преподавателя, профили в ядре."""
+    """Проверки, не требующие локальной БД: время и профили преподавателей в ядре."""
     starts, ends = utc(body.starts_at, 'starts_at'), utc(body.ends_at, 'ends_at')
     if not starts < ends:
         raise Fail(422, 'INVALID_TIME_RANGE', 'Время окончания должно быть позже времени начала',
                    [{'path': 'ends_at', 'message': 'Должно быть позже starts_at'}])
     teacher_ids = [str(t) for t in body.teacher_ids]
-    if not ctx.writes_any and ctx.sub not in teacher_ids:
-        raise Fail(422, 'VALIDATION_ERROR', 'Преподаватель может задавать только занятия, которые ведёт сам',
-                   [{'path': 'teacher_ids', 'message': 'Добавьте себя в преподаватели занятия'}])
     bad = [i for i, uid in enumerate(teacher_ids) if 'teacher' not in core.profiles(ctx.binding, uid)]
     if bad:
         raise Fail(422, 'INVALID_REFERENCE', 'Преподавателями могут быть только участники с профилем «Преподаватель»',
@@ -531,8 +509,6 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
     start, end = utc(from_, 'from'), utc(to, 'to')
     if not start < end or parse_utc(end) - parse_utc(start) > MAX_RANGE:
         raise Fail(422, 'INVALID_TIME_RANGE', 'Период должен быть непустым и не длиннее 31 дня')
-    if ctx.profile == 'admin' and not (ctx.reads_all or ctx.writes_any):
-        raise forbidden('Нужна роль «Редактор расписания»')
     scope = ['events', *ctx.tenant, ctx.sub, ctx.profile, start, end, str(group_id or ''), str(teacher_id or ''), limit]
     after = read_cursor(cursor, scope)
     sql = ['SELECT e.* FROM events e WHERE e.institution_id=? AND e.service_id=? AND e.starts_at < ? AND e.ends_at > ?']
@@ -540,8 +516,9 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
     link = ('EXISTS (SELECT 1 FROM {t} x WHERE x.institution_id=e.institution_id AND x.service_id=e.service_id '
             'AND x.event_id=e.id AND x.{c}=?)')
     with database() as db:
-        # Видимость по профилю; фильтры ниже только сужают её.
-        if not (ctx.reads_all or ctx.writes_any):
+        # Видно всё. Без фильтров показываем «своё»: студенту — его группу, преподавателю — его занятия;
+        # администратору и редактору — всё. Фильтр group_id/teacher_id открывает любую группу/преподавателя.
+        if not (group_id or teacher_id or ctx.writes_any or ctx.profile == 'admin'):
             if ctx.profile == 'teacher':
                 sql.append('AND ' + link.format(t='event_teachers', c='user_id'))
                 args.append(ctx.sub)
@@ -607,8 +584,7 @@ def get_event(event_id: UUID, ctx: Ctx = Depends(authenticate)):
 
 def editable_event(db, ctx: Ctx, event_id: str, if_match: Optional[str]):
     row, data = load_event(db, ctx, event_id)
-    # Чужое для преподавателя занятие — 404, как и при чтении: его существование не раскрывается.
-    if not row or not (ctx.writes_any or ctx.sub in data['teacher_ids']):
+    if not row:
         raise not_found('Занятие не найдено')
     check_if_match(if_match, etag('event', ctx, row['id'], row['revision']))
     return row

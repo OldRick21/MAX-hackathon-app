@@ -76,56 +76,63 @@ class Schedule(unittest.TestCase):
     def test_groups_come_from_core(self):
         teacher, student, loner = self.as_(T1, 'teacher'), self.as_(ST1, 'student'), self.as_(ST2, 'student')
         plain_admin = self.as_(ADMIN, 'admin')
-        self.assertEqual([g['name'] for g in self.c.get('/api/v1/schedule/groups', headers=teacher).json()['items']],
-                         ['ИВТ-21', 'ИВТ-22'])
-        self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=student).json()['items'], [GROUPS[0]])
-        self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=loner).json()['items'], [])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{GB}', headers=student).status_code, 404)
-        self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=plain_admin).status_code, 403)
-        # Управления группами в сервисе больше нет: их ведёт администрирование ядра.
+        # Все группы видны любому участнику: просмотр — часть сервиса, а не право.
+        for who in (teacher, student, loner, plain_admin):
+            self.assertEqual([g['name'] for g in self.c.get('/api/v1/schedule/groups', headers=who).json()['items']],
+                             ['ИВТ-21', 'ИВТ-22'])
+        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{GB}', headers=student).status_code, 200)
+        # Управления группами в сервисе нет: их ведёт ядро (роль «Редактор групп»).
         self.assertEqual(self.c.post('/api/v1/schedule/groups', headers=teacher, json={'name': 'x'}).status_code, 405)
 
-    def test_teachers_write_own_events(self):
+    def test_only_editors_write_everyone_reads(self):
         editor = self.as_(EDITOR, 'admin', EDITOR_PERMS)
+        teacher_editor = self.as_(T1, 'teacher', EDITOR_PERMS)
         t1, t2 = self.as_(T1, 'teacher'), self.as_(T2, 'teacher')
         st1, st2 = self.as_(ST1, 'student'), self.as_(ST2, 'student')
+        plain_admin = self.as_(ADMIN, 'admin')
 
         # Студент без группы — пустое расписание, не ошибка.
         self.assertEqual(self.week(st2).json(), {'items': [], 'next_cursor': None})
 
-        self.assertEqual(self.post(t1, self.event([GA], [T2])).status_code, 422)
-        self.assertEqual(self.post(st1, self.event([GA], [T1])).status_code, 403)
-        self.assertEqual(self.post(t1, self.event([GA], [T1, ST1])).json()['error']['code'], 'INVALID_REFERENCE')
-        self.assertEqual(self.post(t1, self.event([GA], [T1], start='2026-09-28T08:00:00Z')).json()['error']['code'],
+        # Без роли «Редактор расписания» не пишет никто, даже преподаватель своё.
+        for who in (t1, st1, plain_admin):
+            self.assertEqual(self.post(who, self.event([GA], [T1])).status_code, 403)
+        self.assertEqual(self.post(teacher_editor, self.event([GA], [T1, ST1])).json()['error']['code'], 'INVALID_REFERENCE')
+        self.assertEqual(self.post(teacher_editor, self.event([GA], [T1], start='2026-09-28T08:00:00Z')).json()['error']['code'],
                          'INVALID_TIME_RANGE')
-        self.assertEqual(self.post(t1, self.event([str(uuid.uuid4())], [T1])).json()['error']['code'], 'INVALID_REFERENCE')
+        self.assertEqual(self.post(teacher_editor, self.event([str(uuid.uuid4())], [T1])).json()['error']['code'],
+                         'INVALID_REFERENCE')
 
-        created = self.post(t1, self.event([GA], [T1]))
+        # Преподаватель-редактор задаёт и чужие занятия.
+        created = self.post(teacher_editor, self.event([GA], [T1]))
         self.assertEqual(created.status_code, 201, created.text)
         event = created.json()
-        other = self.post(t2, self.event([GB], [T2], start='2026-09-29T06:00:00+03:00', end='2026-09-29T07:30:00+03:00')).json()
+        other = self.post(teacher_editor, self.event([GB], [T2], start='2026-09-29T06:00:00+03:00',
+                                                     end='2026-09-29T07:30:00+03:00')).json()
         self.assertEqual(other['starts_at'], '2026-09-29T03:00:00Z')
 
-        # Видимость: студент — по группе из ядра, преподаватель — свои, редактор — все; фильтр не расширяет.
+        # По умолчанию — «своё»; фильтром любой участник смотрит любую группу или преподавателя.
         self.assertEqual([e['id'] for e in self.week(st1).json()['items']], [event['id']])
         self.assertEqual([e['id'] for e in self.week(t1).json()['items']], [event['id']])
-        self.assertEqual(self.week(t1, teacher_id=T2).json()['items'], [])
+        self.assertEqual([e['id'] for e in self.week(st1, group_id=GB).json()['items']], [other['id']])
+        self.assertEqual([e['id'] for e in self.week(st2, group_id=GA).json()['items']], [event['id']])
+        self.assertEqual([e['id'] for e in self.week(t1, teacher_id=T2).json()['items']], [other['id']])
+        self.assertEqual(len(self.week(plain_admin).json()['items']), 2)
         self.assertEqual(len(self.week(editor).json()['items']), 2)
-        self.assertEqual([e['id'] for e in self.week(editor, group_id=GB).json()['items']], [other['id']])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=st1).status_code, 404)
+        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=st1).status_code, 200)
 
-        # Чужое занятие преподаватель не меняет и не удаляет: 404.
-        other_tag = self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=editor).headers['etag']
-        self.assertEqual(self.c.put(f'/api/v1/schedule/events/{other["id"]}', headers={**t1, 'If-Match': other_tag},
-                                    json=self.event([GB], [T1])).status_code, 404)
-
-        # Своё — отменяет; отменённое видно студенту; устаревший ETag — 412.
+        # Своё занятие преподаватель без роли не меняет.
         tag = created.headers['etag']
-        cancelled = self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**t1, 'If-Match': tag},
+        self.assertEqual(self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**t1, 'If-Match': tag},
+                                    json=self.event([GA], [T1], status='cancelled')).status_code, 403)
+        self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{event["id"]}', headers={**t2, 'If-Match': tag}).status_code, 403)
+
+        # Редактор отменяет; отменённое видно студенту; устаревший ETag — 412.
+        cancelled = self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**teacher_editor, 'If-Match': tag},
                                json=self.event([GA], [T1, T2], status='cancelled'))
         self.assertEqual(cancelled.status_code, 200, cancelled.text)
         self.assertEqual(self.week(st1).json()['items'][0]['status'], 'cancelled')
-        self.assertEqual(self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**t1, 'If-Match': tag},
+        self.assertEqual(self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**editor, 'If-Match': tag},
                                     json=self.event([GA], [T1])).status_code, 412)
 
         # Студента перевели в другую группу в ядре — со следующего запроса он видит её занятия.
@@ -135,6 +142,7 @@ class Schedule(unittest.TestCase):
         finally:
             MEMBERSHIP[ST1] = [GA]
 
+        other_tag = self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=editor).headers['etag']
         self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{other["id"]}',
                                        headers={**editor, 'If-Match': other_tag}).status_code, 204)
 

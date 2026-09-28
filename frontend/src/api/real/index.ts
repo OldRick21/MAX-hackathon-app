@@ -5,7 +5,7 @@ import { NotInMaxError } from '../backend';
 import { ApiError, newIdempotencyKey, request, toApiError } from '../http';
 import { loadBridge, maxUserInfo, openExternal, waitInitData } from '../max';
 import type {
-  Group, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
+  Group, GroupDirectory, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
 } from '../types';
 import { CoreSession, listAll } from './core';
 import { openServiceFrame } from './frame';
@@ -210,8 +210,22 @@ export function createRealBackend(): Backend {
       }, s => s.id);
       return items.map(s => ({ ...s, menus: [...s.menus].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)) }));
     },
-    async listGroups(id, profile, signal) {
-      return (await core.call<Page<Group & { user_ids?: string[] }>>(`/api/v1/institution/${id}/groups?profile=${profile}`, { signal })).items;
+    listGroups: (id, profile, signal) => core.call<GroupDirectory>(`/api/v1/institution/${id}/groups?profile=${profile}`, { signal }),
+    async createGroup(id, profile, name) {
+      const g = await core.call<Group>(`/api/v1/institution/${id}/groups?profile=${profile}`, { method: 'POST', body: { name } });
+      return { ...g, user_ids: [] };
+    },
+    async renameGroup(id, profile, group, name) {
+      await core.call(`/api/v1/institution/${id}/groups/${group.id}?profile=${profile}`,
+        { method: 'PATCH', body: { name }, headers: { 'If-Match': group.etag ?? '' } });
+    },
+    async deleteGroup(id, profile, group) {
+      await core.call(`/api/v1/institution/${id}/groups/${group.id}?profile=${profile}`,
+        { method: 'DELETE', headers: { 'If-Match': group.etag ?? '' } });
+    },
+    async setGroupMembers(id, profile, group, userIds) {
+      await core.call(`/api/v1/institution/${id}/groups/${group.id}/members?profile=${profile}`,
+        { method: 'PUT', body: { user_ids: userIds }, headers: { 'If-Match': group.members_etag ?? '' } });
     },
     schedule,
     profiles,

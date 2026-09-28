@@ -8,7 +8,6 @@ import { IconArrowLeft, IconUserOff } from '../../components/icons/ui';
 import { Avatar, Button, EmptyState, ErrorState, Input, LoadingState, Modal, TextArea, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { invalidateAvatar, useAvatar } from '../../hooks/useAvatar';
-import { useScheduleApi } from '../../hooks/useServices';
 import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useBackend, useSession } from '../../state/session';
 import { squareAvatar } from '../../utils/image';
@@ -126,11 +125,14 @@ function PhotoControls({ userId, hasPhoto }: { userId: string; hasPhoto: boolean
 
 /** Статус в вузе под именем: профиль и, для студента, учебная группа. */
 function MyStatus() {
-  const { profile } = useInstitution();
-  const schedule = useScheduleApi();
-  // Своя группа видна только студенту: преподавателю сервис отдаёт все группы вуза.
-  const group = useAsync(async signal => (schedule && profile === 'student'
-    ? (await schedule.api.listGroups(signal))[0]?.name ?? null : null), [schedule, profile]);
+  const { institution, profile } = useInstitution();
+  const backend = useBackend();
+  // Своя группа — из справочника ядра (my_group_ids); группы видны всем, но «моя» — только у студента.
+  const group = useAsync(async signal => {
+    if (profile !== 'student') return null;
+    const dir = await backend.listGroups(institution.id, profile, signal);
+    return dir.items.find(g => dir.my_group_ids.includes(g.id))?.name ?? null;
+  }, [backend, institution.id, profile]);
   return <>{PROFILE_LABEL[profile]}{group.data ? ` · группа ${group.data}` : ''}</>;
 }
 

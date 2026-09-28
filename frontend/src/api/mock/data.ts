@@ -73,6 +73,22 @@ export const groupStudents: Record<string, string[]> = {
   'c3a2e9d4-0000-4000-8000-000000000022': [S.zaytseva, S.frolov],
 };
 
+// Длинные списки для проверки интерфейса: в МИФИ ещё 14 групп и 60 студентов без анкет.
+const extraId = (n: number, base: string) => `${base}${String(n).padStart(12, '0')}`;
+for (let i = 1; i <= 14; i++) {
+  groups[INST_MEPHI].push({ id: extraId(100 + i, 'c3a2e9d4-0000-4000-8000-'), name: `Б${21 + (i % 4)}-${170 + i}` });
+}
+const extraStudents = Array.from({ length: 60 }, (_, i) => extraId(500 + i, 'b2f1d8c3-0000-4000-8000-'));
+groupStudents[groups[INST_MEPHI][2].id] = extraStudents.slice(0, 35);
+groupStudents[groups[INST_MEPHI][3].id] = extraStudents.slice(35, 50);
+
+/** Студенты вуза (для редактора групп). */
+export const students: Record<string, string[]> = {
+  [INST_MEPHI]: [ME, ...Object.values(S), ...extraStudents],
+  [INST_MTUCI]: [],
+  '5c3d1e2f-7a8b-4c9d-8e0f-1a2b3c4d5e33': [],
+};
+
 // Пары МИФИ (время московское).
 const PAIRS = [['08:30', '10:05'], ['10:15', '11:50'], ['11:55', '13:30'], ['14:30', '16:05'], ['16:15', '17:50'], ['18:00', '19:35']];
 
@@ -180,7 +196,8 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
       { student: basic(['home', 'users']), teacher: basic(['home', 'users']) }),
     svc('5e000000-0000-4000-8000-000000000102', 'schedule', 'Расписание', 'cloud', 'schedule.platform.example',
       [m('schedule', 'Расписание', '/schedule')],
-      { student: basic(['schedule']), teacher: basic(['schedule']) }),
+      { student: basic(['schedule']),
+        teacher: { roles: ['schedule_editor', 'group_editor'], permissions: ['schedule.read_all', 'schedule.write', 'schedule.groups'], menus: ['schedule'] } }),
     svc('5e000000-0000-4000-8000-000000000103', 'coursework', 'Курсовые работы', 'local', 'coursework.mephi.example',
       [m('coursework', 'Курсовые', '/coursework')],
       { student: basic(['coursework']), teacher: basic(['coursework']) }),
@@ -192,7 +209,7 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
     svc('5e000000-0000-4000-8000-000000000202', 'schedule', 'Расписание', 'cloud', 'schedule.platform.example',
       [m('schedule', 'Расписание', '/schedule'), m('schedule_admin', 'Расписание', '/schedule')],
       { teacher: basic(['schedule']),
-        admin: { roles: ['schedule_editor'], permissions: ['schedule.read_all', 'schedule.write', 'groups.manage'], menus: ['schedule_admin'] } }),
+        admin: { roles: ['schedule_editor', 'group_editor'], permissions: ['schedule.read_all', 'schedule.write', 'schedule.groups'], menus: ['schedule_admin'] } }),
     svc('5e000000-0000-4000-8000-000000000203', 'administration', 'Администрирование', 'cloud', 'admin.platform.example',
       [m('administration', 'Администрирование', '/admin')],
       { admin: { roles: ['owner'], permissions: ['institution.read', 'members.read', 'members.manage'], menus: ['administration'] } }),

@@ -9,7 +9,7 @@
 
 import type { Backend, CourseworkApi, ProfilesApi, ScheduleApi } from '../backend';
 import { ApiError } from '../http';
-import type { JoinRequest, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission } from '../types';
+import type { GroupEntry, JoinRequest, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission } from '../types';
 import { now, setClock } from '../../utils/time';
 import avatar from './assets/demo-avatar.webp';
 import * as D from './data';
@@ -51,26 +51,22 @@ export function createMockBackend(): Backend {
   const schedule = (s: ServiceView): ScheduleApi => {
     const inst = s.institution_id;
     const myGroup = () => D.groups[inst]?.find(g => D.groupStudents[g.id]?.includes(D.ME));
-    const visible = (e: ScheduleEvent) => {
-      if (s.profile === 'admin') return has(s, 'schedule.read_all');
+    // Как сервис: видно всё; без фильтров — «своё» (студенту — группа, преподавателю — его занятия).
+    const mine = (e: ScheduleEvent) => {
+      if (s.profile === 'admin' || writesAny()) return true;
       if (s.profile === 'teacher') return e.teacher_ids.includes(D.ME);
       const g = myGroup();
       return !!g && e.group_ids.includes(g.id);
     };
     const find = (id: string) => {
-      const e = events[inst].find(x => x.id === id && visible(x));
+      const e = events[inst].find(x => x.id === id);
       if (!e) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
       return e;
     };
-    // Занятия пишут преподаватели (только свои) и admin с schedule.write (любые) — как сервис.
-    const writesAny = () => s.profile === 'admin' && has(s, 'schedule.write');
-    const requireWrite = (input?: Omit<ScheduleEvent, 'id'>, existing?: string) => {
-      if (!writesAny() && s.profile !== 'teacher') throw new ApiError('Нет доступа к этому действию.', 403);
-      if (writesAny()) return;
-      if (existing && !events[inst].find(e => e.id === existing)?.teacher_ids.includes(D.ME)) {
-        throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
-      }
-      if (input && !input.teacher_ids.includes(D.ME)) throw new ApiError('Проверьте заполненные поля.', 422);
+    // Занятия меняет только редактор расписания (schedule.write) — в любом профиле, как сервис.
+    function writesAny() { return has(s, 'schedule.write'); }
+    const requireWrite = (_input?: Omit<ScheduleEvent, 'id'>, _existing?: string) => {
+      if (!writesAny()) throw new ApiError('Нет доступа к этому действию.', 403);
     };
     const groupList = () => (D.groups[inst] ??= []);
     const validate = (input: ScheduleEvent | Omit<ScheduleEvent, 'id'>) => {
@@ -85,7 +81,7 @@ export function createMockBackend(): Backend {
         const from = Date.parse(q.from), to = Date.parse(q.to);
         if (to - from > 31 * 86400_000) throw new ApiError('Проверьте заполненные поля.', 422);
         return clone(events[inst]
-          .filter(visible)
+          .filter(e => q.group_id || q.teacher_id || mine(e))
           .filter(e => Date.parse(e.starts_at) < to && Date.parse(e.ends_at) > from)
           .filter(e => !q.group_id || e.group_ids.includes(q.group_id))
           .filter(e => !q.teacher_id || e.teacher_ids.includes(q.teacher_id))
@@ -111,9 +107,7 @@ export function createMockBackend(): Backend {
       },
       async listGroups() {
         await wait(200);
-        if (s.profile === 'teacher' || (s.profile === 'admin' && has(s, 'schedule.read_all'))) return clone(groupList());
-        const g = myGroup();
-        return g ? [clone(g)] : [];
+        return clone(groupList());
       },
     };
   };
@@ -235,6 +229,12 @@ export function createMockBackend(): Backend {
     };
   };
 
+  const canManageGroups = (id: string, profile: Profile) =>
+    (D.serviceSeeds[id] ?? []).some(x => x.service_type === 'schedule' && x.access[profile]?.permissions.includes('schedule.groups'));
+  const requireGroups = (id: string, profile: Profile) => {
+    if (!canManageGroups(id, profile)) throw new ApiError('Нет доступа к этому действию.', 403);
+  };
+
   return {
     mode: 'mock',
     maxUser: () => ({ first_name: 'Геннадий', last_name: 'Лужин' }),
@@ -303,9 +303,41 @@ export function createMockBackend(): Backend {
     },
     async listGroups(id, profile) {
       await wait(150);
-      const all = D.groups[id] ?? [];
-      if (profile === 'student') return clone(all.filter(g => D.groupStudents[g.id]?.includes(D.ME)));
-      return clone(all.map(g => ({ ...g, user_ids: D.groupStudents[g.id] ?? [] })));
+      const manage = canManageGroups(id, profile);
+      const items: GroupEntry[] = (D.groups[id] ?? []).map(g => ({
+        ...g, user_ids: [...(D.groupStudents[g.id] ?? [])].sort(),
+        ...(manage ? { etag: etagOf(`group:${g.id}`), members_etag: etagOf(`members:${g.id}`) } : {}),
+      })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      return clone({
+        items, can_manage: manage,
+        my_group_ids: items.filter(g => g.user_ids.includes(D.ME)).map(g => g.id),
+        ...(manage ? { students: D.students[id] ?? [] } : {}),
+      });
+    },
+    async createGroup(id, profile, name) {
+      await wait(); requireGroups(id, profile);
+      const list = (D.groups[id] ??= []);
+      if (list.some(g => g.name.toLowerCase() === name.trim().toLowerCase())) throw new ApiError('Группа с таким названием уже есть.', 409, 'GROUP_ALREADY_EXISTS');
+      const g = { id: crypto.randomUUID(), name: name.trim() };
+      list.push(g);
+      return { ...g, user_ids: [], etag: etagOf(`group:${g.id}`), members_etag: etagOf(`members:${g.id}`) };
+    },
+    async renameGroup(id, profile, group, name) {
+      await wait(); requireGroups(id, profile); checkEtag(`group:${group.id}`, group.etag ?? '');
+      const g = (D.groups[id] ?? []).find(x => x.id === group.id);
+      if (!g) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
+      g.name = name.trim(); bump(`group:${group.id}`);
+    },
+    async deleteGroup(id, profile, group) {
+      await wait(); requireGroups(id, profile); checkEtag(`group:${group.id}`, group.etag ?? '');
+      if ((D.groupStudents[group.id] ?? []).length) throw new ApiError('В группе есть студенты или занятия. Сначала уберите их.', 409, 'GROUP_IN_USE');
+      D.groups[id] = (D.groups[id] ?? []).filter(x => x.id !== group.id);
+    },
+    async setGroupMembers(id, profile, group, userIds) {
+      await wait(); requireGroups(id, profile); checkEtag(`members:${group.id}`, group.members_etag ?? '');
+      const taken = (D.groups[id] ?? []).filter(g => g.id !== group.id).some(g => (D.groupStudents[g.id] ?? []).some(u => userIds.includes(u)));
+      if (taken) throw new ApiError('Студент уже состоит в другой группе. Сначала уберите его оттуда.', 409, 'STUDENT_ALREADY_GROUPED');
+      D.groupStudents[group.id] = [...userIds]; bump(`members:${group.id}`);
     },
     schedule,
     profiles,

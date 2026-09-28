@@ -347,12 +347,14 @@ def sync_cloud_instance(db: Session, service: ServiceInstance) -> None:
     service.manifest = catalog.default_manifest(code)
     service.supported_profiles = list(catalog.service_type(code)["supported_profiles"])
     create_initial_roles(db, service)
-    # Начальные роли задаёт платформа: права приводятся к каталогу (например, groups.manage
-    # ушло из расписания в администрирование вместе с группами).
+    # Начальные роли задаёт платформа: права и профили приводятся к каталогу (например,
+    # «Редактор расписания» теперь можно выдать и преподавателю).
     for role in catalog.service_type(code)["initial_roles"]:
         existing = db.get(ServiceRole, (service.id, role["code"]))
         if existing and existing.permissions != role["permissions"]:
             existing.permissions = list(role["permissions"])
+        if existing and existing.allowed_profiles != role["allowed_profiles"]:
+            existing.allowed_profiles = list(role["allowed_profiles"])
 
 
 def provision_institution(db: Session, titles: dict, default_locale: str, status: str = InstitutionStatus.ACTIVE.value) -> Institution:

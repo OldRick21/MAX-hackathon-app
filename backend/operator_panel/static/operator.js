@@ -10,7 +10,7 @@
     'members.read': 'Просмотр участников', 'members.manage': 'Управление участниками', 'groups.manage': 'Управление группами',
     'services.read': 'Просмотр сервисов', 'services.manage': 'Управление сервисами', 'roles.manage': 'Назначение ролей',
     'credentials.manage': 'Ключи локальных сервисов', 'schedule.read_all': 'Чтение всего расписания',
-    'schedule.write': 'Изменение занятий', 'profiles.manage': 'Должности и степени в анкетах', 'coursework.manage': 'Управление курсовыми',
+    'schedule.write': 'Изменение занятий', 'schedule.groups': 'Ведение учебных групп', 'profiles.manage': 'Должности и степени в анкетах', 'coursework.manage': 'Управление курсовыми',
   };
   const ACTIONS = {
     'application.submit': 'Подана заявка на подключение вуза', 'application.approve': 'Заявка вуза одобрена',

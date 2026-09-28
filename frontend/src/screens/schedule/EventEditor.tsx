@@ -1,12 +1,13 @@
-// Создание и изменение занятия (только для профиля администратора с правом schedule.write).
+// Создание и изменение занятия — «Редактор расписания» (право schedule.write, админ или преподаватель).
 import { useState, type FormEvent } from 'react';
 import type { ProfilesApi, ScheduleApi } from '../../api/backend';
 import { humanMessage, isUUID } from '../../api/http';
 import type { EventInput, Group, ProfileCard, ScheduleEvent } from '../../api/types';
-import { Button, Input, LoadingState, Modal, TextArea, toast } from '../../components/ui';
+import { Button, Input, LoadingState, Modal, SearchInput, TextArea, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { dayKey, formatTime, mskToIso } from '../../utils/time';
 import p from '../pages.module.css';
+import s from './schedule.module.css';
 
 export function EventEditor({ api, profiles, groups, initial, etag, lockedTeacher, defaultDate, onClose, onSaved }: {
   api: ScheduleApi;
@@ -21,6 +22,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
   onSaved: () => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? '');
+  const [groupQuery, setGroupQuery] = useState('');
   const [date, setDate] = useState(initial ? dayKey(initial.starts_at) : defaultDate);
   const [start, setStart] = useState(initial ? formatTime(initial.starts_at) : '09:00');
   const [end, setEnd] = useState(initial ? formatTime(initial.ends_at) : '10:30');
@@ -73,6 +75,11 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
   };
 
   const knownTeachers = people.data ?? [];
+  // Групп может быть много: выбранные — сверху, остальные фильтруются поиском.
+  const needle = groupQuery.trim().toLowerCase();
+  const shownGroups = groups
+    .filter(g => groupIds.includes(g.id) || !needle || g.name.toLowerCase().includes(needle))
+    .sort((a, b) => Number(groupIds.includes(b.id)) - Number(groupIds.includes(a.id)));
   const extraTeachers = teacherIds.filter(id => !knownTeachers.some(c => c.user_id === id));
 
   return (
@@ -96,10 +103,11 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
         <TextArea label="Описание" hint="Ссылку на онлайн-занятие добавьте сюда — у студентов появится кнопка «Подключиться»"
           value={description} onChange={e => setDescription(e.target.value)} maxLength={2000} />
         <fieldset className={p.fieldset}>
-          <legend className={p.legend}>Группы</legend>
-          <div className={p.checks}>
-            {!groups.length && <span className={p.muted}>Групп пока нет: их создаёт редактор расписания в разделе «Группы».</span>}
-            {groups.map(g => (
+          <legend className={p.legend}>Группы{groupIds.length ? ` · выбрано ${groupIds.length}` : ''}</legend>
+          {groups.length > 8 && <SearchInput placeholder="Найти группу" value={groupQuery} onChange={e => setGroupQuery(e.target.value)} />}
+          <div className={`${p.checks} ${s.scrollChecks}`}>
+            {!groups.length && <span className={p.muted}>Групп пока нет: их создаёт редактор групп в разделе «Группы».</span>}
+            {shownGroups.map(g => (
               <label key={g.id} className={p.check}>
                 <input type="checkbox" checked={groupIds.includes(g.id)} onChange={() => setGroupIds(l => toggle(l, g.id))} />{g.name}
               </label>
@@ -109,7 +117,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
         <fieldset className={p.fieldset}>
           <legend className={p.legend}>Преподаватели</legend>
           {people.status === 'loading' ? <LoadingState text="Загружаем список…" /> : (
-            <div className={p.checks}>
+            <div className={`${p.checks} ${s.scrollChecks}`}>
               {knownTeachers.map(c => (
                 <label key={c.user_id} className={p.check}>
                   <input type="checkbox" checked={teacherIds.includes(c.user_id)} disabled={c.user_id === lockedTeacher}

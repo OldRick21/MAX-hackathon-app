@@ -1,9 +1,15 @@
-from fastapi import HTTPException, APIRouter, Depends, Query
+from typing import Any, Optional
+
+from fastapi import HTTPException, APIRouter, Body, Depends, Header, Query, Request
 from sqlalchemy.orm import Session
 from database.create_tables import get_db
-from database.tables import Membership, ServiceInstance, StudyGroup, StudyGroupMember
+from database.tables import Institution, Membership, ServiceInstance, StudyGroup, StudyGroupMember
+from auth.authorization import ActorContext
 from auth.dependencies import get_current_core_session
 from platform_core import registry
+from platform_core.errors import DomainError
+from routes.private_admin import respond
+from services import institution_admin
 
 router = APIRouter()
 
@@ -87,6 +93,26 @@ def own_groups(db: Session, institution_id: str, user_id: str) -> list:
     return [{"id": g.id, "name": g.name} for g in db.query(StudyGroup).filter(StudyGroup.id.in_(ids))] if ids else []
 
 
+def _member(db: Session, institution_id: str, user_id: str, profile: str) -> Membership:
+    membership = db.get(Membership, (institution_id, user_id))
+    if not membership or profile not in (membership.profiles or []):
+        raise HTTPException(status_code=403, detail="FORBIDDEN: Profile not assigned")
+    return membership
+
+
+def manages_groups(db: Session, institution_id: str, user_id: str, profile: str) -> bool:
+    """Группы ведёт «Редактор групп» расписания (admin или teacher) или администратор с groups.manage."""
+    schedule = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
+                                                ServiceInstance.service_type == "schedule",
+                                                ServiceInstance.enabled.is_(True)).first()
+    if schedule and "schedule.groups" in registry.permissions_for(
+            db, schedule.id, registry.assigned_roles(db, schedule.id, user_id, profile)):
+        return True
+    admin = registry.admin_service_of(db, institution_id)
+    return bool(admin and profile == "admin" and "groups.manage" in registry.permissions_for(
+        db, admin.id, registry.assigned_roles(db, admin.id, user_id, "admin")))
+
+
 @router.get("/api/v1/institution/{institution_id}/groups")
 def list_my_groups(
     institution_id: str,
@@ -94,19 +120,81 @@ def list_my_groups(
     session_data=Depends(get_current_core_session),
     db: Session = Depends(get_db)
 ):
-    """Учебные группы для интерфейса: студенту — своя группа, преподавателю и админу — все с составом."""
+    """Учебные группы для интерфейса: все группы вуза с составом — любому участнику.
+
+    Редактору групп дополнительно: can_manage, ETag групп и список студентов вуза для выбора состава.
+    """
     user, _ = session_data
-    membership = db.get(Membership, (institution_id, user.id))
-    if not membership or profile not in (membership.profiles or []):
-        raise HTTPException(status_code=403, detail="FORBIDDEN: Profile not assigned")
-    if profile == "student":
-        return {"items": own_groups(db, institution_id, user.id), "next_cursor": None}
+    _member(db, institution_id, user.id, profile)
     groups = db.query(StudyGroup).filter(StudyGroup.institution_id == institution_id).order_by(StudyGroup.name_key).all()
     members = {}
     for row in db.query(StudyGroupMember).filter(StudyGroupMember.institution_id == institution_id):
         members.setdefault(row.group_id, []).append(row.user_id)
-    return {"items": [{"id": g.id, "name": g.name, "user_ids": sorted(members.get(g.id, []))} for g in groups],
-            "next_cursor": None}
+    manage = manages_groups(db, institution_id, user.id, profile)
+    items = []
+    for g in groups:
+        item = {"id": g.id, "name": g.name, "user_ids": sorted(members.get(g.id, []))}
+        if manage:
+            item.update(etag=institution_admin._group_tag(g), members_etag=institution_admin._members_tag(g))
+        items.append(item)
+    body = {"items": items, "next_cursor": None, "can_manage": manage,
+            "my_group_ids": registry.user_group_ids(db, institution_id, user.id)}
+    if manage:
+        body["students"] = sorted(m.user_id for m in db.query(Membership).filter(Membership.institution_id == institution_id)
+                                  if "student" in (m.profiles or []))
+    return body
+
+
+def _group_actor(db: Session, request: Request, institution_id: str, user_id: str, profile: str) -> ActorContext:
+    _member(db, institution_id, user_id, profile)
+    institution = db.get(Institution, institution_id)
+    if not institution or institution.status != "active":
+        raise DomainError(409, "RESOURCE_INACTIVE", "Вуз не активен")
+    if not manages_groups(db, institution_id, user_id, profile):
+        raise DomainError(403, "FORBIDDEN", "Нужна роль «Редактор групп»")
+    admin = registry.admin_service_of(db, institution_id)
+    return ActorContext(institution_id=institution_id, admin_service_id=admin.id if admin else "", actor_id=user_id,
+                        roles=[], permissions=["groups.manage", "members.read"], credential_id=None,
+                        request_id=getattr(request.state, "request_id", None))
+
+
+def _group_change(db: Session, ctx: ActorContext, fn):
+    try:
+        return respond(fn())
+    except DomainError:
+        db.rollback()
+        raise
+
+
+@router.post("/api/v1/institution/{institution_id}/groups")
+def create_group(institution_id: str, request: Request, profile: str = Query(...), payload: Any = Body(None),
+                 session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
+    return _group_change(db, ctx, lambda: institution_admin.create_group(db, ctx, payload))
+
+
+@router.patch("/api/v1/institution/{institution_id}/groups/{group_id}")
+def rename_group(institution_id: str, group_id: str, request: Request, profile: str = Query(...), payload: Any = Body(None),
+                 if_match: Optional[str] = Header(None, alias="If-Match"),
+                 session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
+    return _group_change(db, ctx, lambda: institution_admin.rename_group(db, ctx, group_id, payload, if_match))
+
+
+@router.delete("/api/v1/institution/{institution_id}/groups/{group_id}")
+def delete_group(institution_id: str, group_id: str, request: Request, profile: str = Query(...),
+                 if_match: Optional[str] = Header(None, alias="If-Match"),
+                 session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
+    return _group_change(db, ctx, lambda: institution_admin.delete_group(db, ctx, group_id, if_match))
+
+
+@router.put("/api/v1/institution/{institution_id}/groups/{group_id}/members")
+def replace_group_members(institution_id: str, group_id: str, request: Request, profile: str = Query(...),
+                          payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
+                          session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
+    return _group_change(db, ctx, lambda: institution_admin.replace_group_members(db, ctx, group_id, payload, if_match))
 
 
 @router.get("/api/v1/institution/{institution_id}/service")
