@@ -228,5 +228,27 @@ class CustomServices(unittest.TestCase):
             got = {old: db.get(ServiceInstance, sid).service_type for old, sid in ids.items()}
         self.assertEqual(got, {'custom.schedule': 'schedule', 'custom.people': 'user-profile', 'custom.coursework': 'coursework'})
 
+    def test_service_narrowing_role_profiles_drops_assignments(self):
+        from database.tables import RoleAssignment, ServiceRole
+        from platform_core import registry
+        user, _ = self.login('teacher')
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Сужение ролей'}, 'ru').id
+            svc = registry.create_local_instance(db, inst, 'schedule', 'https://s.university.ru/api/v1', 'https://s.university.ru',
+                                                 None, ['admin', 'teacher', 'student'])
+            svc_id = svc.id
+            db.add(ServiceRole(service_id=svc_id, code='schedule_editor', titles={'ru': 'Р'}, allowed_profiles=['admin', 'teacher'],
+                               permissions=['schedule.write'], system=False))
+            db.add(RoleAssignment(service_id=svc_id, user_id=user, profile='teacher', roles=['schedule_editor']))
+            key, secret = registry.issue_credential(db, db.get(ServiceInstance, svc_id))
+            client_id = key.client_id
+            db.commit()
+        token = self.c.post('/api/v1/internal/auth/token', auth=(client_id, secret), json={'grant_type': 'client_credentials'}).json()
+        m = {'Authorization': 'Bearer ' + token['access_token']}
+        r = self.c.patch(f'/api/v1/internal/service/{svc_id}/roles/schedule_editor', headers=m, json={'allowed_profiles': ['admin']})
+        self.assertEqual(r.status_code, 200, r.text)
+        with session_local() as db:
+            self.assertEqual(db.get(RoleAssignment, (svc_id, user, 'teacher')).roles, [])
+
 if __name__ == '__main__':
     unittest.main()

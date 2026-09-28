@@ -40,8 +40,8 @@ function Schedule({ service }: { service: ServiceView }) {
 
   // Смотреть может любой участник; менять — администратор всегда, преподаватель — если ему включили.
   const isTeacher = service.profile === 'teacher';
-  // Контракт: менять занятия может только admin с schedule.write.
-  const canWrite = service.profile === 'admin' && service.permissions.includes('schedule.write');
+  // Менять занятия может admin с schedule.write и преподаватель, которому правку включили (роль teacher_editor).
+  const canWrite = (service.profile === 'admin' || isTeacher) && service.permissions.includes('schedule.write');
   const weekStart = addDays(startOfWeek(now()), weekOffset * 7);
   const weekEnd = addDays(weekStart, 7);
 

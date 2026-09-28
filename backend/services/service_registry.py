@@ -201,6 +201,14 @@ class ServiceRegistry:
         if patch_data.titles is not None:
             role.titles = patch_data.titles.model_dump()
         if patch_data.allowed_profiles is not None:
+            # Сервис сужает профили своей роли — назначения в исключённых профилях снимаются,
+            # иначе их не видно в админке и не снять, а права продолжали бы действовать.
+            removed = set(role.allowed_profiles or []) - set(patch_data.allowed_profiles)
+            if removed:
+                for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service_id,
+                                                           RoleAssignment.profile.in_(removed)):
+                    if role_code in (row.roles or []):
+                        row.roles = [r for r in row.roles if r != role_code]
             role.allowed_profiles = patch_data.allowed_profiles
         if patch_data.permissions is not None:
             role.permissions = patch_data.permissions

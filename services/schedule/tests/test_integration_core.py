@@ -126,7 +126,8 @@ class ScheduleAgainstCore(unittest.TestCase):
             # Меню и роль — по контракту (SPEC §1).
             self.assertEqual([m['id'] for m in service.manifest['menus']], ['schedule', 'schedule_admin'])
             self.assertEqual({r.code: (r.allowed_profiles, r.permissions) for r in service.roles},
-                             {'schedule_editor': (['admin'], ['schedule.read_all', 'schedule.write'])})
+                             {'schedule_editor': (['admin'], ['schedule.read_all', 'schedule.write']),
+                              'teacher_editor': (['teacher'], ['schedule.read_all', 'schedule.write'])})
             service.enabled = True
             db.add(Membership(institution_id=inst_id, user_id=teacher_id, profiles=['teacher']))
             db.add(Membership(institution_id=inst_id, user_id=student_id, profiles=['student']))
@@ -172,6 +173,19 @@ class ScheduleAgainstCore(unittest.TestCase):
         denied = self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
                                json=event)
         self.assertEqual(denied.status_code, 403, denied.text)
+        # Администратор включает преподавателю правку расписания — и выключает обратно.
+        tag = self.core.get(teacher_roles, headers=private).headers['ETag']
+        on = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['teacher_editor']})
+        self.assertEqual(on.status_code, 200, on.text)
+        by_teacher = self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
+                                   json={**event, 'starts_at': '2026-10-01T06:00:00Z', 'ends_at': '2026-10-01T07:00:00Z'})
+        self.assertEqual(by_teacher.status_code, 201, by_teacher.text)
+        self.assertEqual(self.svc.delete(f'/api/v1/schedule/events/{by_teacher.json()["id"]}',
+                                         headers={**teacher_h, 'If-Match': by_teacher.headers['etag']}).status_code, 204)
+        off = self.core.put(teacher_roles, headers={**private, 'If-Match': on.headers['ETag']}, json={'roles': []})
+        self.assertEqual(off.status_code, 200, off.text)
+        self.assertEqual(self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
+                                       json=event).status_code, 403)
         editor_h = admin_h
         created = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},
                                 json=event)

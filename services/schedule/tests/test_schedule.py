@@ -108,9 +108,15 @@ class Schedule(unittest.TestCase):
 
         # §4.1 Студент без группы — пустое расписание, не ошибка.
         self.assertEqual(self.week(st2).json(), {'items': [], 'next_cursor': None})
-        # Писать может только admin AND schedule.write; преподаватель и admin без роли — нет.
-        for who in (t1, st1, plain_admin, self.as_(T1, 'teacher', EDITOR_PERMS)):
+        # Писать может admin с schedule.write; преподаватель без роли, студент и admin без роли — нет.
+        for who in (t1, st1, plain_admin, self.as_(ST1, 'student', EDITOR_PERMS)):
             self.assertEqual(self.post(who, self.event([GA], [T1])).status_code, 403)
+        # Отличие от контракта: преподаватель с включённой правкой пишет и видит все занятия.
+        teacher_editor = self.as_(T2, 'teacher', EDITOR_PERMS)
+        by_teacher = self.post(teacher_editor, self.event([GB], [T1], start='2026-10-02T06:00:00Z', end='2026-10-02T07:00:00Z'))
+        self.assertEqual(by_teacher.status_code, 201, by_teacher.text)
+        self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{by_teacher.json()["id"]}',
+                                       headers={**teacher_editor, 'If-Match': by_teacher.headers['etag']}).status_code, 204)
         self.assertEqual(self.post(editor, self.event([GA], [T1, ST1])).json()['error']['code'], 'INVALID_REFERENCE')
         self.assertEqual(self.post(editor, self.event([GA], [T1], start='2026-09-28T08:00:00Z')).json()['error']['code'],
                          'INVALID_TIME_RANGE')

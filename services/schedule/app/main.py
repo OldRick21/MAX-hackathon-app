@@ -50,7 +50,10 @@ MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus':
     {'id': 'schedule_admin', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
      'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'order': 0}]}
 ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактор расписания', 'en': 'Schedule editor'},
-          'allowed_profiles': ['admin'], 'permissions': ['schedule.read_all', 'schedule.write']}]
+          'allowed_profiles': ['admin'], 'permissions': ['schedule.read_all', 'schedule.write']},
+         # Отличие от контракта: правку расписания администратор может включить и преподавателю.
+         {'code': 'teacher_editor', 'titles': {'ru': 'Редактирование расписания', 'en': 'Schedule editing'},
+          'allowed_profiles': ['teacher'], 'permissions': ['schedule.read_all', 'schedule.write']}]
 RETIRED_ROLES = ('group_editor',)
 STATE = {'onboarding': 'pending', 'error': None}
 
@@ -236,7 +239,8 @@ class Ctx:
         return (self.binding.institution_id, self.binding.service_id)
 
     def admin_can(self, permission):
-        return self.profile == 'admin' and permission in self.permissions
+        """Право admin по контракту; преподаватель с ролью «Редактирование расписания» — тоже (отличие)."""
+        return self.profile in ('admin', 'teacher') and permission in self.permissions
 
     @property
     def reads_all(self):
@@ -244,7 +248,7 @@ class Ctx:
 
     @property
     def writes_any(self):
-        """Контракт: занятия пишет admin AND schedule.write."""
+        """Занятия пишет admin с schedule.write (контракт) и преподаватель, которому правку включили."""
         return self.admin_can('schedule.write')
 
 
@@ -522,7 +526,7 @@ def event_response(ctx, row, value, status=200, extra=None):
 
 
 def need_writer(ctx: Ctx):
-    """Контракт: занятия пишет только admin AND schedule.write."""
+    """Занятия пишет admin с schedule.write или преподаватель с включённой правкой."""
     if not ctx.writes_any:
         raise forbidden('Нужна роль «Редактор расписания»')
 
