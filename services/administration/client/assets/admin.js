@@ -18,7 +18,7 @@
   };
   const ACTIONS = {
     'institution.update': 'Изменены настройки вуза', 'institution.provision': 'Вуз подключён платформой',
-    'institution.status': 'Изменён статус вуза', 'institution.local_hosts': 'Изменены одобренные хосты',
+    'institution.status': 'Изменён статус вуза', 'service.manifest.publish': 'Сервис опубликовал меню', 'institution.local_hosts': 'Изменены одобренные хосты',
     'owner.initial_assign': 'Назначен первый владелец', 'member.add': 'Добавлен участник',
     'member.remove': 'Удалён участник', 'member.profiles.replace': 'Изменены профили участника',
     'service.install': 'Установлен сервис', 'service.update': 'Изменён сервис', 'service.uninstall': 'Удалён сервис',
@@ -361,15 +361,14 @@
     const installed = new Set(services.map(s => s.service_type));
 
     if (manage) {
-      // Только типы с готовой реализацией: курсовые (локальный сервис) ещё не написаны,
-      // и одинокая плашка с ними сбивает с толку. Каталог ядра их по-прежнему знает.
-      const available = ['schedule', 'user-profile'].filter(c => !installed.has(c));
+      const available = ['schedule', 'user-profile', 'coursework'].filter(c => !installed.has(c));
       if (available.length) {
         const select = h('select', {}, available.map(c => h('option', { value: c }, `${title(types[c].titles)} (${types[c].deployment === 'cloud' ? 'облако' : 'локально'})`)));
         const api_ = h('input', { placeholder: 'https://coursework.university.ru/api/v1' });
         const client = h('input', { placeholder: 'https://coursework.university.ru' });
-        const localFields = h('div', {}, field('Адрес API', api_), field('Адрес клиента (origin)', client,
-          'Только хосты, одобренные поддержкой платформы для вашего вуза.'));
+        const localFields = h('div', {}, h('p', { class: 'hint' },
+          'Локальный сервис работает на сервере вуза. Его адрес должен быть на хосте, который одобрила поддержка платформы.'),
+          field('Адрес API', api_), field('Адрес клиента (origin)', client));
         const sync = () => { localFields.hidden = types[select.value].deployment !== 'local'; };
         select.addEventListener('change', sync); sync();
         const key = crypto.randomUUID();
@@ -380,7 +379,7 @@
               : { service_type: type.code, deployment: 'local', api_base_url: api_.value.trim(), client_base_url: client.value.trim() };
             await api('/services', { method: 'POST', body, idempotencyKey: key });
             toast(type.deployment === 'cloud' ? 'Сервис подключён и включён.'
-              : 'Локальный сервис зарегистрирован выключенным. Выдайте ключ, дождитесь публикации меню и включите его.');
+              : 'Сервис зарегистрирован. Дальше — шаги в его карточке: ключ, запуск на сервере вуза, включение.');
           }, reload) }, 'Подключить'))));
       }
     }
@@ -403,14 +402,16 @@
         card.append(h('p', { class: 'muted' }, 'Сервис администрирования предоставляется вузу по умолчанию: его нельзя отключить, перенастроить или удалить.'));
       } else if (manage) {
         const actions = h('div', { class: 'actions' });
-        actions.append(h('button', { class: 'quiet', onclick: () => guarded(async () => {
+        const waiting = s.deployment === 'local' && !s.enabled && !s.manifest.menus.length;
+        actions.append(h('button', { class: s.enabled ? 'quiet' : 'primary', disabled: waiting,
+          title: waiting ? 'Сначала сервис должен опубликовать меню' : '', onclick: () => guarded(async () => {
           const { etag } = await api(`/services/${s.id}`);
           await api(`/services/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled }, etag });
           toast(s.enabled ? 'Сервис выключен, его сессии завершены.' : 'Сервис включён.');
         }, reload) }, s.enabled ? 'Выключить' : 'Включить'));
         if (s.deployment === 'local') {
           actions.append(h('button', { class: 'quiet', onclick: () => editUrls(s) }, 'Адреса'),
-            h('button', { class: 'quiet', onclick: () => editManifest(s) }, 'Меню (manifest)'));
+            h('button', { class: 'quiet', onclick: () => editManifest(s) }, 'Меню вручную (JSON)'));
         }
         actions.append(h('button', { class: 'danger', onclick: () => guarded(async () => {
           if (!await confirmDialog('Удалить сервис?', h('p', {}, 'Экземпляр перестанет выдаваться, ключи и сессии будут отозваны, назначения ролей удалены. Данные сервиса удалением записи не уничтожаются.'), 'Удалить')) return;
@@ -420,7 +421,7 @@
         }, reload) }, 'Удалить'));
         card.append(actions);
       }
-      if (s.deployment === 'local' && can('credentials.manage')) card.append(await credentialsBlock(s));
+      if (s.deployment === 'local') card.insertBefore(await localSetup(s), card.querySelector('.actions'));
       parts.push(card);
     }
     view.replaceChildren(...parts);
@@ -452,9 +453,43 @@
     }, reload);
   }
 
-  async function credentialsBlock(s) {
+  // Подключение локального сервиса по docs/services/coursework/SPEC.md §2: ключ → запуск на
+  // сервере вуза (сервис сам создаёт роль и публикует меню) → включение администратором.
+  async function localSetup(s) {
+    const creds = can('credentials.manage') ? await listAll(`/services/${s.id}/credentials`) : [];
+    const hasKey = creds.some(c => !c.revoked_at);
+    const published = s.manifest.menus.length > 0;
+    const step = (done, titleText, text, ...extra) => h('div', { class: 'row' },
+      h('div', { class: 'row-main' }, h('span', { class: `badge ${done ? 'ok' : ''}` }, done ? 'готово' : 'ждёт'), h('strong', {}, titleText)),
+      h('small', { class: 'muted' }, text), ...extra);
+    const box = h('div', { class: 'sub' }, h('h3', {}, 'Подключение'),
+      step(true, '1. Адреса', `Сервис зарегистрирован на ${s.client_base_url}.`),
+      step(hasKey, '2. Ключ доступа', hasKey
+        ? 'Ключ выдан. Если он потерян — выдайте новый и отзовите старый ниже.'
+        : 'Выдайте ключ и передайте готовые настройки администратору сервера вуза.'),
+      step(published, '3. Запуск сервиса', published
+        ? `Сервис связался с платформой и опубликовал меню: ${s.manifest.menus.map(m => title(m.titles)).join(', ')}.`
+        : 'Запустите сервис на сервере вуза с выданными настройками — он сам создаст свою роль и опубликует меню.',
+        published ? null : h('div', { class: 'actions' }, h('button', { class: 'quiet', onclick: reload }, 'Проверить'))),
+      step(s.enabled, '4. Включение', s.enabled ? 'Сервис доступен пользователям.' : 'Нажмите «Включить» — сервис появится у пользователей.'));
+    if (can('credentials.manage')) box.append(credentialsBlock(s, creds));
+    return box;
+  }
+
+  function envBlock(s, data) {
+    const prefix = s.service_type.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+    return [
+      `CORE_URL=${BOOT.shell_origin}`,
+      `SHELL_ORIGIN=${BOOT.shell_origin}`,
+      `${prefix}_CLIENT_ID=${data.credential.client_id}`,
+      `${prefix}_CLIENT_SECRET=${data.client_secret}`,
+      `${prefix}_API_BASE_URL=${s.api_base_url}`,
+      `${prefix}_CLIENT_BASE_URL=${s.client_base_url}`,
+    ].join('\n');
+  }
+
+  function credentialsBlock(s, creds) {
     const box = h('div', { class: 'sub' }, h('h3', {}, 'Ключи доступа сервиса к ядру'));
-    const creds = await listAll(`/services/${s.id}/credentials`);
     const active = creds.filter(c => !c.revoked_at);
     box.append(h('p', { class: 'muted' }, 'Секрет показывается один раз. Храните его только в серверных секретах сервиса. Допускается два активных ключа для ротации.'));
     for (const c of creds) {
@@ -470,10 +505,14 @@
     if (active.length < 2) {
       box.append(h('button', { class: 'quiet', onclick: () => guarded(async () => {
         const { data } = await api(`/services/${s.id}/credentials`, { method: 'POST' });
-        const secret = h('input', { value: data.client_secret, readonly: true });
-        infoDialog('Новый ключ сервиса', [field('client_id', h('input', { value: data.credential.client_id, readonly: true })),
-          field('client_secret', secret, 'Скопируйте сейчас: повторно его получить нельзя.'),
-          h('button', { type: 'button', class: 'quiet', onclick: () => navigator.clipboard?.writeText(data.client_secret) }, 'Скопировать секрет')]);
+        const env = envBlock(s, data);
+        const area = h('textarea', { rows: 7, readonly: true, spellcheck: false });
+        area.value = env;
+        infoDialog('Настройки для сервера вуза', [
+          h('p', {}, 'Передайте эти строки администратору сервера: их нужно добавить в файл .env сервиса и перезапустить его.'),
+          area,
+          h('p', { class: 'hint' }, 'Секрет показывается один раз и не хранится в интерфейсе. Не пересылайте его в открытых чатах.'),
+          h('button', { type: 'button', class: 'quiet', onclick: () => navigator.clipboard?.writeText(env).then(() => toast('Скопировано.')) }, 'Скопировать')]);
       }, reload) }, 'Выдать ключ'));
     }
     return box;
@@ -595,7 +634,7 @@
         list.append(h('div', { class: `row ${e.outcome === 'denied' ? 'denied' : ''}` },
           h('div', { class: 'row-main' }, h('strong', {}, ACTIONS[e.action] || e.action),
             e.outcome === 'denied' ? h('span', { class: 'badge' }, `отклонено: ${e.error_code}`) : null),
-          h('small', { class: 'muted' }, `${fmtDate(e.created_at)} · ${e.actor_kind === 'platform_support' ? 'поддержка платформы' : e.actor_kind === 'operator' ? 'оператор' : 'администратор'} ${short(e.actor_user_id)}${e.target_id ? ' · объект ' + e.target_id : ''}`),
+          h('small', { class: 'muted' }, `${fmtDate(e.created_at)} · ${e.actor_kind === 'platform_support' ? 'поддержка платформы' : e.actor_kind === 'operator' ? 'оператор' : e.actor_kind === 'system' ? 'сервис' : 'администратор'} ${short(e.actor_user_id)}${e.target_id ? ' · объект ' + e.target_id : ''}`),
           Object.keys(e.details || {}).length ? h('details', {}, h('summary', {}, 'Подробности'), h('pre', {}, JSON.stringify(e.details, null, 2))) : null));
       }
       cursor = data.next_cursor; more.hidden = !cursor;

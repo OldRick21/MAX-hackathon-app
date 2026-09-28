@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { humanMessage, isAbort } from '../../api/http';
 import type { ProfileCard, ServiceView } from '../../api/types';
 import { SectionGate } from '../../components/SectionGate';
@@ -83,12 +83,16 @@ function Users({ service }: { service: ServiceView }) {
   };
 
   const base = `/institution/${institution.id}`;
+  const navigate = useNavigate();
   return (
     <div>
       <div className={p.pageHead}>
         <div>
-          <h1 className={p.title}>Пользователи</h1>
-          <p className={p.subtitle}>Участники вуза, которые заполнили анкету</p>
+          <h1 className={p.title}>Люди</h1>
+          <p className={p.subtitle}>Ваш профиль и участники вуза, которые заполнили анкету</p>
+        </div>
+        <div className={p.headActions}>
+          <Button onClick={() => navigate(`${base}/users/me`)}>Мой профиль</Button>
         </div>
       </div>
       <SearchInput

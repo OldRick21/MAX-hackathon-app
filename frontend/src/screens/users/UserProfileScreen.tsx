@@ -7,6 +7,7 @@ import { SectionGate } from '../../components/SectionGate';
 import { IconArrowLeft, IconUserOff } from '../../components/icons/ui';
 import { Avatar, Button, EmptyState, ErrorState, Input, LoadingState, Modal, TextArea, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
+import { useScheduleApi } from '../../hooks/useServices';
 import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useBackend, useSession } from '../../state/session';
 import p from '../pages.module.css';
@@ -33,7 +34,9 @@ function UserProfile({ service }: { service: ServiceView }) {
   }, [api, userId, isMe]);
 
   const canManage = profile === 'admin' && service.permissions.includes('profiles.manage');
-  const back = <Link to={`/institution/${institution.id}/users`} className={p.back}><IconArrowLeft />Все пользователи</Link>;
+  const back = isMe
+    ? <Link to={`/institution/${institution.id}/users`} className={p.back}><IconArrowLeft />Люди</Link>
+    : <Link to={`/institution/${institution.id}/users`} className={p.back}><IconArrowLeft />Все пользователи</Link>;
 
   if (card.status === 'loading' && !card.data) return <>{back}<LoadingState /></>;
   if (card.status === 'error') {
@@ -71,6 +74,8 @@ function UserProfile({ service }: { service: ServiceView }) {
             </div>
           )}
         </section>
+
+        {isMe && <AboutMe userId={user?.id ?? ''} />}
       </div>
 
       {editSelf && <EditSelf api={api} card={card.data!} onClose={() => setEditSelf(false)} onSaved={v => { card.mutate(() => v); setEditSelf(false); }} />}
@@ -79,6 +84,43 @@ function UserProfile({ service }: { service: ServiceView }) {
           onClose={() => setEditAcademic(false)} onSaved={v => { card.mutate(() => v); setEditAcademic(false); }} />
       )}
     </div>
+  );
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'Владелец вуза', technical_admin: 'Технический администратор', membership_admin: 'Администратор участников',
+  schedule_editor: 'Редактор расписания', profile_editor: 'Редактор анкет', coursework_manager: 'Менеджер курсовых',
+};
+
+/** Всё о себе в вузе: профили, роли в сервисах, учебная группа и ID для администратора. */
+function AboutMe({ userId }: { userId: string }) {
+  const { institution, profiles, profile, catalog } = useInstitution();
+  const schedule = useScheduleApi();
+  // Своя группа видна только студенту: преподавателю сервис отдаёт все группы вуза.
+  const group = useAsync(async signal => (schedule && profile === 'student'
+    ? (await schedule.api.listGroups(signal))[0]?.name ?? null : undefined), [schedule, profile]);
+  const roles = (catalog.status === 'ready' ? catalog.value : [])
+    .flatMap(svc => svc.roles.map(r => `${ROLE_LABEL[r] ?? r} (${svc.display_name})`));
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(userId); toast('ID скопирован'); }
+    catch { toast('Не удалось скопировать. Выделите ID вручную.', true); }
+  };
+  return (
+    <section className={s.details} aria-label="Участие в вузе">
+      <dl className={s.dl}>
+        <dt>Вуз</dt><dd>{institution.display_name}</dd>
+        <dt>Профили</dt><dd>{profiles.map(x => PROFILE_LABEL[x]).join(', ')} · сейчас: {PROFILE_LABEL[profile]}</dd>
+        {profile === 'student' && schedule && (
+          <><dt>Учебная группа</dt><dd>{group.status === 'loading' ? '…' : group.data ?? 'Пока не назначена — обратитесь к куратору'}</dd></>
+        )}
+        <dt>Роли</dt><dd>{roles.length ? roles.join(', ') : 'Нет дополнительных ролей в текущем профиле'}</dd>
+        <dt>ID пользователя</dt><dd><code style={{ wordBreak: 'break-all' }}>{userId}</code></dd>
+      </dl>
+      <div className={s.actions}>
+        <Button variant="secondary" onClick={copy}>Скопировать ID</Button>
+      </div>
+      <p className={p.muted}>ID нужен администратору, чтобы добавить вас в вуз или в учебную группу.</p>
+    </section>
   );
 }
 

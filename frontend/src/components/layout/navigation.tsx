@@ -18,9 +18,8 @@ export interface NavItem {
 export function buildNav(base: string, services: ServiceView[] | undefined): NavItem[] {
   const items: NavItem[] = [{ key: 'home', to: base, label: 'Главная', short: 'Главная', Icon: IconHome, end: true }];
   if (findService(services, 'schedule')) items.push({ key: 'schedule', to: `${base}/schedule`, label: 'Расписание', short: 'Расписание', Icon: IconSchedule });
-  // Экран профиля закрыт тем же гейтом, что и список, поэтому условие здесь — тоже 'users'.
-  if (findService(services, 'users')) items.push({ key: 'profile', to: `${base}/users/me`, label: 'Мой профиль', short: 'Профиль', Icon: IconUsers });
-  if (findService(services, 'users')) items.push({ key: 'users', to: `${base}/users`, label: 'Пользователи', short: 'Люди', Icon: IconUsers, end: true });
+  // Один сервис — один пункт: «Мой профиль» открывается внутри «Люди».
+  if (findService(services, 'users')) items.push({ key: 'users', to: `${base}/users`, label: 'Люди', short: 'Люди', Icon: IconUsers });
   if (findService(services, 'coursework')) items.push({ key: 'coursework', to: `${base}/coursework`, label: 'Курсовые работы', short: 'Работы', Icon: IconCoursework });
   const admin = frameMenus(services).find(x => x.service.service_type === 'administration');
   if (admin) {
@@ -29,11 +28,11 @@ export function buildNav(base: string, services: ServiceView[] | undefined): Nav
       label: 'Администрирование', short: 'Админ', Icon: IconBuilding, small: true,
     });
   }
-  items.push({ key: 'services', to: `${base}/services`, label: 'Все сервисы', short: 'Ещё', Icon: IconServices });
+  items.push({ key: 'services', to: `${base}/services`, label: 'Все сервисы', short: 'Сервисы', Icon: IconServices });
   return items;
 }
 
-/** Нижняя навигация: Главная | Расписание | Пользователи | Работы | Ещё (handoff, раздел 8). */
+/** Нижняя навигация: только Главная и Сервисы. Разделы сервисов открываются из «Все сервисы». */
 export function bottomNav(items: NavItem[]): NavItem[] {
-  return items.filter(i => i.key !== 'administration');
+  return items.filter(i => i.key === 'home' || i.key === 'services');
 }

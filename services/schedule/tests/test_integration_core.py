@@ -120,6 +120,12 @@ class ScheduleAgainstCore(unittest.TestCase):
         key = {'Idempotency-Key': str(uuid.uuid4())}
         self.assertEqual(self.svc.post('/api/v1/schedule/groups', headers={**admin_h, **key},
                                        json={'name': 'ИВТ-21'}).status_code, 403)
+        # Ядро не показывает admin пункт расписания без schedule.read_all, иначе shell открыл бы раздел с 403.
+        def catalog():
+            items = self.core.get(f'/api/v1/institution/{inst_id}/service', params={'profile': 'admin'},
+                                  headers=owner_core).json()['items']
+            return next(x for x in items if x['id'] == schedule_id)
+        self.assertEqual((catalog()['menus'], catalog()['permissions']), ([], []))
         roles_path = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{owner_id}/profiles/admin/roles'
         machine, actor = self.admin_headers(inst_id, admin_service_id, owner_core)
         etag = self.core.get(roles_path, headers={**machine, **actor}).headers['ETag']
@@ -127,6 +133,10 @@ class ScheduleAgainstCore(unittest.TestCase):
                                 json={'roles': ['schedule_editor']})
         self.assertEqual(granted.status_code, 200, granted.text)
 
+        # После выдачи роли shell видит меню и права — от них зависят кнопки «Группы» и «Добавить занятие».
+        self.assertEqual([m['id'] for m in catalog()['menus']], ['schedule_admin'])
+        self.assertEqual(catalog()['permissions'], ['groups.manage', 'schedule.read_all', 'schedule.write'])
+        self.assertEqual(catalog()['roles'], ['schedule_editor'])
         group = self.svc.post('/api/v1/schedule/groups', headers={**admin_h, **key}, json={'name': 'ИВТ-21'})
         self.assertEqual(group.status_code, 201, group.text)
         group_id = group.json()['id']

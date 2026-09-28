@@ -1,4 +1,9 @@
-from fastapi import APIRouter, Depends, Response, status
+import hashlib
+import json
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from services.service_registry import ServiceRegistry
@@ -13,19 +18,32 @@ def get_own_manifest(
     machine_claims = Depends(RequireMachineScope("manifest:write")),
     db: Session = Depends(get_db)
 ):
-    """Прочитать манифест своего экземпляра."""
-    return ServiceRegistry.get_service_manifest(service_id, machine_claims, db)
+    """Прочитать манифест своего экземпляра; ETag нужен для If-Match при замене (CORE_API_SPEC §7)."""
+    manifest = ServiceRegistry.get_service_manifest(service_id, machine_claims, db)
+    return JSONResponse(manifest, headers={"ETag": manifest_etag(manifest)})
+
+
+def manifest_etag(manifest: dict) -> str:
+    raw = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
+    return '"' + hashlib.sha256(raw.encode()).hexdigest()[:40] + '"'
 
 
 @router.put("/api/v1/internal/service/{service_id}/manifest")
 def replace_own_manifest(
     service_id: str,
     manifest: ServiceManifest,
+    if_match: Optional[str] = Header(None, alias="If-Match"),
     machine_claims = Depends(RequireMachineScope("manifest:write")),
     db: Session = Depends(get_db)
 ):
-    """Заменить имя и меню своего экземпляра."""
-    return ServiceRegistry.replace_service_manifest(service_id, manifest, machine_claims, db)
+    """Заменить имя и меню своего экземпляра: нет If-Match — 428, устаревший — 412."""
+    if not if_match:
+        raise HTTPException(status_code=428, detail="PRECONDITION_REQUIRED: If-Match is required")
+    current = ServiceRegistry.get_service_manifest(service_id, machine_claims, db)
+    if if_match != manifest_etag(current):
+        raise HTTPException(status_code=412, detail="PRECONDITION_FAILED: Manifest changed")
+    saved = ServiceRegistry.replace_service_manifest(service_id, manifest, machine_claims, db)
+    return JSONResponse(saved, headers={"ETag": manifest_etag(saved)})
 
 
 @router.get("/api/v1/internal/service/{service_id}/users/{user_id}/profiles")

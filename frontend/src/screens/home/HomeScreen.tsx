@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { ScheduleEvent } from '../../api/types';
-import { Avatar, Badge, EmptyState, ErrorState, Skeleton } from '../../components/ui';
+import { Avatar, Badge, Button, EmptyState, ErrorState, Skeleton, toast } from '../../components/ui';
 import { IconCalendarEmpty } from '../../components/icons/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useProfilesApi, useScheduleApi } from '../../hooks/useServices';
@@ -42,7 +42,7 @@ function useHomeSchedule() {
 }
 
 export function HomeScreen() {
-  const { maxUser } = useSession();
+  const { maxUser, user } = useSession();
   const { institution, profile, catalog } = useInstitution();
   const profiles = useProfilesApi();
   const scheduleApi = useScheduleApi();
@@ -89,6 +89,15 @@ export function HomeScreen() {
       {profiles
         ? <Link to={`${base}/users/me`} className={s.profileCard} aria-label={`Мой профиль: ${displayName}`}>{cardInner}</Link>
         : <div className={s.profileCard}>{cardInner}</div>}
+
+      {/* Без сервиса «Люди» профиля нет — ID для администратора показываем здесь. */}
+      {catalogReady && !profiles && user && (
+        <p className={s.uni} style={{ marginTop: '1.2rem', wordBreak: 'break-all' }}>
+          Ваш ID: <code>{user.id}</code>{' '}
+          <Button variant="ghost" size="small" onClick={() => navigator.clipboard?.writeText(user.id)
+            .then(() => toast('ID скопирован'), () => toast('Не удалось скопировать', true))}>Скопировать</Button>
+        </p>
+      )}
 
       {(!catalogReady || scheduleApi) && (
         <section className={s.dayCard} aria-label="Расписание на день">

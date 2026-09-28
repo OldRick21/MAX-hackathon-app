@@ -1,7 +1,7 @@
 import type { ComponentType, SVGProps } from 'react';
 import { Link } from 'react-router-dom';
 import type { ServiceView } from '../../api/types';
-import { IconCoursework, IconHome, IconSchedule, IconServices, IconUsers } from '../../components/icons/figma';
+import { IconCoursework, IconSchedule, IconServices, IconUsers } from '../../components/icons/figma';
 import { IconBuilding, IconGrid } from '../../components/icons/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui';
 import { NATIVE_MENUS, useInstitution } from '../../state/institution';
@@ -17,8 +17,9 @@ interface Entry {
 }
 
 const NATIVE: Record<string, { section: string; name: string; desc: string; Icon: Entry['Icon'] }> = {
-  home: { section: '', name: 'Главная', desc: 'Ваш профиль и занятия на сегодня', Icon: IconHome },
-  users: { section: 'users', name: 'Пользователи', desc: 'Участники вуза и их профили', Icon: IconUsers },
+  // Один сервис — одна карточка: оба меню сервиса анкет ведут в «Люди», профиль открывается внутри.
+  home: { section: 'users', name: 'Люди', desc: 'Ваш профиль и участники вуза', Icon: IconUsers },
+  users: { section: 'users', name: 'Люди', desc: 'Ваш профиль и участники вуза', Icon: IconUsers },
   schedule: { section: 'schedule', name: 'Расписание', desc: 'Занятия на неделю', Icon: IconSchedule },
   schedule_admin: { section: 'schedule', name: 'Расписание', desc: 'Все группы и редактирование занятий', Icon: IconSchedule },
   coursework: { section: 'coursework', name: 'Курсовые работы', desc: 'Загрузка и проверка работ', Icon: IconCoursework },

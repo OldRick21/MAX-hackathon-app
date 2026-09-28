@@ -32,7 +32,19 @@ class ServiceRegistry:
         if not service:
             raise HTTPException(status_code=404, detail="Service not found")
 
-        service.manifest = manifest_data.model_dump()
+        # Те же правила, что у администратора (institution_admin.replace_manifest): меню облачных
+        # сервисов задаёт платформа, пункты проверяются по каталогу типа, включённый сервис
+        # не остаётся без меню.
+        if service.deployment != "local":
+            raise HTTPException(status_code=403, detail="PROTECTED_RESOURCE: Manifest облачного сервиса задаёт платформа")
+        manifest = catalog.check_manifest(manifest_data.model_dump(exclude_none=True), service.service_type,
+                                          service.supported_profiles or [])
+        if service.enabled and not manifest["menus"]:
+            raise HTTPException(status_code=409, detail="MANIFEST_REQUIRED: У включённого сервиса должно остаться меню")
+        service.manifest = manifest
+        registry.audit(db, scope="institution", action="service.manifest.publish", actor_user_id=None,
+                       actor_kind="system", institution_id=service.institution_id, target_type="service",
+                       target_id=service.id, details={"menus": [m["id"] for m in manifest["menus"]]})
         db.commit()
         return service.manifest
 

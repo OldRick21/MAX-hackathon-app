@@ -1,7 +1,7 @@
 // Создание и изменение занятия (только для профиля администратора с правом schedule.write).
 import { useState, type FormEvent } from 'react';
 import type { ProfilesApi, ScheduleApi } from '../../api/backend';
-import { humanMessage } from '../../api/http';
+import { humanMessage, isUUID } from '../../api/http';
 import type { EventInput, Group, ProfileCard, ScheduleEvent } from '../../api/types';
 import { Button, Input, LoadingState, Modal, TextArea, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
@@ -32,6 +32,15 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
     initial?.teacher_ids ?? (lockedTeacher ? [lockedTeacher] : []));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manualTeacher, setManualTeacher] = useState('');
+  // Без сервиса «Люди» список преподавателей недоступен — добавляем по ID, сервер проверит профиль.
+  const addTeacher = () => {
+    const id = manualTeacher.trim().toLowerCase();
+    if (!isUUID(id)) return setError('Введите ID преподавателя: он показан у него в профиле или на главном экране.');
+    setError(null);
+    setTeacherIds(l => (l.includes(id) ? l : [...l, id]));
+    setManualTeacher('');
+  };
 
   // Анкеты не различают студентов и преподавателей — сервер сам проверит, что выбран преподаватель.
   const people = useAsync<ProfileCard[]>(async signal => (profiles ? (await profiles.listUsers('', null, signal)).items : []), [profiles]);
@@ -114,10 +123,15 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
                   {id === lockedTeacher ? 'Вы' : 'Преподаватель без анкеты'}
                 </label>
               ))}
-              {!knownTeachers.length && !extraTeachers.length && <span className={p.muted}>Список людей недоступен: сервис анкет не подключён.</span>}
+              {!knownTeachers.length && !extraTeachers.length && <span className={p.muted}>Список людей недоступен: сервис «Люди» не подключён.</span>}
             </div>
           )}
         </fieldset>
+        <div className={p.formRow}>
+          <Input label="Добавить преподавателя по ID" value={manualTeacher} onChange={e => setManualTeacher(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTeacher(); } }} />
+          <div style={{ alignSelf: 'end' }}><Button variant="secondary" onClick={addTeacher} disabled={!manualTeacher.trim()}>Добавить</Button></div>
+        </div>
         <label className={p.check}>
           <input type="checkbox" checked={cancelled} onChange={e => setCancelled(e.target.checked)} />Занятие отменено
         </label>

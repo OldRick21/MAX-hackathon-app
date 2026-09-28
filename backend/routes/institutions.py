@@ -3,8 +3,45 @@ from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from database.tables import Membership, ServiceInstance
 from auth.dependencies import get_current_core_session
+from platform_core import registry
 
 router = APIRouter()
+
+
+def service_card(db: Session, service: ServiceInstance, user_id: str, profile: str) -> dict:
+    """ServiceView для shell: актуальные роли/permissions пользователя и меню, отфильтрованные по ним.
+
+    Меню с required_permissions показывается, только если у профиля есть все права: иначе
+    shell открывал бы раздел, в котором сервис ответит 403, и не видел бы прав на запись.
+    """
+    roles = registry.assigned_roles(db, service.id, user_id, profile)
+    permissions = registry.permissions_for(db, service.id, roles)
+    manifest = service.manifest or {}
+    menus = []
+    for m in sorted(manifest.get("menus", []), key=lambda m: (m.get("order", 0), m.get("id", ""))):
+        if (profile in [p.lower() for p in m.get("profiles", [])]
+                and set(m.get("required_permissions") or []) <= set(permissions)):
+            menus.append({
+                "id": m["id"],
+                "display_name": m.get("titles", {}).get("ru", m["id"]),
+                "locale": "ru",
+                "entrypoint_path": m.get("entrypoint_path", "/"),
+                "order": m.get("order", 0)
+            })
+    return {
+        "id": service.id,
+        "institution_id": service.institution_id,
+        "service_type": service.service_type,
+        "deployment": service.deployment,
+        "display_name": manifest.get("titles", {}).get("ru", service.service_type),
+        "locale": "ru",
+        "api_base_url": service.api_base_url,
+        "client_base_url": service.client_base_url,
+        "profile": profile,
+        "roles": roles,
+        "permissions": permissions,
+        "menus": menus
+    }
 
 @router.get("/api/v1/institution")
 def list_my_institutions(session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
@@ -72,36 +109,8 @@ def list_my_services(
         ServiceInstance.enabled == True
     ).all()
 
-    items = []
-    for s in services:
-        if profile_norm in [p.lower() for p in s.supported_profiles]:
-            # Фильтрация меню манифеста по профилю
-            menus = []
-            manifest = s.manifest or {}
-            for m in manifest.get("menus", []):
-                if profile_norm in [p.lower() for p in m.get("profiles", [])]:
-                    menus.append({
-                        "id": m["id"],
-                        "display_name": m.get("titles", {}).get("ru", m["id"]),
-                        "locale": "ru",
-                        "entrypoint_path": m.get("entrypoint_path", "/"),
-                        "order": m.get("order", 0)
-                    })
-
-            items.append({
-                "id": s.id,
-                "institution_id": s.institution_id,
-                "service_type": s.service_type,
-                "deployment": s.deployment,
-                "display_name": manifest.get("titles", {}).get("ru", s.service_type),
-                "locale": "ru",
-                "api_base_url": s.api_base_url,
-                "client_base_url": s.client_base_url,
-                "profile": profile_norm,
-                "roles": [],
-                "permissions": [],
-                "menus": menus
-            })
+    items = [service_card(db, s, user.id, profile_norm) for s in services
+             if profile_norm in [p.lower() for p in s.supported_profiles]]
 
     return {"items": items, "next_cursor": None}
 
@@ -167,30 +176,4 @@ def get_my_service(
     if profile_norm not in [p.lower() for p in service.supported_profiles]:
         raise HTTPException(status_code=404, detail="RESOURCE_NOT_FOUND: Profile not supported by service")
 
-    manifest = service.manifest or {}
-    menus = []
-    for m in manifest.get("menus", []):
-        if profile_norm in [p.lower() for p in m.get("profiles", [])]:
-            menus.append({
-                "id": m["id"],
-                "display_name": m.get("titles", {}).get("ru", m["id"]),
-                "locale": "ru",
-                "entrypoint_path": m.get("entrypoint_path", "/"),
-                "order": m.get("order", 0)
-            })
-
-    return {
-        "id": service.id,
-        "institution_id": service.institution_id,
-        "service_type": service.service_type,
-        "deployment": service.deployment,
-        "display_name": manifest.get("titles", {}).get("ru", service.service_type),
-        "locale": "ru",
-        "api_base_url": service.api_base_url,
-        "client_base_url": service.client_base_url,
-        "profile": profile_norm,
-        "roles": [],
-        "permissions": [],
-        "menus": menus
-    }
-
+    return service_card(db, service, user.id, profile_norm)
