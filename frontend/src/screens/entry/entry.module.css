@@ -1,0 +1,48 @@
+.screen {
+  min-height: 100%; display: grid; align-content: center; justify-items: center;
+  padding: calc(4rem + var(--safe-top)) 2.4rem calc(4rem + var(--safe-bottom));
+  background:
+    radial-gradient(90rem 90rem at 100% 0, rgba(109, 74, 255, .22) 0%, rgba(109, 74, 255, 0) 100%) no-repeat,
+    var(--bg);
+}
+.brand { display: flex; align-items: flex-end; gap: 1.3rem; color: var(--text); margin-bottom: 5.6rem; }
+.brand img { width: 13.9rem; height: 11.4rem; }
+.brand svg { width: 21.2rem; height: 8.1rem; }
+.panel { width: min(81.3rem, 100%); display: grid; gap: 2.4rem; }
+.title { font-family: var(--font-accent); font-weight: 500; font-size: 4.4rem; line-height: 1.2; text-align: center; text-wrap: balance; }
+.text { font-size: 2.6rem; color: var(--text-2); text-align: center; text-wrap: pretty; }
+.list { list-style: none; margin: 1.6rem 0 0; padding: 0; display: grid; gap: 1.6rem; }
+.uniButton {
+  width: 100%; display: flex; align-items: center; gap: 2.4rem; text-align: left;
+  padding: 2.8rem 3.2rem; border-radius: var(--r-card); border: 1px solid var(--line); background: var(--surface);
+  transition: box-shadow .15s, border-color .15s;
+}
+.uniButton:hover { border-color: var(--accent); box-shadow: 0 1.2rem 3.2rem rgba(109, 74, 255, .12); }
+.uniIcon { flex: none; width: 7.2rem; height: 7.2rem; border-radius: 2rem; display: grid; place-items: center; background: var(--accent-2); color: var(--text); }
+.uniIcon svg { width: 4rem; height: 4rem; }
+.uniName { font-size: 2.6rem; font-weight: 600; line-height: 1.3; }
+.uniMeta { margin-top: .4rem; font-size: 2rem; color: var(--text-2); }
+.arrow { margin-left: auto; flex: none; width: 3.2rem; height: 3.2rem; color: var(--text-2); }
+.code {
+  display: block; margin: 0 auto; padding: 1.2rem 2rem; border-radius: 1.4rem; background: var(--surface);
+  border: 1px dashed var(--line); font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; font-size: 2rem;
+  user-select: all; overflow-wrap: anywhere; text-align: center;
+}
+.center { display: flex; justify-content: center; gap: 1.2rem; flex-wrap: wrap; }
+
+@media (max-width: 767px) {
+  .brand { margin-bottom: 3.2rem; }
+  .brand img { width: 6.4rem; height: 5.25rem; }
+  .brand svg { width: 9.8rem; height: 3.74rem; }
+  .title { font-size: 2.4rem; }
+  .text { font-size: 1.6rem; }
+  .panel { gap: 1.6rem; }
+  .list { gap: 1rem; margin-top: .8rem; }
+  .uniButton { padding: 1.6rem; gap: 1.4rem; border-radius: 2rem; }
+  .uniIcon { width: 4.8rem; height: 4.8rem; border-radius: 1.4rem; }
+  .uniIcon svg { width: 2.6rem; height: 2.6rem; }
+  .uniName { font-size: 1.6rem; }
+  .uniMeta { font-size: 1.4rem; }
+  .arrow { width: 2.2rem; height: 2.2rem; }
+  .code { font-size: 1.4rem; }
+}

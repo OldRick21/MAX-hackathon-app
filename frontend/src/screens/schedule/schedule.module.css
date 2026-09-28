@@ -1,0 +1,60 @@
+.toolbar { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-bottom: 3.2rem; }
+.weekNav { display: flex; align-items: center; gap: .8rem; }
+.weekLabel { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; min-width: 28rem; text-align: center; font-variant-numeric: tabular-nums; }
+.navBtn { border: 1px solid var(--line); background: var(--surface); }
+.groupFilter { min-width: 26rem; }
+.spacer { flex: 1; }
+
+.days { display: grid; gap: 4rem; max-width: 110rem; }
+.day { display: grid; gap: 1.6rem; }
+.dayHead { display: flex; align-items: center; gap: 1.2rem; font-family: var(--font-accent); font-weight: 500; font-size: 2.6rem; line-height: 1.25; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.6rem; }
+
+/* ScheduleCard */
+.card {
+  display: grid; grid-template-columns: 14rem minmax(0, 1fr) auto; gap: 2.4rem; align-items: start;
+  padding: 2.8rem 2.8rem 2.8rem 3.2rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 2.4rem;
+  position: relative;
+}
+.card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 1.2rem 3.2rem rgba(109, 74, 255, .12); }
+.card.cancelled { background: #FAFAFC; border-style: dashed; }
+.times { display: grid; gap: .4rem; font-variant-numeric: tabular-nums; }
+.start { font-size: 2.8rem; font-weight: 700; line-height: 1.1; }
+.end { font-size: 2rem; color: var(--text-2); }
+.body { display: grid; gap: 1rem; min-width: 0; }
+.title { font-size: 2.6rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.cancelled .title, .cancelled .start { text-decoration: line-through; color: var(--text-2); }
+.meta { display: flex; flex-wrap: wrap; gap: .4rem 2.4rem; font-size: 2.1rem; color: var(--text-2); }
+.metaItem { display: inline-flex; align-items: center; gap: .8rem; }
+.metaItem strong { color: var(--text); font-weight: 600; }
+.badges { display: flex; gap: .8rem; flex-wrap: wrap; }
+.description { font-size: 2rem; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.actions { display: flex; align-items: center; gap: .8rem; }
+.noLink { font-size: 1.9rem; color: var(--text-2); }
+
+.skeletonCard { height: 14rem; border-radius: 2.4rem; }
+
+@media (max-width: 767px) {
+  .toolbar { margin-bottom: 2rem; gap: .8rem; }
+  .weekNav { width: 100%; justify-content: space-between; }
+  .weekLabel { font-size: 1.5rem; min-width: 0; flex: 1; }
+  .groupFilter { min-width: 0; flex: 1; }
+  .spacer { display: none; }
+  .days { gap: 2.4rem; }
+  .day { gap: 1rem; }
+  .dayHead { font-size: 1.7rem; }
+  .list { gap: 1rem; }
+  .card { grid-template-columns: 1fr auto; gap: 1rem 1.2rem; padding: 1.6rem; border-radius: 1.8rem; }
+  .times { grid-column: 1; grid-auto-flow: column; justify-content: start; align-items: baseline; gap: .8rem; }
+  .actions { grid-column: 2; grid-row: 1; }
+  .body { grid-column: 1 / -1; gap: .6rem; }
+  .start { font-size: 1.8rem; }
+  .end { font-size: 1.5rem; }
+  .title { font-size: 1.7rem; }
+  .meta { font-size: 1.4rem; gap: .2rem 1.6rem; }
+  .description { font-size: 1.4rem; }
+  .noLink { font-size: 1.4rem; }
+  .join { grid-column: 1 / -1; }
+  .skeletonCard { height: 11rem; border-radius: 1.8rem; }
+}

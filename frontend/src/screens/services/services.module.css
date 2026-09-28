@@ -1,0 +1,38 @@
+/* 40rem: карточка с иконкой вмещает «Пользователи» шрифтом Unbounded 2.4rem без переноса */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(40rem, 100%), 1fr)); gap: 2.4rem; max-width: 110rem; }
+
+/* ServiceCard */
+.card {
+  display: grid; grid-template-columns: auto 1fr; gap: 2.4rem; align-items: center;
+  padding: 3.2rem; min-height: 16rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+  color: inherit; text-decoration: none; transition: box-shadow .15s, border-color .15s;
+}
+.card:hover { border-color: var(--accent); box-shadow: 0 1.2rem 3.2rem rgba(109, 74, 255, .12); }
+.icon { width: 8rem; height: 8rem; border-radius: 2.4rem; display: grid; place-items: center; background: var(--accent-2); color: var(--text); }
+.icon svg { width: 5.2rem; height: 5rem; }
+.text { min-width: 0; }
+.name { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; line-height: 1.25; overflow-wrap: anywhere; }
+.desc { margin-top: .6rem; font-size: 2rem; color: var(--text-2); overflow-wrap: anywhere; }
+
+/* ServiceContainer */
+.container {
+  position: relative; height: calc(100vh - 24rem); height: calc(100dvh - 24rem); min-height: 48rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden;
+}
+.frameHost { position: absolute; inset: 0; }
+.frameHost[data-hidden='true'] { visibility: hidden; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface); }
+
+@media (max-width: 767px) {
+  .grid { grid-template-columns: 1fr; gap: 1rem; }
+  .card { gap: 1.4rem; padding: 1.6rem; min-height: 0; border-radius: 2rem; }
+  .icon { width: 5.2rem; height: 5.2rem; border-radius: 1.6rem; }
+  .icon svg { width: 3.2rem; height: 3.1rem; }
+  .name { font-size: 1.6rem; }
+  .desc { font-size: 1.4rem; margin-top: .2rem; }
+  .container {
+    height: calc(100dvh - 18rem - var(--bottom-nav-h) - var(--safe-top) - var(--safe-bottom));
+    min-height: 36rem; border-radius: 2rem; margin: 0 -.4rem;
+  }
+}

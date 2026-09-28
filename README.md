@@ -1,8 +1,32 @@
 # Вузы России — мини-приложение MAX
 
+## Интерфейс из макета
+
+Основной интерфейс перенесён из `vuzy-frontend.tar.gz`: React, TypeScript, Vite, адаптивная навигация, локальные шрифты. Исходники оформления находятся в `frontend/src/`; CSS — в `styles/` и CSS Modules рядом с компонентами.
+
+`web` теперь собирается из `frontend/Dockerfile`: Node собирает интерфейс, Nginx отдаёт результат. После изменения оформления на сервере выполните:
+
+```bash
+sudo docker compose up -d --build web
+```
+
+Для локального просмотра дизайна:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Локальная разработка использует демонстрационные данные. `npm run build` и Docker используют реальный API и вход через MAX; обычный браузер показывает заглушку. Проверка сборки: `npm run build`. Проверка нового интерфейса: `npm run test:design` (требуются Playwright и Chromium).
+
+Сохранены заявки на подключение вуза и поддержка платформы. Администрирование и дополнительные сервисы открываются через iframe. Демо-расписание с меню `home` также открывается через iframe. Встроенные экраны расписания и пользователей требуют реализации соответствующих API — оформление их не создаёт.
+
+Старые `frontend/templates`, `frontend/static` и тесты старой оболочки пока сохранены для сравнения, в образ нового веб-клиента они не попадают. Старый `version:assets` для React не нужен: Vite добавляет хеши к именам ресурсов.
+
 Органайзер сервисов вузов с единым входом через MAX. Пользователь выбирает вуз и профиль, затем открывает доступный сервис внутри приложения. Один пользователь может состоять в нескольких вузах и иметь несколько профилей в каждом.
 
-Основной backend — Python/FastAPI, frontend — JavaScript, бот — Node.js. Приложения запускаются через Docker Compose, внешние запросы принимает Nginx.
+Основной backend — Python/FastAPI, frontend — React/TypeScript, бот — Node.js. Приложения запускаются через Docker Compose, внешние запросы принимает Nginx.
 
 ## Что реализовано
 
@@ -23,7 +47,9 @@
 ├── .env.example
 ├── bot/                         # Бот MAX, открывающий мини-приложение
 ├── frontend/
-│   ├── templates/               # HTML ядра-клиента
+│   ├── src/                     # React-интерфейс и оформление
+│   ├── Dockerfile               # Сборка Vite → Nginx
+│   ├── templates/               # Предыдущая оболочка (не используется)
 │   ├── static/css/              # Оформление
 │   ├── static/js/               # UI, API и протокол iframe
 │   ├── scripts/                 # Версионирование ресурсов
@@ -178,31 +204,9 @@ sudo docker compose exec backend python seed_demo.py USER_UUID
 
 ## Разработка и обновление
 
-HTML, CSS и JS оболочки разделены в `frontend/`. Для просмотра заглушки вне MAX:
+Исходники интерфейса находятся в `frontend/src`. Для просмотра оформления используйте `npm ci` и `npm run dev` из `frontend/`. Для проверки производственной сборки: `npm run build` и `npm run preview`. В производственном режиме вход доступен только через MAX.
 
-```bash
-python3 -m http.server 8080 --bind 127.0.0.1 --directory frontend
-```
-
-Откройте `http://127.0.0.1:8080/templates/index.html`. Рабочий вход требует запуска через MAX.
-
-После изменений frontend перед коммитом обновите версии ресурсов:
-
-```bash
-node frontend/scripts/version-assets.mjs
-```
-
-Скрипт меняет версии CSS, JS и импортов по содержимому файлов. Nginx отдаёт HTML заново и требует проверки актуальности кеша статики.
-
-На сервере после настройки `.env` и прав `services/connected`:
-
-```bash
-git pull --ff-only
-sudo docker compose up -d --build
-sudo docker compose exec web nginx -t && sudo docker compose exec web nginx -s reload
-```
-
-При изменении только frontend пересборка не нужна: файлы подключены через bind mount. При изменении Python-кода пересоберите соответствующий сервис `backend` или `administration`.
+После изменения дизайна пересоберите контейнер `web`. Имена CSS и JS версионируются Vite автоматически.
 
 ## Тесты
 
@@ -227,7 +231,7 @@ python -m unittest tests.test_core_client -v
 npm test
 npm install
 npx playwright install chromium
-npm run test:browser
+npm run test:design
 ```
 
 Браузерные тесты используют тестовый API и не доказывают работу на всех клиентах MAX. Старый `backend/run_all_tests.py` предназначен для отдельного HTTP-стенда с dev-входом; это не инструкция запуска рабочего сервера.

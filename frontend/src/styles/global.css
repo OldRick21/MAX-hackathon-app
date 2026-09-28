@@ -1,0 +1,79 @@
+/*
+  Дизайн-токены из Figma «Desktop - 1440х1024» и handoff.md.
+  Масштаб: на десктопе 1rem = 10px при ширине 1440px, поэтому размеры в rem = значения Figma / 10.
+  Между 768 и 1440px весь макет пропорционально уменьшается; на мобильных — отдельная сетка.
+*/
+:root {
+  --bg: #F6F7FB;
+  --surface: #FFFFFF;
+  --text: #111827;
+  --text-2: #667085;
+  --line: #667085;          /* обводка карточек в макете */
+  --line-soft: #E4E7EF;     /* разделители внутри списков */
+  --accent: #6D4AFF;
+  --accent-dark: #3D2CC9;
+  --accent-soft: rgba(109, 74, 255, 0.12);
+  --accent-2: #BDEFF5;
+  --success: #22A06B;
+  --success-soft: rgba(34, 160, 107, 0.12);
+  --error: #D92D20;
+  --error-soft: rgba(217, 45, 32, 0.1);
+  --warning: #B54708;
+  --warning-soft: rgba(247, 144, 9, 0.14);
+
+  --font: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-accent: 'Unbounded', 'Manrope', system-ui, sans-serif;
+
+  --r-control: 1.4rem;
+  --r-card: 3rem;
+  --r-large: 2.4rem;
+
+  --sidebar-w: 50.3rem;
+  --page-pad-l: 6.6rem;
+  --page-pad-r: 5.7rem;
+  --content-w: 81.3rem;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --bottom-nav-h: 6.4rem;
+
+  color-scheme: light;
+}
+
+html { font-size: clamp(7px, calc(100vw / 144), 10px); -webkit-text-size-adjust: 100%; }
+@media (max-width: 767px) {
+  html { font-size: 10px; }
+  :root {
+    --r-card: 2rem;
+    --r-large: 2rem;
+    --page-pad-l: 1.6rem;
+    --page-pad-r: 1.6rem;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 1.6rem;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+img { max-width: 100%; display: block; }
+a { color: var(--accent-dark); }
+h1, h2, h3, p { margin: 0; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

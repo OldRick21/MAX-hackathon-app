@@ -1,0 +1,172 @@
+/* ---------- Button ---------- */
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 1rem;
+  min-height: 5.6rem; padding: 0 2.8rem;
+  border-radius: var(--r-control); border: 1px solid transparent;
+  font-size: 2.2rem; font-weight: 600; line-height: 1.2; white-space: nowrap;
+  transition: background-color .15s, border-color .15s, color .15s, opacity .15s;
+}
+.button:disabled { opacity: .55; cursor: not-allowed; }
+.primary { background: var(--accent); color: #fff; }
+.primary:hover:not(:disabled) { background: var(--accent-dark); }
+.secondary { background: var(--surface); color: var(--text); border-color: var(--line); }
+.secondary:hover:not(:disabled) { border-color: var(--text); }
+.ghost { background: transparent; color: var(--accent-dark); }
+.ghost:hover:not(:disabled) { background: var(--accent-soft); }
+.danger { background: var(--surface); color: var(--error); border-color: var(--error); }
+.danger:hover:not(:disabled) { background: var(--error-soft); }
+.small { min-height: 4.4rem; padding: 0 1.8rem; font-size: 1.8rem; }
+.block { width: 100%; }
+
+.iconButton {
+  display: inline-grid; place-items: center; flex: none;
+  width: 5.6rem; height: 5.6rem; border-radius: var(--r-control);
+  border: 0; background: transparent; color: var(--text);
+}
+.iconButton:hover { background: var(--accent-soft); }
+.iconButton svg { width: 60%; height: 60%; }
+
+/* ---------- Spinner / Skeleton ---------- */
+.spinner {
+  width: 1em; height: 1em; border-radius: 50%;
+  border: .14em solid currentColor; border-right-color: transparent;
+  animation: spin .7s linear infinite; flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+:where(.skeleton) { width: 100%; height: 1em; }
+.skeleton {
+  display: block; border-radius: 1rem;
+  background: linear-gradient(90deg, #ECEEF4 0%, #F4F5F9 40%, #ECEEF4 80%);
+  background-size: 300% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* ---------- Input ---------- */
+.field { display: grid; gap: .8rem; }
+.label { font-size: 2rem; font-weight: 600; color: var(--text); }
+.hint { font-size: 1.8rem; color: var(--text-2); }
+.error { font-size: 1.8rem; color: var(--error); }
+.input {
+  width: 100%; min-height: 5.6rem; padding: 1.2rem 1.8rem;
+  border: 1px solid var(--line); border-radius: var(--r-control); background: var(--surface);
+  font-size: 2.2rem; line-height: 1.3;
+}
+.input::placeholder { color: #98A2B3; }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea.input { min-height: 12rem; resize: vertical; }
+.searchWrap { position: relative; }
+.searchWrap svg { position: absolute; left: 1.8rem; top: 50%; width: 2.4rem; height: 2.4rem; transform: translateY(-50%); color: var(--text-2); pointer-events: none; }
+.searchWrap .input { padding-left: 5.4rem; }
+
+/* ---------- Avatar ---------- */
+.avatar {
+  flex: none; display: grid; place-items: center; overflow: hidden;
+  border-radius: 30%; background: var(--accent-2); color: var(--text);
+  font-family: var(--font-accent); font-weight: 500;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- Badge ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: .6rem;
+  padding: .4rem 1.2rem; border-radius: 99rem;
+  font-size: 1.7rem; font-weight: 600; line-height: 1.3; white-space: nowrap;
+  background: #EEF0F5; color: var(--text-2);
+}
+.badge.accent { background: var(--accent-soft); color: var(--accent-dark); }
+.badge.success { background: var(--success-soft); color: #13744B; }
+.badge.warning { background: var(--warning-soft); color: var(--warning); }
+.badge.error { background: var(--error-soft); color: var(--error); }
+.badge.info { background: var(--accent-2); color: #0B5563; }
+.dot::before { content: ''; width: .8rem; height: .8rem; border-radius: 50%; background: currentColor; }
+
+/* ---------- States ---------- */
+.state {
+  display: grid; justify-items: center; text-align: center; gap: 1.2rem;
+  padding: 5.6rem 3.2rem;
+}
+.stateIcon {
+  width: 8rem; height: 8rem; border-radius: 2.4rem; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-dark); margin-bottom: .8rem;
+}
+.stateIcon svg { width: 4.4rem; height: 4.4rem; }
+.stateIcon.errorIcon { background: var(--error-soft); color: var(--error); }
+.stateTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.8rem; line-height: 1.25; text-wrap: balance; }
+.stateText { font-size: 2.2rem; color: var(--text-2); max-width: 56rem; text-wrap: pretty; }
+.stateActions { display: flex; gap: 1.2rem; flex-wrap: wrap; justify-content: center; margin-top: 1.2rem; }
+.loading { display: flex; align-items: center; justify-content: center; gap: 1.2rem; padding: 4.8rem; color: var(--text-2); font-size: 2.2rem; }
+
+/* ---------- Modal ---------- */
+.backdrop {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  padding: max(2.4rem, var(--safe-top)) 2.4rem max(2.4rem, var(--safe-bottom));
+  background: rgba(17, 24, 39, .45); animation: fade .15s ease-out;
+}
+@keyframes fade { from { opacity: 0; } }
+.modal {
+  width: min(72rem, 100%); max-height: 100%; overflow: auto;
+  background: var(--surface); border-radius: var(--r-card); padding: 4rem;
+  display: grid; gap: 2.4rem; box-shadow: 0 2rem 6rem rgba(17, 24, 39, .2);
+  font-size: 2.2rem;
+}
+.modalHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.6rem; }
+.modalTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.8rem; line-height: 1.25; }
+.modalActions { display: flex; justify-content: flex-end; gap: 1.2rem; flex-wrap: wrap; }
+
+/* ---------- Dropdown ---------- */
+.dropdown { position: relative; }
+.menu {
+  position: absolute; z-index: 40; top: calc(100% + .8rem); min-width: 100%;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 2rem;
+  box-shadow: 0 1.6rem 4rem rgba(17, 24, 39, .14); padding: .8rem;
+  display: grid; gap: .2rem; animation: fade .12s ease-out;
+}
+.menu.alignEnd { right: 0; }
+.menuItem {
+  display: flex; align-items: center; justify-content: space-between; gap: 1.6rem;
+  width: 100%; text-align: left; border: 0; background: transparent;
+  padding: 1.2rem 1.6rem; border-radius: 1.2rem; font-size: 2.2rem; white-space: nowrap;
+}
+.menuItem:hover, .menuItem:focus-visible { background: var(--accent-soft); outline: none; }
+.menuItem[aria-checked='true'] { font-weight: 700; }
+.menuItem.dangerItem { color: var(--error); }
+.menuCheck { width: 2rem; height: 2rem; color: var(--accent); }
+
+/* ---------- Toast ---------- */
+.toast {
+  /* Центрирование через margin, а не left: 50% — иначе ширина ограничена половиной экрана и текст переносится */
+  position: fixed; left: 0; right: 0; bottom: calc(3.2rem + var(--safe-bottom)); z-index: 60;
+  width: max-content; max-width: calc(100% - 3.2rem); margin: 0 auto;
+  background: var(--text); color: #fff; border-radius: 1.6rem;
+  display: flex; align-items: center; gap: 1.2rem;
+  padding: 1.4rem 2.4rem; font-size: 2rem; font-weight: 500;
+  box-shadow: 0 1rem 3rem rgba(17, 24, 39, .25); animation: fade .15s ease-out;
+}
+.toast svg { flex: none; width: 2.4rem; height: 2.4rem; }
+.toast.toastError { background: var(--error); }
+
+@media (max-width: 767px) {
+  .button { min-height: 4.8rem; padding: 0 2rem; font-size: 1.6rem; border-radius: 1.2rem; }
+  .small { min-height: 4rem; padding: 0 1.4rem; font-size: 1.5rem; }
+  .iconButton { width: 4.4rem; height: 4.4rem; border-radius: 1.2rem; }
+  .label { font-size: 1.5rem; }
+  .hint, .error { font-size: 1.4rem; }
+  .input { min-height: 4.8rem; font-size: 1.6rem; padding: 1rem 1.4rem; border-radius: 1.2rem; }
+  .searchWrap svg { left: 1.4rem; width: 2rem; height: 2rem; }
+  .searchWrap .input { padding-left: 4.4rem; }
+  .badge { font-size: 1.3rem; padding: .3rem 1rem; }
+  .state { padding: 4rem 1.6rem; }
+  .stateIcon { width: 6.4rem; height: 6.4rem; border-radius: 2rem; }
+  .stateIcon svg { width: 3.2rem; height: 3.2rem; }
+  .stateTitle { font-size: 2rem; }
+  .stateText { font-size: 1.6rem; }
+  .loading { font-size: 1.6rem; padding: 3.2rem; }
+  .backdrop { place-items: end center; padding: 0; }
+  .modal { width: 100%; max-height: 92%; border-radius: 2.4rem 2.4rem 0 0; padding: 2.4rem 1.6rem calc(2.4rem + var(--safe-bottom)); gap: 2rem; font-size: 1.6rem; }
+  .modalTitle { font-size: 2rem; }
+  .modalActions > * { flex: 1; }
+  .menu { border-radius: 1.6rem; padding: .6rem; }
+  .menuItem { font-size: 1.6rem; padding: 1rem 1.2rem; }
+  .toast { font-size: 1.5rem; padding: 1.2rem 1.8rem; bottom: calc(var(--bottom-nav-h) + 1.6rem + var(--safe-bottom)); }
+  .toast svg { width: 2rem; height: 2rem; }
+}

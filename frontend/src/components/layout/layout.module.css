@@ -1,0 +1,136 @@
+/* Размеры — из Figma «Desktop - 1440х1024» (1rem = 1px макета / 10 при ширине 1440). */
+
+.shell { display: flex; min-height: 100%; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  position: sticky; top: 0; align-self: flex-start;
+  flex: none; width: var(--sidebar-w); height: 100vh; height: 100dvh; overflow-y: auto;
+  background: var(--bg); border-right: 1px solid var(--line);
+  padding-top: calc(3.7rem + var(--safe-top)); padding-bottom: 4rem;
+}
+.logo { display: flex; align-items: flex-end; gap: 1.3rem; margin-left: 5.7rem; text-decoration: none; color: var(--text); width: max-content; }
+.logoImg { width: 13.9rem; height: 11.4rem; }
+.wordmark { width: 21.2rem; height: 8.1rem; }
+.nav { display: grid; gap: 1.3rem; margin-top: 10.5rem; padding: 0 2.4rem; }
+.navLink {
+  display: flex; align-items: center; gap: 3.2rem; height: 6.2rem; padding-left: 3.1rem;
+  border-radius: 2rem; color: var(--text-2); text-decoration: none;
+  font-size: 3rem; font-weight: 400; line-height: 1.2;
+  transition: background-color .15s, color .15s;
+}
+.navLink svg { flex: none; width: 6.4rem; height: 6.2rem; }
+.navLink:hover { background: var(--accent-soft); }
+/* Активный пункт в макете не нарисован — выделяем цветом текста, без смены раскладки. */
+.navLink.active { color: var(--text); font-weight: 600; }
+.navIconSmall { padding: .9rem 1rem; }
+
+/* ---------- Main ---------- */
+.main {
+  flex: 1; min-width: 0; position: relative;
+  padding: calc(5.3rem + var(--safe-top)) var(--page-pad-r) 6rem var(--page-pad-l);
+  background:
+    radial-gradient(93.7rem 102.4rem at calc(100% + 26.2rem) 2.1rem, rgba(109, 74, 255, .29) 0%, rgba(109, 74, 255, 0) 100%) no-repeat,
+    var(--bg);
+}
+.header { display: flex; align-items: center; gap: 2.4rem; min-height: 8rem; }
+.switchers { display: flex; align-items: center; gap: 1.6rem; min-width: 0; flex-wrap: wrap; }
+/* Обёртка Dropdown не должна быть шире ряда, иначе длинное название вуза уезжает под колокольчик */
+.switchers > * { max-width: 100%; }
+.bell { margin-left: auto; margin-right: -.7rem; position: relative; }
+.bellButton {
+  display: grid; place-items: center; width: 7.2rem; height: 7.2rem; border: 0; border-radius: 2rem;
+  background: transparent; color: var(--text);
+}
+.bellButton:hover { background: rgba(255, 255, 255, .6); }
+.bellButton svg { width: 5.8rem; height: 5.3rem; }
+.popover {
+  position: absolute; right: 0; top: calc(100% + .8rem); z-index: 40; width: 42rem;
+  background: var(--surface); border-radius: 2.4rem; border: 1px solid var(--line-soft);
+  box-shadow: 0 1.6rem 4rem rgba(17, 24, 39, .14); padding: 2.8rem; display: grid; gap: .8rem;
+}
+.popoverTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.2rem; }
+.popoverText { color: var(--text-2); font-size: 2rem; }
+
+.content { margin-top: 6.1rem; }
+
+/* ---------- Switcher (University / Profile) ---------- */
+.switcher {
+  display: inline-flex; align-items: center; height: 8rem; max-width: 100%;
+  padding: 0 3.85rem 0 3.2rem; border: 0; border-radius: 4rem;
+  background: radial-gradient(24.1rem 28.3rem at calc(100% - 2.9rem) 50%, rgba(109, 74, 255, .6) 0%, rgba(109, 74, 255, 0) 100%), transparent;
+  color: var(--text); font-family: var(--font-accent); font-weight: 500; font-size: 2.7rem; line-height: 1;
+}
+.switcher:hover { background-color: rgba(255, 255, 255, .5); }
+.switcherText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcherUni .switcherText { max-width: 36rem; }
+.switcherDivider { flex: none; width: .15rem; height: 4rem; margin: 0 1.6rem; border-radius: .1rem; background: currentColor; }
+.switcherChevron { flex: none; width: 2.4rem; height: 1.16rem; transition: transform .15s; }
+.switcher[aria-expanded='true'] .switcherChevron { transform: rotate(180deg); }
+.switcherStatic { cursor: default; padding-right: 3.2rem; }
+.switcherStatic:hover { background-color: transparent; }
+
+/* ---------- Bottom navigation (mobile) ---------- */
+.bottomNav { display: none; }
+.mobileLogo { display: none; }
+
+/* ---------- Сжатый десктоп: сайдбар уже, но структура та же ---------- */
+@media (max-width: 1100px) and (min-width: 768px) {
+  :root { --sidebar-w: 34rem; }
+  .logo { margin-left: 3.2rem; }
+  .logoImg { width: 10rem; height: 8.2rem; }
+  .wordmark { width: 15.3rem; height: 5.8rem; }
+  .nav { padding: 0 1.2rem; margin-top: 7rem; }
+  .navLink { padding-left: 2rem; gap: 2rem; font-size: 2.8rem; }
+  .navLink svg { width: 5.2rem; height: 5rem; }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 767px) {
+  .shell { display: block; }
+  .sidebar { display: none; }
+  .main {
+    padding: 0 var(--page-pad-r) calc(var(--bottom-nav-h) + 2.4rem + var(--safe-bottom)) var(--page-pad-l);
+    background:
+      radial-gradient(40rem 44rem at calc(100% + 12rem) 0, rgba(109, 74, 255, .26) 0%, rgba(109, 74, 255, 0) 100%) no-repeat,
+      var(--bg);
+  }
+  .header {
+    position: sticky; top: 0; z-index: 30; flex-wrap: wrap; gap: 1rem;
+    margin: 0 calc(-1 * var(--page-pad-r)) 0 calc(-1 * var(--page-pad-l));
+    padding: calc(1rem + var(--safe-top)) var(--page-pad-r) 1rem var(--page-pad-l);
+    min-height: 0; background: rgba(246, 247, 251, .88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .mobileLogo { display: flex; align-items: flex-end; gap: .6rem; color: var(--text); text-decoration: none; }
+  .mobileLogo img { width: 4.2rem; height: 3.44rem; }
+  .mobileLogo svg { width: 7rem; height: 2.67rem; }
+  .switchers { order: 3; width: 100%; flex-wrap: nowrap; gap: .8rem; overflow-x: auto; scrollbar-width: none; }
+  .switchers::-webkit-scrollbar { display: none; }
+  .bellButton { width: 4.4rem; height: 4.4rem; border-radius: 1.2rem; }
+  .bellButton svg { width: 2.8rem; height: 2.6rem; }
+  .popover { width: min(32rem, calc(100vw - 3.2rem)); padding: 2rem; border-radius: 2rem; }
+  .popoverTitle { font-size: 1.7rem; }
+  .popoverText { font-size: 1.5rem; }
+  .content { margin-top: 1.6rem; }
+  .switcher { height: 4.4rem; padding: 0 1.8rem 0 1.6rem; border-radius: 2.2rem; font-size: 1.5rem; flex: none;
+    background: radial-gradient(14rem 14rem at calc(100% - 1.6rem) 50%, rgba(109, 74, 255, .5) 0%, rgba(109, 74, 255, 0) 100%), rgba(255, 255, 255, .7); }
+  .switcherUni .switcherText { max-width: 18rem; }
+  .switcherDivider { height: 2.2rem; margin: 0 1rem; }
+  .switcherChevron { width: 1.4rem; height: .68rem; }
+  .switcherStatic { padding-right: 1.6rem; }
+
+  .bottomNav {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: .6rem .4rem calc(.6rem + var(--safe-bottom));
+    background: var(--surface); border-top: 1px solid var(--line-soft);
+  }
+  .bottomLink {
+    display: grid; justify-items: center; align-content: center; gap: .3rem; min-height: 5.2rem;
+    color: var(--text-2); text-decoration: none; font-size: 1.1rem; font-weight: 600; letter-spacing: .01em;
+    border-radius: 1.2rem;
+  }
+  .bottomLink svg { width: 2.8rem; height: 2.7rem; }
+  /* Активный пункт выделен не только цветом, но и подложкой (handoff, раздел 33) */
+  .bottomLink.active { color: var(--accent); background: var(--accent-soft); }
+}
