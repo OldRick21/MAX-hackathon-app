@@ -17,7 +17,9 @@ const STATUS: Record<JoinRequest['status'], [string, BadgeTone]> = {
   withdrawn: ['Отозвана', 'neutral'],
 };
 
-type Choice = { profile: JoinProfile; group_id: string };
+/** Строка заявки: вуз, профиль и (для студента) группа — всё выбирается из выпадающих списков. */
+type Choice = { key: string; institution_id: string; profile: JoinProfile; group_id: string };
+const emptyChoice = (): Choice => ({ key: crypto.randomUUID(), institution_id: '', profile: 'student', group_id: '' });
 
 function RequestList({ requests, onWithdraw }: { requests: JoinRequest[]; onWithdraw: (r: JoinRequest) => void }) {
   return (
@@ -50,7 +52,7 @@ export function JoinScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState(() => [maxUser?.first_name, maxUser?.last_name].filter(Boolean).join(' '));
-  const [chosen, setChosen] = useState<Record<string, Choice>>({});
+  const [rows, setRows] = useState<Choice[]>(() => [emptyChoice()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -70,29 +72,28 @@ export function JoinScreen() {
   const free = (o: JoinOption) => (['student', 'teacher'] as JoinProfile[]).filter(p => !o.profiles.includes(p));
   const available = (options ?? []).filter(o => free(o).length > 0);
 
-  const toggle = (o: JoinOption) => setChosen(c => {
-    const next = { ...c };
-    if (next[o.id]) delete next[o.id];
-    else next[o.id] = { profile: free(o)[0], group_id: '' };
-    return next;
-  });
-  const update = (id: string, patch: Partial<Choice>) => setChosen(c => ({ ...c, [id]: { ...c[id], ...patch } }));
+  const optionOf = (id: string) => (options ?? []).find(o => o.id === id);
+  const update = (key: string, patch: Partial<Choice>) => setRows(list => list.map(r => r.key === key ? { ...r, ...patch } : r));
+  const pickInstitution = (key: string, id: string) => {
+    const o = optionOf(id);
+    update(key, { institution_id: id, profile: o ? free(o)[0] : 'student', group_id: '' });
+  };
 
   const submit = async () => {
     setError(null);
-    const ids = Object.keys(chosen);
+    const picked = rows.filter(r => r.institution_id);
     if (!name.trim()) { setError('Укажите имя и фамилию.'); return; }
-    if (!ids.length) { setError('Выберите хотя бы один вуз.'); return; }
-    const missing = ids.find(id => chosen[id].profile === 'student' && !chosen[id].group_id);
-    if (missing) { setError(`Выберите группу в вузе «${options?.find(o => o.id === missing)?.display_name}».`); return; }
+    if (!picked.length) { setError('Выберите вуз.'); return; }
+    const missing = picked.find(r => r.profile === 'student' && !r.group_id);
+    if (missing) { setError(`Выберите группу в вузе «${optionOf(missing.institution_id)?.display_name}».`); return; }
     setBusy(true);
     try {
-      await backend.submitJoinRequests(name.trim(), ids.map(id => ({
-        institution_id: id, profile: chosen[id].profile,
-        ...(chosen[id].profile === 'student' ? { group_id: chosen[id].group_id } : {}),
+      await backend.submitJoinRequests(name.trim(), picked.map(r => ({
+        institution_id: r.institution_id, profile: r.profile,
+        ...(r.profile === 'student' ? { group_id: r.group_id } : {}),
       })));
       toast('Заявка отправлена администраторам вузов');
-      setChosen({});
+      setRows([emptyChoice()]);
       setFormOpen(false);
       await load();
     } catch (e) { setError(humanMessage(e)); } finally { setBusy(false); }
@@ -139,49 +140,58 @@ export function JoinScreen() {
   return (
     <Frame>
       <h1 className={s.title}>{institutions.length ? 'Вступить в вуз' : 'Добро пожаловать!'}</h1>
-      <p className={s.text}>Укажите имя, выберите один или несколько вузов и группу. Заявку рассмотрит администратор вуза.</p>
+      <p className={s.text}>Укажите имя, выберите вуз и группу. Заявку рассмотрит администратор вуза.</p>
       <Input label="Имя и фамилия" value={name} maxLength={200} autoComplete="name" onChange={e => setName(e.target.value)} />
       {available.length === 0
         ? <p className={s.text}>Сейчас нет вузов, в которые можно подать заявку.</p>
         : (
           <ul className={s.list}>
-            {available.map(o => {
-              const pick = chosen[o.id];
-              const pending = pendingIn.has(o.id);
-              const profiles = free(o);
+            {rows.map((row, i) => {
+              const o = optionOf(row.institution_id);
+              const profiles = o ? free(o) : [];
+              // Вуз не повторяется в соседних строках; вуз с заявкой на рассмотрении выбрать нельзя.
+              const taken = new Set(rows.filter(r => r.key !== row.key).map(r => r.institution_id));
               return (
-                <li key={o.id} className={s.request} data-selected={!!pick || undefined}>
-                  <label className={s.check}>
-                    <input type="checkbox" checked={!!pick} disabled={pending} onChange={() => toggle(o)} />
-                    <span>
-                      <span className={s.uniName}>{o.display_name}</span>
-                      {pending && <span className={s.uniMeta} style={{ display: 'block' }}>Заявка уже на рассмотрении</span>}
-                      {o.profiles.length > 0 && !pending && (
-                        <span className={s.uniMeta} style={{ display: 'block' }}>Вы уже: {o.profiles.map(p => PROFILE_LABEL[p]).join(', ')}</span>
-                      )}
-                    </span>
-                  </label>
-                  {pick && (
-                    <div className={s.choice}>
-                      <Select label="Кто вы" value={pick.profile} disabled={profiles.length < 2}
-                        onChange={e => update(o.id, { profile: e.target.value as JoinProfile, group_id: '' })}>
+                <li key={row.key} className={s.request} data-selected={!!o || undefined}>
+                  <div className={s.choice}>
+                    <Select label={rows.length > 1 ? `Вуз ${i + 1}` : 'Вуз'} value={row.institution_id}
+                      onChange={e => pickInstitution(row.key, e.target.value)}>
+                      <option value="" disabled>Выберите из списка</option>
+                      {available.map(x => (
+                        <option key={x.id} value={x.id} disabled={taken.has(x.id) || pendingIn.has(x.id)}>
+                          {x.display_name}{pendingIn.has(x.id) ? ' — заявка на рассмотрении' : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    {o && o.profiles.length > 0 && (
+                      <p className={s.uniMeta}>Вы уже: {o.profiles.map(p => PROFILE_LABEL[p]).join(', ')}</p>
+                    )}
+                    {o && (
+                      <Select label="Кто вы" value={row.profile} disabled={profiles.length < 2}
+                        onChange={e => update(row.key, { profile: e.target.value as JoinProfile, group_id: '' })}>
                         {profiles.map(p => <option key={p} value={p}>{PROFILE_LABEL[p]}</option>)}
                       </Select>
-                      {pick.profile === 'student' && (o.groups.length
-                        ? (
-                          <Select label="Группа" value={pick.group_id} onChange={e => update(o.id, { group_id: e.target.value })}>
-                            <option value="" disabled>Выберите из списка</option>
-                            {o.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                          </Select>
-                        )
-                        : <p className={s.uniMeta}>В этом вузе пока нет групп — студенческую заявку подать нельзя.</p>)}
-                    </div>
-                  )}
+                    )}
+                    {o && row.profile === 'student' && (o.groups.length
+                      ? (
+                        <Select label="Группа" value={row.group_id} onChange={e => update(row.key, { group_id: e.target.value })}>
+                          <option value="" disabled>Выберите из списка</option>
+                          {o.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </Select>
+                      )
+                      : <p className={s.uniMeta}>В этом вузе пока нет групп — студенческую заявку подать нельзя.</p>)}
+                    {rows.length > 1 && (
+                      <Button variant="ghost" size="small" onClick={() => setRows(list => list.filter(r => r.key !== row.key))}>Убрать</Button>
+                    )}
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+      {rows.length < available.length && rows.every(r => r.institution_id) && (
+        <div className={s.center}><Button variant="ghost" onClick={() => setRows(list => [...list, emptyChoice()])}>+ Добавить ещё вуз</Button></div>
+      )}
       {error && <p className={s.formError} role="alert">{error}</p>}
       <div className={s.center}>
         <Button onClick={submit} loading={busy} disabled={available.length === 0}>Отправить заявку</Button>
