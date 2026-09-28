@@ -11,7 +11,7 @@
 .card:hover { border-color: var(--accent); box-shadow: var(--shadow-accent); transform: translateY(-.3rem); }
 .card:active { transform: translateY(0) scale(.99); }
 .icon { width: 8rem; height: 8rem; border-radius: 2.4rem; display: grid; place-items: center; background: var(--accent-2); color: var(--text); }
-.icon svg { width: 5.2rem; height: 5rem; }
+.icon svg { width: 4.4rem; height: 4.4rem; }
 .text { min-width: 0; }
 .name { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; line-height: 1.25; overflow-wrap: anywhere; }
 .desc { margin-top: .6rem; font-size: 2rem; color: var(--text-2); overflow-wrap: anywhere; }
@@ -29,7 +29,7 @@
   .grid { grid-template-columns: 1fr; gap: 1rem; }
   .card { gap: 1.4rem; padding: 1.6rem; min-height: 0; border-radius: 2rem; }
   .icon { width: 5.2rem; height: 5.2rem; border-radius: 1.6rem; }
-  .icon svg { width: 3.2rem; height: 3.1rem; }
+  .icon svg { width: 2.8rem; height: 2.8rem; }
   .name { font-size: 1.6rem; }
   .desc { font-size: 1.4rem; margin-top: .2rem; }
   .container {

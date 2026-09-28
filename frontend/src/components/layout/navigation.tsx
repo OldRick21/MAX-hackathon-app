@@ -3,7 +3,7 @@ import type { ComponentType, SVGProps } from 'react';
 import type { ServiceView } from '../../api/types';
 import { NATIVE_MENUS } from '../../state/institution';
 import { IconCoursework, IconHome, IconSchedule, IconServices, IconUsers } from '../icons/figma';
-import { IconBuilding, IconGrid } from '../icons/ui';
+import { IconBox, IconBuilding } from '../icons/ui';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -13,7 +13,6 @@ export interface NavItem {
   label: string;
   short: string;
   Icon: Icon;
-  small?: boolean;
   end?: boolean;
 }
 
@@ -24,7 +23,6 @@ export interface ServiceEntry {
   short: string;
   desc: string;
   Icon: Icon;
-  small?: boolean;
 }
 
 const NATIVE: Record<string, { section: string; name: string; short: string; desc: string; Icon: Icon }> = {
@@ -54,8 +52,7 @@ export function serviceEntries(base: string, services: ServiceView[]): ServiceEn
       name: menu.display_name,
       short: admin ? 'Админ' : menu.display_name,
       desc: svc.deployment === 'local' ? 'Сервис вуза' : svc.display_name !== menu.display_name ? svc.display_name : 'Сервис платформы',
-      Icon: admin ? IconBuilding : IconGrid,
-      small: admin,
+      Icon: admin ? IconBuilding : IconBox,
     }];
   }));
 }
@@ -63,7 +60,7 @@ export function serviceEntries(base: string, services: ServiceView[]): ServiceEn
 export function buildNav(base: string, services: ServiceView[] | undefined): NavItem[] {
   return [
     { key: 'home', to: base, label: 'Главная', short: 'Главная', Icon: IconHome, end: true },
-    ...serviceEntries(base, services ?? []).map(e => ({ key: e.key, to: e.to, label: e.name, short: e.short, Icon: e.Icon, small: e.small })),
+    ...serviceEntries(base, services ?? []).map(e => ({ key: e.key, to: e.to, label: e.name, short: e.short, Icon: e.Icon })),
     { key: 'services', to: `${base}/services`, label: 'Все сервисы', short: 'Сервисы', Icon: IconServices },
   ];
 }

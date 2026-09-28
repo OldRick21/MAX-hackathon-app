@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { humanMessage } from '../../api/http';
 import type { GroupDirectory, GroupEntry } from '../../api/types';
-import { IconUsers } from '../../components/icons/figma';
+import { IconChevron, IconUsers } from '../../components/icons/figma';
 import { IconArrowLeft } from '../../components/icons/ui';
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState, Modal, SearchInput, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
@@ -79,7 +79,7 @@ export function GroupsScreen() {
                   <span className={s.groupName}>{g.name}</span>
                   {my_group_ids.includes(g.id) && <Badge tone="accent">Моя группа</Badge>}
                   <span className={`${p.muted} ${s.groupCount}`}>{g.user_ids.length} {plural(g.user_ids.length)}</span>
-                  <span className={s.chevron} aria-hidden="true" data-open={expanded} />
+                  <IconChevron className={s.chevron} data-open={expanded} />
                 </button>
                 <div className={s.groupBody} data-open={expanded}>
                   <div className={s.groupBodyInner}>

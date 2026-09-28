@@ -11,7 +11,7 @@ const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ')
 function SidebarItem({ item }: { item: NavItem }) {
   return (
     <NavLink to={item.to} end={item.end} className={({ isActive }) => cx(s.navLink, isActive && s.active)}>
-      <item.Icon className={item.small ? s.navIconSmall : undefined} strokeWidth={item.small ? 2.6 : undefined} />
+      <item.Icon />
       <span className={s.navLabel} title={item.label}>{item.label}</span>
     </NavLink>
   );
@@ -36,7 +36,7 @@ function BottomNavigation({ items }: { items: NavItem[] }) {
     <nav className={s.bottomNav} aria-label="Разделы">
       {items.map(i => (
         <NavLink key={i.key} to={i.to} end={i.end} className={({ isActive }) => cx(s.bottomLink, isActive && s.active)}>
-          <i.Icon strokeWidth={i.small ? 2.6 : undefined} />
+          <i.Icon />
           <span>{i.short}</span>
         </NavLink>
       ))}

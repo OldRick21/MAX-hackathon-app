@@ -79,11 +79,8 @@
 .groupHead:hover { background: var(--accent-soft); }
 .groupHead:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .groupCount { margin-left: auto; white-space: nowrap; font-size: 2rem; }
-.chevron {
-  flex: none; width: 1.2rem; height: 1.2rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
-  transform: rotate(45deg); transition: transform var(--dur) var(--ease); margin: 0 .6rem .4rem;
-}
-.chevron[data-open='true'] { transform: rotate(225deg); margin-bottom: -.4rem; }
+.chevron { flex: none; width: 2.4rem; height: 2.4rem; color: var(--text-2); transition: transform var(--dur) var(--ease); }
+.chevron[data-open='true'] { transform: rotate(180deg); }
 .groupBody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur) var(--ease); }
 .groupBody[data-open='true'] { grid-template-rows: 1fr; }
 .groupBodyInner { min-height: 0; overflow: hidden; }

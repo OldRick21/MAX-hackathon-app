@@ -19,11 +19,10 @@
   font-size: 3rem; font-weight: 400; line-height: 1.2;
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.navLink svg { flex: none; width: 6.4rem; height: 6.2rem; }
+.navLink svg { flex: none; width: 4.4rem; height: 4.4rem; }
 .navLink:hover { background: var(--accent-soft); }
 /* Активный пункт в макете не нарисован — выделяем цветом текста, без смены раскладки. */
 .navLink.active { color: var(--text); font-weight: 600; }
-.navIconSmall { padding: .9rem 1rem; }
 /* Длинные названия своих сервисов не ломают колонку. */
 .navLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 1.6rem; }
 
@@ -53,7 +52,7 @@
 .switcherText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .switcherUni .switcherText { max-width: 36rem; }
 .switcherDivider { flex: none; width: .15rem; height: 4rem; margin: 0 1.6rem; border-radius: .1rem; background: currentColor; }
-.switcherChevron { flex: none; width: 2.4rem; height: 1.16rem; transition: transform var(--dur) var(--ease); }
+.switcherChevron { flex: none; width: 2.4rem; height: 2.4rem; transition: transform var(--dur) var(--ease); }
 .switcher[aria-expanded='true'] .switcherChevron { transform: rotate(180deg); }
 .switcherStatic { cursor: default; padding-right: 3.2rem; }
 .switcherStatic:hover { background-color: transparent; }
@@ -87,7 +86,7 @@
   .wordmark { width: 15.3rem; height: 5.8rem; }
   .nav { padding: 0 1.2rem; margin-top: 7rem; }
   .navLink { padding-left: 2rem; gap: 2rem; font-size: 2.8rem; }
-  .navLink svg { width: 5.2rem; height: 5rem; }
+  .navLink svg { width: 3.8rem; height: 3.8rem; }
 }
 
 /* ---------- Mobile ---------- */
@@ -120,7 +119,7 @@
     background: radial-gradient(14rem 14rem at calc(100% - 1.6rem) 50%, rgba(var(--glow), calc(.5 * var(--glow-strength))) 0%, rgba(var(--glow), 0) 100%), var(--glass-strong); }
   .switcherUni .switcherText { max-width: 18rem; }
   .switcherDivider { height: 2.2rem; margin: 0 1rem; }
-  .switcherChevron { width: 1.4rem; height: .68rem; }
+  .switcherChevron { width: 1.8rem; height: 1.8rem; }
   .switcherStatic { padding-right: 1.6rem; }
 
   .bottomNav {
@@ -134,7 +133,7 @@
     color: var(--text-2); text-decoration: none; font-size: 1.1rem; font-weight: 600; letter-spacing: .01em;
     border-radius: 1.2rem;
   }
-  .bottomLink svg { width: 2.8rem; height: 2.7rem; }
+  .bottomLink svg { width: 2.6rem; height: 2.6rem; }
   /* Активный пункт выделен не только цветом, но и подложкой (handoff, раздел 33) */
   .bottomLink.active { color: var(--accent); background: var(--accent-soft); }
 }

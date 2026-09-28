@@ -42,7 +42,7 @@ export function AllServicesScreen() {
 export function ServiceCard({ to, name, desc, Icon }: Pick<ServiceEntry, 'to' | 'name' | 'desc' | 'Icon'>) {
   return (
     <Link to={to} className={s.card}>
-      <span className={s.icon}><Icon strokeWidth={2.4} /></span>
+      <span className={s.icon}><Icon /></span>
       <span className={s.text}>
         <span className={s.name} style={{ display: 'block' }}>{name}</span>
         <span className={s.desc} style={{ display: 'block' }}>{desc}</span>
