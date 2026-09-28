@@ -1,9 +1,9 @@
-# Подставляется образом nginx (envsubst): COURSEWORK_HOST, COURSEWORK_CERT.
+# Подставляется образом nginx (envsubst): COURSEWORK_HOST. Сертификат — ./letsencrypt, имя coursework.
 server {
     listen 443 ssl;
     server_name ${COURSEWORK_HOST};
-    ssl_certificate /etc/letsencrypt/live/${COURSEWORK_CERT}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${COURSEWORK_CERT}/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/coursework/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/coursework/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
     # PDF до 20 МБ плюс поля формы: весь multipart до 21 МБ.

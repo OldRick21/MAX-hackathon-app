@@ -167,6 +167,20 @@ export function createRealBackend(): Backend {
     coreCall: (path, options) => core.call(path, options),
     coreCallMeta: (path, options) => core.callMeta(path, options),
     maxUser: maxUserInfo,
+    async getAvatar(userId, signal) {
+      try {
+        return await (await core.call<Response>(`/api/v1/users/${userId}/avatar`, { signal, raw: true })).blob();
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    async setAvatar(image) {
+      await core.call('/api/v1/users/me/avatar', { method: 'PUT', blob: image });
+    },
+    async deleteAvatar() {
+      await core.call('/api/v1/users/me/avatar', { method: 'DELETE' });
+    },
     async login() {
       await loadBridge();
       const data = initData();

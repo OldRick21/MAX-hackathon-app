@@ -205,9 +205,8 @@ export interface Versioned<T> {
 
 // ---------- Данные MAX (только для отображения) ----------
 
-/** Из WebApp.initDataUnsafe.user: подпись не проверена, поэтому только для UI (имя, фото). */
+/** Из WebApp.initDataUnsafe.user: подпись не проверена, поэтому только подсказка имени. */
 export interface MaxUserInfo {
   first_name?: string;
   last_name?: string;
-  photo_url?: string;
 }

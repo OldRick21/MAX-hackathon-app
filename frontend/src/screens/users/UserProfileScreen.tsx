@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { ProfilesApi } from '../../api/backend';
 import { ApiError, humanMessage, isUUID } from '../../api/http';
@@ -7,9 +7,11 @@ import { SectionGate } from '../../components/SectionGate';
 import { IconArrowLeft, IconUserOff } from '../../components/icons/ui';
 import { Avatar, Button, EmptyState, ErrorState, Input, LoadingState, Modal, TextArea, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
+import { invalidateAvatar, useAvatar } from '../../hooks/useAvatar';
 import { useScheduleApi } from '../../hooks/useServices';
 import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useBackend, useSession } from '../../state/session';
+import { squareAvatar } from '../../utils/image';
 import p from '../pages.module.css';
 import s from './users.module.css';
 
@@ -26,6 +28,7 @@ function UserProfile({ service }: { service: ServiceView }) {
   const isMe = userId === 'me' || userId === user?.id;
   const [editSelf, setEditSelf] = useState(false);
   const [editAcademic, setEditAcademic] = useState(false);
+  const photo = useAvatar(isMe ? user?.id : isUUID(userId) ? userId : null);
 
   const card = useAsync<Versioned<ProfileCard>>(signal => {
     if (isMe) return api.getMe(signal);
@@ -53,12 +56,13 @@ function UserProfile({ service }: { service: ServiceView }) {
       {back}
       <div className={s.profile}>
         <section className={s.head}>
-          <Avatar name={name} src={isMe ? maxUser?.photo_url : undefined} size="var(--avatar)" className={s.photo} />
+          <Avatar name={name} src={photo} size="var(--avatar)" className={s.photo} />
           <div className={s.headText}>
             <h1 className={s.name}>{name}</h1>
             <p className={s.meta}>{isMe ? <MyStatus /> : [c.position, c.academic_degree].filter(Boolean).join(' · ') || 'Участник вуза'}</p>
             {isMe && (c.position || c.academic_degree) && <p className={s.meta}>{[c.position, c.academic_degree].filter(Boolean).join(' · ')}</p>}
             <p className={s.uni}>{institution.display_name}</p>
+            {isMe && user && <PhotoControls userId={user.id} hasPhoto={!!photo} />}
           </div>
         </section>
 
@@ -84,6 +88,37 @@ function UserProfile({ service }: { service: ServiceView }) {
       {editAcademic && (
         <EditAcademic api={api} userId={c.user_id} isMe={isMe} card={card.data!}
           onClose={() => setEditAcademic(false)} onSaved={v => { card.mutate(() => v); setEditAcademic(false); }} />
+      )}
+    </div>
+  );
+}
+
+/** Своё фото: загружается с устройства и видно во всех вузах. Фото из MAX не используется. */
+function PhotoControls({ userId, hasPhoto }: { userId: string; hasPhoto: boolean }) {
+  const backend = useBackend();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<void>, done: string) => {
+    setBusy(true);
+    try { await fn(); invalidateAvatar(userId); toast(done); }
+    catch (e) { toast(e instanceof Error ? e.message : humanMessage(e), true); }
+    finally { setBusy(false); }
+  };
+  const pick = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) run(async () => backend.setAvatar(await squareAvatar(file)), 'Фото обновлено');
+  };
+  return (
+    <div className={s.photoActions}>
+      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/*" hidden onChange={pick} />
+      <Button size="small" variant="secondary" loading={busy} onClick={() => input.current?.click()}>
+        {hasPhoto ? 'Сменить фото' : 'Загрузить фото'}
+      </Button>
+      {hasPhoto && (
+        <Button size="small" variant="ghost" disabled={busy} onClick={() => run(() => backend.deleteAvatar(), 'Фото удалено')}>
+          Удалить
+        </Button>
       )}
     </div>
   );

@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import manage  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
-from database.tables import Membership, PlatformStaff, ServiceInstance, StudyGroupMember  # noqa: E402
+from database.tables import JoinRequest, Membership, PlatformStaff, ServiceInstance, StudyGroupMember  # noqa: E402
 from main import app  # noqa: E402
 
 
@@ -132,6 +132,49 @@ class JoinRequests(unittest.TestCase):
         self.assertEqual(self.c.post(f'{url}/{rid}/withdraw', headers=user).json()['status'], 'withdrawn')
         dup = self.c.post(url, headers=user, json={'full_name': 'И', 'items': [{'institution_id': a, 'profile': 'student', 'group_id': group}]})
         self.assertEqual(dup.json()['error']['code'], 'MEMBERSHIP_ALREADY_EXISTS')
+
+        # Имя из регистрации доступно сервису «Люди» через machine API ядра.
+        from services.service_registry import ServiceRegistry
+        with session_local() as db:
+            claims = {'service_id': a_admin, 'institution_id': a}
+            listed = ServiceRegistry.list_service_members(a_admin, claims, db)['items']
+            self.assertEqual({m['user_id']: m['display_name'] for m in listed}[user_id], 'Иван Петров')
+            self.assertEqual(ServiceRegistry.get_service_user_profiles(a_admin, user_id, claims, db)['display_name'],
+                             'Иван Петров')
+
+        # Аватар: свой загружает сам, видят участники общих вузов, посторонние — нет.
+        png = b'\x89PNG\r\n\x1a\n' + b'0' * 64
+        self.assertEqual(self.c.put('/api/v1/users/me/avatar', headers={**user, 'Content-Type': 'image/png'},
+                                    content=b'not an image').status_code, 422)
+        self.assertEqual(self.c.put('/api/v1/users/me/avatar', headers={**user, 'Content-Type': 'image/gif'},
+                                    content=png).status_code, 422)
+        self.assertEqual(self.c.put('/api/v1/users/me/avatar', headers={**user, 'Content-Type': 'image/png'},
+                                    content=b'\x89PNG\r\n\x1a\n' + b'0' * 600_000).status_code, 413)
+        saved = self.c.put('/api/v1/users/me/avatar', headers={**user, 'Content-Type': 'image/png'}, content=png)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        mine = self.c.get('/api/v1/users/me/avatar', headers=user)
+        self.assertEqual((mine.status_code, mine.content, mine.headers['content-type']), (200, png, 'image/png'))
+        self.assertEqual(self.c.get('/api/v1/users/me/avatar', headers={**user, 'If-None-Match': mine.headers['ETag']}).status_code, 304)
+        self.assertEqual(self.c.get(f'/api/v1/users/{user_id}/avatar', headers=owner).status_code, 200)  # владелец в том же вузе
+        stranger_id, stranger = self.login('stranger')
+        self.assertEqual(self.c.get(f'/api/v1/users/{user_id}/avatar', headers=stranger).status_code, 404)
+        # Удаление из вуза стирает заявки в этот вуз: при повторном добавлении имя не вернётся,
+        # а новая дата членства заставит «Людей» завести новую анкету.
+        with session_local() as db:
+            since = ServiceRegistry.get_service_user_profiles(a_admin, user_id, claims, db)['member_since']
+        tag = self.c.get(f'/api/v1/institution/{a}/internal/members/{user_id}', headers=pa).headers['ETag']
+        self.assertEqual(self.c.delete(f'/api/v1/institution/{a}/internal/members/{user_id}',
+                                       headers={**pa, 'If-Match': tag}).status_code, 204)
+        self.assertEqual(self.c.post(f'/api/v1/institution/{a}/internal/members', headers=pa,
+                                     json={'user_id': user_id, 'profiles': ['student']}).status_code, 201)
+        with session_local() as db:
+            again = ServiceRegistry.get_service_user_profiles(a_admin, user_id, claims, db)
+            self.assertNotEqual(again['member_since'], since)
+            # Остались только заявки в другие вузы: имя берётся из них, а не из удалённой.
+            self.assertEqual(db.query(JoinRequest).filter_by(institution_id=a, user_id=user_id).count(), 0)
+
+        self.assertEqual(self.c.delete('/api/v1/users/me/avatar', headers=user).status_code, 204)
+        self.assertEqual(self.c.get('/api/v1/users/me/avatar', headers=user).status_code, 404)
 
 
 if __name__ == '__main__':

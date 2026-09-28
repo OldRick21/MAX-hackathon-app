@@ -40,6 +40,7 @@ export function createMockBackend(): Backend {
 
   const insts = scenario === 'none' ? [] : scenario === 'single' ? D.institutions.slice(0, 1) : [...D.institutions];
   const joinRequests: JoinRequest[] = [];
+  const avatars = new Map<string, Blob | null>();
   const joinOptions = () => [...D.institutions, D.extraInstitution].map(i => ({
     id: i.id, display_name: i.display_name, groups: clone(D.groups[i.id] ?? []),
     profiles: insts.find(x => x.id === i.id)?.profiles ?? [],
@@ -236,7 +237,16 @@ export function createMockBackend(): Backend {
 
   return {
     mode: 'mock',
-    maxUser: () => ({ first_name: 'Геннадий', last_name: 'Лужин', photo_url: avatar }),
+    maxUser: () => ({ first_name: 'Геннадий', last_name: 'Лужин' }),
+    async getAvatar(userId) {
+      await wait(100);
+      const own = avatars.get(userId);
+      if (own !== undefined) return own;
+      // Демо: у себя аватар есть с самого начала, пока его не удалят.
+      return userId === D.ME ? (await fetch(avatar)).blob() : null;
+    },
+    async setAvatar(image) { await wait(); avatars.set(D.ME, image); },
+    async deleteAvatar() { await wait(); avatars.set(D.ME, null); },
     async login() {
       await wait(400);
       return { id: D.ME, max_user_id: '100200300', created_at: '2026-09-01T09:00:00Z' };

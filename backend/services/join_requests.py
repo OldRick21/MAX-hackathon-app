@@ -211,9 +211,25 @@ def reject(db: Session, ctx: ActorContext, request_id: str, payload) -> Result:
     return Result(request_view(row, inst))
 
 
+def display_name(db: Session, institution_id: str, user_id: str) -> Optional[str]:
+    """Имя, которое пользователь указал при регистрации: из одобренной заявки в этот вуз,
+    иначе из последней любой его заявки. Сервис «Люди» показывает его, пока человек
+    не задаст имя в анкете сам."""
+    row = db.query(JoinRequest).filter(JoinRequest.institution_id == institution_id, JoinRequest.user_id == user_id,
+                                       JoinRequest.status == JoinRequestStatus.APPROVED.value) \
+        .order_by(JoinRequest.created_at.desc()).first() \
+        or db.query(JoinRequest).filter(JoinRequest.user_id == user_id).order_by(JoinRequest.created_at.desc()).first()
+    return row.full_name if row else None
+
+
 def member_names(db: Session, institution_id: str) -> dict:
-    """Имя участника из последней одобренной заявки — чтобы в админке были не только UUID."""
-    rows = db.query(JoinRequest).filter(JoinRequest.institution_id == institution_id,
-                                        JoinRequest.status == JoinRequestStatus.APPROVED.value) \
-        .order_by(JoinRequest.reviewed_at.asc()).all()
-    return {r.user_id: r.full_name for r in rows}
+    """Имена участников вуза по правилу display_name, одним проходом по заявкам."""
+    members = {m.user_id for m in db.query(Membership).filter(Membership.institution_id == institution_id)}
+    if not members:
+        return {}
+    names, approved = {}, {}
+    for r in db.query(JoinRequest).filter(JoinRequest.user_id.in_(members)).order_by(JoinRequest.created_at.asc()):
+        names[r.user_id] = r.full_name
+        if r.institution_id == institution_id and r.status == JoinRequestStatus.APPROVED.value:
+            approved[r.user_id] = r.full_name
+    return {**names, **approved}

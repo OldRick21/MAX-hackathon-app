@@ -123,7 +123,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
                   {id === lockedTeacher ? 'Вы' : 'Преподаватель без анкеты'}
                 </label>
               ))}
-              {!knownTeachers.length && !extraTeachers.length && <span className={p.muted}>{profiles ? 'Преподаватели ещё не заполнили анкету.' : 'Сервис «Люди» выключен.'} Добавьте преподавателя по ID ниже.</span>}
+              {!knownTeachers.length && !extraTeachers.length && <span className={p.muted}>{profiles ? 'Преподавателей в вузе пока нет.' : 'Сервис «Люди» выключен.'} Добавьте преподавателя по ID ниже.</span>}
             </div>
           )}
         </fieldset>

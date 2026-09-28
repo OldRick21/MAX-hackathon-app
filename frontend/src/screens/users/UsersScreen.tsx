@@ -5,6 +5,7 @@ import type { ProfileCard, ServiceView } from '../../api/types';
 import { SectionGate } from '../../components/SectionGate';
 import { IconArrowRight, IconUserOff } from '../../components/icons/ui';
 import { Avatar, Button, EmptyState, ErrorState, SearchInput, Skeleton } from '../../components/ui';
+import { useAvatar } from '../../hooks/useAvatar';
 import { useInstitution } from '../../state/institution';
 import { useBackend, useSession } from '../../state/session';
 import p from '../pages.module.css';
@@ -18,11 +19,12 @@ export function cardSubtitle(c: ProfileCard) {
   return [c.position, c.academic_degree].filter(Boolean).join(' · ');
 }
 
-export function UserRow({ card, to, isMe, photo }: { card: ProfileCard; to: string; isMe: boolean; photo?: string }) {
+export function UserRow({ card, to, isMe }: { card: ProfileCard; to: string; isMe: boolean }) {
   const meta = cardSubtitle(card) || (card.about ? card.about.split('\n')[0] : '');
+  const photo = useAvatar(card.user_id);
   return (
     <Link to={to} className={s.row}>
-      <Avatar name={card.display_name} src={isMe ? photo : undefined} size="var(--row-avatar, 6.4rem)" />
+      <Avatar name={card.display_name} src={photo} size="var(--row-avatar, 6.4rem)" />
       <span className={s.rowText}>
         <span className={s.rowName}>{card.display_name}{isMe && ' (вы)'}</span>
         {meta && <span className={s.rowMeta}>{meta}</span>}
@@ -39,7 +41,7 @@ type ListState =
 
 function Users({ service }: { service: ServiceView }) {
   const backend = useBackend();
-  const { user, maxUser } = useSession();
+  const { user } = useSession();
   const { institution } = useInstitution();
   const api = useMemo(() => backend.profiles(service), [backend, service]);
   const [query, setQuery] = useState('');
@@ -89,7 +91,7 @@ function Users({ service }: { service: ServiceView }) {
       <div className={p.pageHead}>
         <div>
           <h1 className={p.title}>Люди</h1>
-          <p className={p.subtitle}>Ваш профиль и участники вуза, которые заполнили анкету</p>
+          <p className={p.subtitle}>Ваш профиль и участники вуза</p>
         </div>
         <div className={p.headActions}>
           <Button onClick={() => navigate(`${base}/users/me`)}>Мой профиль</Button>
@@ -123,7 +125,7 @@ function Users({ service }: { service: ServiceView }) {
           <ul className={s.list}>
             {state.items.map(c => (
               <li key={c.user_id}>
-                <UserRow card={c} to={`${base}/users/${c.user_id === user?.id ? 'me' : c.user_id}`} isMe={c.user_id === user?.id} photo={maxUser?.photo_url} />
+                <UserRow card={c} to={`${base}/users/${c.user_id === user?.id ? 'me' : c.user_id}`} isMe={c.user_id === user?.id} />
               </li>
             ))}
           </ul>

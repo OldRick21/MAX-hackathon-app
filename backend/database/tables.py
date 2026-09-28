@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Index,
+    LargeBinary,
     UniqueConstraint
 )
 from sqlalchemy.orm import relationship, declarative_base
@@ -105,6 +106,21 @@ class StudyGroupMember(table_class):
     institution_id = Column(String(36), ForeignKey("institutions.id", ondelete="CASCADE"), primary_key=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
+class UserAvatar(table_class):
+    """Аватар пользователя платформы: один на человека во всех вузах.
+
+    Загружает сам пользователь (из MAX фото не берётся). Картинка уже уменьшена
+    клиентом до квадрата; ядро проверяет формат по сигнатуре и размер.
+    """
+    __tablename__ = "user_avatars"
+
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    content_type = Column(String(20), nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
 class JoinRequestStatus(str, enum.Enum):

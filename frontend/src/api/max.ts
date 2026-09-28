@@ -40,12 +40,12 @@ export function initData(): string | null {
   return typeof data === 'string' && data.trim() ? data : null;
 }
 
-/** Имя и фото из initDataUnsafe: подпись не проверена — только для отображения. */
+/** Имя из initDataUnsafe: подпись не проверена — только как подсказка. Фото из MAX не берём:
+ *  аватар пользователь загружает сам (Backend.setAvatar). */
 export function maxUserInfo(): MaxUserInfo | null {
   const u = bridge()?.initDataUnsafe?.user;
   if (!u) return null;
-  const photo = typeof u.photo_url === 'string' && /^https:\/\//.test(u.photo_url) ? u.photo_url : undefined;
-  return { first_name: u.first_name, last_name: u.last_name, photo_url: photo };
+  return { first_name: u.first_name, last_name: u.last_name };
 }
 
 /** Ссылки max.ru открываем внутри MAX, остальные — во внешнем браузере. */

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { ScheduleEvent } from '../../api/types';
 import { Avatar, Button, Skeleton, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
+import { useAvatar } from '../../hooks/useAvatar';
 import { useProfilesApi, useScheduleApi } from '../../hooks/useServices';
 import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useSession } from '../../state/session';
@@ -45,6 +46,7 @@ export function HomeScreen() {
 
   const me = useAsync(async signal => (profiles ? (await profiles.api.getMe(signal)).data : null), [profiles]);
   const schedule = useHomeSchedule();
+  const photo = useAvatar(user?.id);
 
   const displayName = me.data?.display_name
     || [maxUser?.first_name, maxUser?.last_name].filter(Boolean).join(' ')
@@ -57,7 +59,7 @@ export function HomeScreen() {
 
   const cardInner = (
     <>
-      <Avatar name={displayName} src={maxUser?.photo_url} size="var(--home-avatar)" className={s.photo} />
+      <Avatar name={displayName} src={photo} size="var(--home-avatar)" className={s.photo} />
       <div className={s.profileText}>
         {loadingCard ? (
           <>
