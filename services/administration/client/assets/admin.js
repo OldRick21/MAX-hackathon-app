@@ -487,7 +487,7 @@
             ? s.manifest.menus.map(m => `${title(m.titles)} (${m.entrypoint_path}; ${m.profiles.map(p => PROFILES[p]).join(', ')})`).join('; ')
             : 'не опубликовано')));
       if (s.protected) {
-        card.append(h('p', { class: 'muted' }, 'Сервис администрирования предоставляется вузу по умолчанию: его нельзя отключить, перенастроить или удалить.'));
+        card.append(h('p', { class: 'muted' }, 'Сервис администрирования предоставляется вузу по умолчанию: его нельзя отключить, перенастроить или удалить. Ключ и адреса его контейнера задаёт оператор платформы.'));
       } else if (manage) {
         const actions = h('div', { class: 'actions' });
         const waiting = s.deployment === 'local' && !s.enabled && !s.manifest.menus.length;
@@ -509,7 +509,8 @@
         }, reload) }, 'Удалить'));
         card.append(actions);
       }
-      if (s.deployment === 'local') card.insertBefore(await localSetup(s), card.querySelector('.actions'));
+      // Ключ и адреса самого администрирования задаёт оператор платформы — шагов подключения здесь нет.
+      if (s.deployment === 'local' && !s.protected) card.insertBefore(await localSetup(s), card.querySelector('.actions'));
       parts.push(card);
     }
     view.replaceChildren(...parts);
