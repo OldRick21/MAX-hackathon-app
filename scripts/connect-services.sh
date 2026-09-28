@@ -94,7 +94,9 @@ for code in "${SERVICES[@]}"; do
   target="$code-${INSTANCE}_data"
   if [[ -n "$legacy" ]] && docker volume inspect "$legacy" >/dev/null 2>&1 && ! docker volume inspect "$target" >/dev/null 2>&1; then
     step "$code: перенос данных из $legacy в $target"
-    docker volume create "$target" >/dev/null
+    # Метки как у Compose: иначе при запуске он предупреждает, что том создан не им.
+    docker volume create --label "com.docker.compose.project=$code-$INSTANCE" \
+      --label com.docker.compose.volume=data "$target" >/dev/null
     docker run --rm -v "$legacy:/from:ro" -v "$target:/to" alpine:3 sh -c 'cp -a /from/. /to/'
   fi
 
