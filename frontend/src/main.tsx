@@ -1,3 +1,5 @@
+// Первым: запоминаем данные запуска MAX из адреса до любых переходов.
+import './api/launch';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';

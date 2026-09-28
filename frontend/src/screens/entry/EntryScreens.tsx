@@ -26,10 +26,13 @@ export function BootScreen({ text = 'Входим через MAX…' }: { text?:
 }
 
 export function NotInMaxScreen() {
+  const { retry } = useSession();
   return (
     <Frame>
       <h1 className={s.title}>Откройте приложение в MAX</h1>
       <p className={s.text}>Вход выполняется через мессенджер MAX. Найдите бота «Вузы России» и нажмите кнопку «Открыть».</p>
+      {/* Bridge MAX на части Android-клиентов готов не сразу — повтор входа без перезапуска. */}
+      <div className={s.center}><Button variant="secondary" onClick={retry}>Я уже в MAX — повторить</Button></div>
     </Frame>
   );
 }

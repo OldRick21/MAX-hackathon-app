@@ -1,5 +1,6 @@
 // Обёртка над MAX Bridge (window.WebApp из https://st.max.ru/js/max-web-app.js).
 
+import { launchInitData } from './launch';
 import type { MaxUserInfo } from './types';
 
 interface MaxWebApp {
@@ -37,7 +38,17 @@ export function loadBridge(): Promise<void> {
 
 export function initData(): string | null {
   const data = bridge()?.initData;
-  return typeof data === 'string' && data.trim() ? data : null;
+  return typeof data === 'string' && data.trim() ? data : launchInitData;
+}
+
+/** initData с ожиданием: Bridge на Android может заполнить его не сразу после загрузки. */
+export async function waitInitData(timeoutMs = 3000): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const data = initData();
+    if (data || Date.now() >= deadline) return data;
+    await new Promise(r => setTimeout(r, 100));
+  }
 }
 
 /** Имя из initDataUnsafe: подпись не проверена — только как подсказка. Фото из MAX не берём:

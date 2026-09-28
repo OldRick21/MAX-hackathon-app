@@ -3,7 +3,7 @@
 import type { Backend, CourseworkApi, ProfilesApi, ScheduleApi, UploadProgress } from '../backend';
 import { NotInMaxError } from '../backend';
 import { ApiError, newIdempotencyKey, request, toApiError } from '../http';
-import { initData, loadBridge, maxUserInfo, openExternal } from '../max';
+import { loadBridge, maxUserInfo, openExternal, waitInitData } from '../max';
 import type {
   Group, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
 } from '../types';
@@ -183,7 +183,7 @@ export function createRealBackend(): Backend {
     },
     async login() {
       await loadBridge();
-      const data = initData();
+      const data = await waitInitData();
       if (!data) throw new NotInMaxError();
       await core.login(data);
       return core.call<User>('/api/v1/auth/me');
