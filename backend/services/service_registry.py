@@ -32,11 +32,11 @@ class ServiceRegistry:
         if not service:
             raise HTTPException(status_code=404, detail="Service not found")
 
-        # Те же правила, что у администратора (institution_admin.replace_manifest): меню облачных
-        # сервисов задаёт платформа, пункты проверяются по каталогу типа, включённый сервис
+        # Те же правила, что у администратора (institution_admin.replace_manifest): меню
+        # администрирования задаёт платформа, пункты проверяются по типу, включённый сервис
         # не остаётся без меню.
-        if service.deployment != "local":
-            raise HTTPException(status_code=403, detail="PROTECTED_RESOURCE: Manifest облачного сервиса задаёт платформа")
+        if service.protected:
+            raise HTTPException(status_code=403, detail="PROTECTED_RESOURCE: Manifest администрирования задаёт платформа")
         manifest = catalog.check_manifest(manifest_data.model_dump(exclude_none=True), service.service_type,
                                           service.supported_profiles or [])
         if service.enabled and not manifest["menus"]:
@@ -217,7 +217,7 @@ class ServiceRegistry:
 
 
     @staticmethod
-    def delete_service_role(service_id: str, role_code: str, machine_claims: dict, db: Session):
+    def delete_service_role(service_id: str, role_code: str, machine_claims: dict, db: Session, cascade: bool = False):
         ServiceRegistry._verify_service_ownership(service_id, machine_claims)
         registry.lock_institution(db, machine_claims['institution_id'])
         role = db.query(ServiceRole).filter(
@@ -229,11 +229,14 @@ class ServiceRegistry:
         if role.system or (role.service and role.service.protected):
             raise HTTPException(status_code=403, detail="PROTECTED_RESOURCE: System roles cannot be deleted")
 
-        # Проверка: есть ли пользователи с этой ролью (ROLE_IN_USE -> 409)
+        # Назначенную роль удалить нельзя (ROLE_IN_USE -> 409), если сервис не попросил снять
+        # её с пользователей (cascade=true): так сервис убирает свои роли прежних версий.
         all_assignments = db.query(RoleAssignment).filter(RoleAssignment.service_id == service_id).all()
         for a in all_assignments:
             if role_code in (a.roles or []):
-                raise HTTPException(status_code=409, detail="Role is currently assigned to users (ROLE_IN_USE)")
+                if not cascade:
+                    raise HTTPException(status_code=409, detail="Role is currently assigned to users (ROLE_IN_USE)")
+                a.roles = [r for r in a.roles if r != role_code]
 
         db.delete(role)
         db.commit()

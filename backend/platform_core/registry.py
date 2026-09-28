@@ -7,7 +7,7 @@
 import logging
 import secrets
 from datetime import timedelta, timezone
-from typing import Iterable, List, Optional, Set
+from typing import Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -30,10 +30,8 @@ from database.tables import (
     utc_now,
 )
 from platform_core import catalog
-from platform_core.concurrency import derive_binding_secret
 from platform_core.errors import DomainError
 from settings.config import settings
-from auth.security import hash_password, verify_password
 
 logger = logging.getLogger("uvicorn")
 
@@ -220,59 +218,22 @@ def create_initial_roles(db: Session, service: ServiceInstance) -> None:
                            system=bool(t["system_roles"])))
 
 
-def ensure_cloud_binding(db: Session, service: ServiceInstance, force_rotate: bool = False) -> Optional[CloudBinding]:
-    """Создаёт или ротирует credential и binding облачного экземпляра.
+def create_admin_instance(db: Session, institution_id: str) -> ServiceInstance:
+    """Администрирование вуза: создаётся вместе с вузом, как и любой сервис — со своим контейнером.
 
-    Без CLOUD_BINDING_KEY возвращает None: экземпляр зарегистрирован, но процесс
-    типа не сможет его обслуживать (SDK отвечает 503 INSTANCE_NOT_READY).
+    Адреса по умолчанию берутся из настроек, оператор меняет их в пульте; ключ процесса
+    выдаёт оператор («Выдать ключ» в карточке сервиса).
     """
-    if service.deployment != "cloud":
-        return None
-    key = settings.CLOUD_BINDING_KEY
-    if not key or len(key) < 32:
-        return None
-    binding = db.get(CloudBinding, service.id)
-    if binding and binding.active and not force_rotate:
-        credential = db.get(ServiceCredential, binding.credential_id)
-        if credential and credential.revoked_at is None and \
-                verify_password(derive_binding_secret(key, credential.id), credential.hashed_secret):
-            return binding
-    # Новый credential; прежний отзывается в той же транзакции.
-    now = utc_now()
-    if binding:
-        old = db.get(ServiceCredential, binding.credential_id)
-        if old and old.revoked_at is None:
-            old.revoked_at = now
-    credential_id = generate_uuid()
-    credential = ServiceCredential(id=credential_id, client_id=generate_uuid(), service_id=service.id,
-                                   hashed_secret=hash_password(derive_binding_secret(key, credential_id)))
-    db.add(credential)
-    if binding:
-        binding.credential_id = credential.id
-        binding.client_id = credential.client_id
-        binding.revision = (binding.revision or 0) + 1
-        binding.active = True
-        binding.updated_at = now
-    else:
-        binding = CloudBinding(service_id=service.id, institution_id=service.institution_id,
-                               service_type=service.service_type, credential_id=credential.id,
-                               client_id=credential.client_id, revision=1, active=True)
-        db.add(binding)
-    return binding
-
-
-def create_cloud_instance(db: Session, institution_id: str, service_type: str) -> ServiceInstance:
-    t = catalog.service_type(service_type)
-    api_url, client_url = settings.cloud_endpoints(service_type)
+    t = catalog.service_type("administration")
     service = ServiceInstance(
-        id=generate_uuid(), institution_id=institution_id, service_type=service_type, deployment="cloud",
-        enabled=True, protected=bool(t["protected"]), api_base_url=api_url, client_base_url=client_url,
-        supported_profiles=list(t["supported_profiles"]), manifest=catalog.default_manifest(service_type),
+        id=generate_uuid(), institution_id=institution_id, service_type="administration", deployment="local",
+        enabled=True, protected=True, api_base_url=settings.ADMINISTRATION_API_BASE_URL,
+        client_base_url=settings.ADMINISTRATION_CLIENT_BASE_URL,
+        supported_profiles=list(t["supported_profiles"]), manifest=catalog.default_manifest("administration"),
     )
     db.add(service)
     db.flush()
     create_initial_roles(db, service)
-    ensure_cloud_binding(db, service)
     return service
 
 
@@ -293,14 +254,11 @@ def create_local_instance(db: Session, institution_id: str, service_type: str, a
 
 
 def sync_admin_instance(db: Session, service: ServiceInstance) -> None:
-    """Приводит administration к конфигурации платформы; администратор вуза её не меняет."""
-    api_url, client_url = settings.cloud_endpoints("administration")
+    """Приводит manifest и системные роли administration к каталогу; адреса задаёт оператор."""
     t = catalog.service_type("administration")
-    service.deployment = "cloud"
+    service.deployment = "local"
     service.enabled = True
     service.protected = True
-    service.api_base_url = api_url
-    service.client_base_url = client_url
     service.supported_profiles = list(t["supported_profiles"])
     service.manifest = catalog.default_manifest("administration")
     for role in t["initial_roles"]:
@@ -327,69 +285,15 @@ def sync_admin_instance(db: Session, service: ServiceInstance) -> None:
         db.delete(legacy)
 
 
-# Облачные типы, чьи адреса, манифест и профили задаёт платформа (administration — отдельно).
-PLATFORM_SYNCED_TYPES = ("schedule", "user-profile")
-
-
-def sync_cloud_instance(db: Session, service: ServiceInstance) -> None:
-    """Приводит облачный экземпляр schedule/user-profile к конфигурации платформы.
-
-    Экземпляр, созданный до настройки *_BASE_URL, до переезда или демо-заглушкой,
-    иначе остаётся со старыми адресами и манифестом. Включение/отключение остаётся
-    за администратором вуза.
-    """
-    code = service.service_type
-    api_url, client_url = settings.cloud_endpoints(code)
-    if (service.api_base_url, service.client_base_url) != (api_url, client_url):
-        logger.info("%s %s: addresses %s -> %s", code, service.id, service.api_base_url, api_url)
-    service.api_base_url = api_url
-    service.client_base_url = client_url
-    service.manifest = catalog.default_manifest(code)
-    service.supported_profiles = list(catalog.service_type(code)["supported_profiles"])
-    create_initial_roles(db, service)
-    # Начальные роли задаёт платформа: права, названия и профили приводятся к каталогу. Если профиль
-    # из роли убран, роль снимается с этого профиля; роли прежних версий удаляются совсем.
-    for retired in catalog.service_type(code).get("retired_roles", []):
-        old = db.get(ServiceRole, (service.id, retired))
-        if old:
-            for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id):
-                if retired in (row.roles or []):
-                    row.roles = [r for r in row.roles if r != retired]
-            db.delete(old)
-    # Права, которых у типа больше нет (например, ведение групп в расписании), снимаются со всех ролей
-    # экземпляра, в том числе созданных вручную; роль без единого права удаляется вместе с назначениями.
-    known = set(catalog.service_type(code)["permission_codes"])
-    for other in db.query(ServiceRole).filter(ServiceRole.service_id == service.id).all():
-        kept = [p for p in (other.permissions or []) if p in known]
-        if kept == list(other.permissions or []):
-            continue
-        if kept:
-            other.permissions = kept
-            continue
-        for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id):
-            if other.code in (row.roles or []):
-                row.roles = [r for r in row.roles if r != other.code]
-        db.delete(other)
-    db.flush()
-    for role in catalog.service_type(code)["initial_roles"]:
-        existing = db.get(ServiceRole, (service.id, role["code"]))
-        if existing and existing.permissions != role["permissions"]:
-            existing.permissions = list(role["permissions"])
-        if existing and existing.titles != role["titles"]:
-            existing.titles = dict(role["titles"])
-        if existing and existing.allowed_profiles != role["allowed_profiles"]:
-            existing.allowed_profiles = list(role["allowed_profiles"])
-            for row in db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id,
-                                                       RoleAssignment.profile.notin_(role["allowed_profiles"])):
-                if role["code"] in (row.roles or []):
-                    row.roles = [r for r in row.roles if r != role["code"]]
+# Прежние встроенные типы: теперь это свои сервисы вуза (custom.<код>) со своими контейнерами.
+LEGACY_TYPES = {"schedule": "custom.schedule", "user-profile": "custom.people", "coursework": "custom.coursework"}
 
 
 def provision_institution(db: Session, titles: dict, default_locale: str, status: str = InstitutionStatus.ACTIVE.value) -> Institution:
     inst = Institution(id=generate_uuid(), titles=titles, default_locale=default_locale, status=status)
     db.add(inst)
     db.flush()
-    create_cloud_instance(db, inst.id, "administration")
+    create_admin_instance(db, inst.id)
     return inst
 
 
@@ -397,7 +301,7 @@ def assign_owner(db: Session, institution_id: str, user_id: str) -> None:
     """Контролируемое назначение владельца: membership + профиль admin + роль owner."""
     admin = admin_service_of(db, institution_id)
     if not admin:
-        admin = create_cloud_instance(db, institution_id, "administration")
+        admin = create_admin_instance(db, institution_id)
     member = db.get(Membership, (institution_id, user_id))
     if not member:
         db.add(Membership(institution_id=institution_id, user_id=user_id, profiles=["admin"]))
@@ -413,35 +317,55 @@ def assign_owner(db: Session, institution_id: str, user_id: str) -> None:
 def ensure_platform_invariants(db: Session) -> None:
     """Выполняется при запуске ядра и командами оператора. Идемпотентна.
 
-    - у каждого вуза есть защищённый экземпляр administration;
-    - его адреса, manifest и системные роли совпадают с каталогом;
-    - адреса и manifest облачных schedule/user-profile совпадают с настройками платформы;
-    - у облачных экземпляров есть действующий binding (если задан ключ).
+    - у каждого вуза есть защищённый экземпляр administration с manifest и ролями из каталога;
+    - прежние встроенные типы (расписание, «Люди», курсовые) становятся своими сервисами вуза:
+      тип custom.<код>, deployment local; меню и роли они публикуют сами;
+    - ключи прежней облачной выдачи (cloud bindings) отзываются: ключ сервису выдаётся в карточке;
+    - профиль admin есть у каждого сервиса: администраторы видят любой сервис вуза.
     """
     for inst in db.query(Institution).all():
         admin = admin_service_of(db, inst.id)
         if not admin:
-            create_cloud_instance(db, inst.id, "administration")
+            create_admin_instance(db, inst.id)
         else:
             sync_admin_instance(db, admin)
-    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type.in_(PLATFORM_SYNCED_TYPES),
-                                                    ServiceInstance.deployment == "cloud").all():
-        sync_cloud_instance(db, service)
-    # Администраторы видят любой сервис вуза: профиль admin добавляется и ранее подключённым.
+    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type.in_(list(LEGACY_TYPES))).all():
+        target = LEGACY_TYPES[service.service_type]
+        if db.query(ServiceInstance).filter(ServiceInstance.institution_id == service.institution_id,
+                                            ServiceInstance.service_type == target).first():
+            logger.warning("%s %s: %s already exists, legacy instance left as is", service.service_type, service.id, target)
+            continue
+        logger.info("%s %s -> %s", service.service_type, service.id, target)
+        service.service_type = target
+        service.deployment = "local"
+    for service in db.query(ServiceInstance).filter(ServiceInstance.deployment == "cloud").all():
+        service.deployment = "local"
+    now = utc_now()
+    for binding in db.query(CloudBinding).filter(CloudBinding.active.is_(True)).all():
+        binding.active = False
+        credential = db.get(ServiceCredential, binding.credential_id)
+        if credential and credential.revoked_at is None:
+            credential.revoked_at = now
     for service in db.query(ServiceInstance).all():
         if "admin" not in (service.supported_profiles or []):
             logger.info("%s %s: admin profile added", service.service_type, service.id)
             service.supported_profiles = [*(service.supported_profiles or []), "admin"]
     db.flush()
-    if not settings.CLOUD_BINDING_KEY:
-        logger.warning("CLOUD_BINDING_KEY is not set: cloud services (administration) cannot authenticate to core")
-        return
-    for service in db.query(ServiceInstance).filter(ServiceInstance.deployment == "cloud").all():
-        ensure_cloud_binding(db, service)
 
 
 def new_local_secret() -> str:
     return secrets.token_urlsafe(32)
+
+
+def issue_credential(db: Session, service: ServiceInstance) -> Tuple[ServiceCredential, str]:
+    """Новый ключ процесса сервиса (client_id + секрет). Секрет возвращается один раз, хранится хэш."""
+    from auth.security import hash_password
+    secret = new_local_secret()
+    credential = ServiceCredential(id=generate_uuid(), client_id=generate_uuid(), service_id=service.id,
+                                   hashed_secret=hash_password(secret), created_at=utc_now())
+    db.add(credential)
+    db.flush()
+    return credential, secret
 
 
 IDEMPOTENCY_TTL = timedelta(hours=24)

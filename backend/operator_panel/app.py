@@ -10,7 +10,7 @@ Nginx по HTTPS (порт 8445) и, для SSH-туннеля, на 127.0.0.1:8
 
 Оператор может всё, что владелец любого вуза в админке, плюс операции платформы:
 заявки на подключение вузов, статусы, одобренные хосты, владельцы, права поддержки,
-установка облачных сервисов и служебные команды manage.py.
+ключ и адреса администрирования вуза и служебные команды manage.py.
 """
 import base64
 import contextlib
@@ -171,7 +171,11 @@ def run(db: Session, fn: Callable[[], Result]) -> Response:
 # --------------------------------------------------------------------------
 
 class OperatorActor(ActorContext):
-    """Оператор внутри вуза: все права владельца, в журнале — actor_kind=operator."""
+    """Оператор внутри вуза: все права владельца, в журнале — actor_kind=operator.
+
+    Сверх владельца оператор выдаёт ключ администрированию вуза и меняет его адреса.
+    """
+    operator = True
 
     def audit(self, db, action, target_type, target_id, details=None, outcome="success", error_code=None):
         return registry.audit(db, scope="institution", action=action, actor_user_id=None, actor_kind="operator",
@@ -195,7 +199,7 @@ def actor(db: Session, institution_id: str) -> OperatorActor:
         raise not_found("Вуз не найден")
     admin = registry.admin_service_of(db, institution_id)
     if not admin:
-        admin = registry.create_cloud_instance(db, institution_id, "administration")
+        admin = registry.create_admin_instance(db, institution_id)
         db.commit()
     return OperatorActor(institution_id=institution_id, admin_service_id=admin.id, actor_id=OPERATOR,
                          roles=[catalog.OWNER_ROLE], permissions=list(catalog.ADMIN_PERMISSIONS), credential_id=None,
@@ -352,17 +356,14 @@ def institutions(_: str = Depends(operator), db: Session = Depends(get_db)):
 
 @app.post("/api/institutions")
 def create_institution(payload: Any = Body(None), _: str = Depends(operator), db: Session = Depends(get_db)):
-    """Подключить вуз без заявки: название, язык, по желанию — владелец и сервисы платформы."""
+    """Подключить вуз без заявки: название, язык, по желанию — владелец."""
     def create():
-        body = _body(payload, {"titles", "default_locale", "owner_user_id", "services"}, {"titles"})
+        body = _body(payload, {"titles", "default_locale", "owner_user_id"}, {"titles"})
         titles = catalog.check_localized(body["titles"], "titles")
         locale = catalog.check_locale(body.get("default_locale", "ru"))
         owner = body.get("owner_user_id")
         if owner is not None and (not is_uuid(owner) or not db.get(User, owner)):
             raise validation("Владелец — пользователь, который хотя бы раз входил через MAX", "owner_user_id")
-        services = body.get("services") or []
-        if not isinstance(services, list) or not set(services) <= set(platform_ops.CLOUD_INSTALLS):
-            raise validation("services: user-profile и/или schedule", "services")
         inst = registry.provision_institution(db, titles, locale)
         registry.audit(db, scope="institution", action="institution.provision", actor_user_id=None,
                        actor_kind="operator", institution_id=inst.id, target_type="institution", target_id=inst.id,
@@ -371,9 +372,6 @@ def create_institution(payload: Any = Body(None), _: str = Depends(operator), db
             registry.assign_owner(db, inst.id, owner)
             registry.audit(db, scope="institution", action="owner.initial_assign", actor_user_id=None,
                            actor_kind="operator", institution_id=inst.id, target_type="member", target_id=owner)
-        db.flush()
-        for service_type in services:
-            platform_ops.install_cloud_service(db, inst.id, service_type)
         db.commit()
         return Result(_institution_card(db, inst, {}), status=201)
     return run(db, create)
@@ -415,20 +413,6 @@ def add_owner(institution_id: str, payload: Any = Body(None), _: str = Depends(o
         db.commit()
         return Result({"institution_id": inst.id, "user_id": user_id})
     return run(db, assign)
-
-
-@app.post("/api/institutions/{institution_id}/cloud/{service_type}")
-def install_cloud(institution_id: str, service_type: str, _: str = Depends(operator), db: Session = Depends(get_db)):
-    def install():
-        platform_support._institution(db, institution_id)
-        service, created, binding = platform_ops.install_cloud_service(db, institution_id, service_type)
-        db.commit()
-        title, hint = platform_ops.CLOUD_INSTALLS[service_type]
-        message = f"{title} {'установлен' if created else 'обновлён'}. {hint}"
-        if binding is None:
-            message += " CLOUD_BINDING_KEY не задан: сервис вернёт 503, пока binding не выдан."
-        return Result({"service_id": service.id, "created": created, "message": message})
-    return run(db, install)
 
 
 # --------------------------------------------------------------------------

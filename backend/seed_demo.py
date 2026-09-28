@@ -2,7 +2,7 @@
 import argparse
 from uuid import UUID
 from database.create_tables import session_local
-from database.tables import User, Institution, Membership, ServiceInstance
+from database.tables import User, Institution, Membership
 from platform_core import registry
 
 INSTITUTION = '83a927fc-6825-4944-9ed1-c27076100101'
@@ -20,12 +20,11 @@ def seed(user_id):
             db.add(Membership(institution_id=INSTITUTION, user_id=user_id, profiles=['student']))
         elif 'student' not in member.profiles:
             member.profiles = [*member.profiles, 'student']
-        # Настоящий облачный сервис расписания. Прежняя заглушка на 8443, если она есть,
-        # при запуске ядра приводится к адресам и манифесту платформы.
-        if not db.query(ServiceInstance).filter_by(institution_id=INSTITUTION, service_type='schedule').first():
-            registry.create_cloud_instance(db, INSTITUTION, 'schedule')
+        if not registry.admin_service_of(db, INSTITUTION):
+            registry.create_admin_instance(db, INSTITUTION)
         db.commit()
-    print('Demo university and schedule service ready. Student membership assigned; no admin permissions granted.')
+    # Расписание, «Люди» и курсовые подключаются вузу как свои сервисы (custom.<код>) со своими контейнерами.
+    print('Demo university ready. Student membership assigned; no admin permissions granted.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)

@@ -57,7 +57,7 @@ LEGACY_OWNER_ROLE = "admin_owner"
 SERVICE_TYPES: Dict[str, dict] = {
     "administration": {
         "code": "administration",
-        "deployment": "cloud",
+        "deployment": "local",
         "titles": {"ru": "Администрирование", "en": "Administration"},
         "supported_profiles": ["admin"],
         "permission_codes": list(ADMIN_PERMISSIONS),
@@ -69,67 +69,14 @@ SERVICE_TYPES: Dict[str, dict] = {
         "initial_roles": ADMIN_SYSTEM_ROLES,
         "system_roles": True,
     },
-    "schedule": {
-        "code": "schedule",
-        "deployment": "cloud",
-        "titles": {"ru": "Расписание", "en": "Schedule"},
-        "supported_profiles": ["admin", "teacher", "student"],
-        # Смотреть расписание и группы может любой участник. Администратор правит занятия и группы
-        # всегда, без ролей. Преподавателю правку занятий включает администратор — роль ниже.
-        "permission_codes": ["schedule.read_all", "schedule.write"],
-        "protected": False,
-        "menus": [
-            {"id": "schedule", "titles": {"ru": "Расписание", "en": "Schedule"}, "entrypoint_path": "/schedule",
-             "profiles": ["student", "teacher", "admin"], "required_permissions": [], "order": 0},
-        ],
-        "initial_roles": [
-            {"code": "schedule_editor", "titles": {"ru": "Редактирование расписания", "en": "Schedule editing"},
-             "allowed_profiles": ["teacher"], "permissions": ["schedule.write"]},
-        ],
-        # Начальные роли прежних версий: удаляются при запуске вместе с назначениями.
-        "retired_roles": ["group_editor"],
-        "system_roles": False,
-    },
-    "user-profile": {
-        "code": "user-profile",
-        "deployment": "cloud",
-        "titles": {"ru": "Люди", "en": "People"},
-        "supported_profiles": ["admin", "teacher", "student"],
-        "permission_codes": ["profiles.manage"],
-        "protected": False,
-        "menus": [
-            {"id": "home", "titles": {"ru": "Главная", "en": "Home"}, "entrypoint_path": "/home",
-             "profiles": ["admin", "teacher", "student"], "required_permissions": [], "order": 0},
-            {"id": "users", "titles": {"ru": "Пользователи", "en": "Users"}, "entrypoint_path": "/users",
-             "profiles": ["admin", "teacher", "student"], "required_permissions": [], "order": 10},
-        ],
-        "initial_roles": [
-            {"code": "profile_editor", "titles": {"ru": "Редактор анкет", "en": "Profile editor"},
-             "allowed_profiles": ["admin"], "permissions": ["profiles.manage"]},
-        ],
-        "system_roles": False,
-    },
-    "coursework": {
-        "code": "coursework",
-        "deployment": "local",
-        "titles": {"ru": "Курсовые работы", "en": "Coursework"},
-        "supported_profiles": ["admin", "teacher", "student"],
-        "permission_codes": ["coursework.manage"],
-        "protected": False,
-        # Меню local публикует backend вуза через machine API; до этого manifest пуст.
-        "menus": [],
-        "initial_roles": [],
-        "system_roles": False,
-    },
 }
 
-CLOUD_INSTALLABLE = ("schedule", "user-profile")
-LOCAL_INSTALLABLE = ("coursework",)
-
-# Свой локальный сервис вуза: тип custom.<код>. Каталог его заранее не знает — вуз
-# регистрирует сервис на одобренном хосте, а сервис сам публикует меню и роли через
-# machine API (CORE_API_SPEC.md §7). Права такого сервиса живут в своём пространстве
-# <код>.*, поэтому он не может выдать себе права расписания или администрирования.
+# Остальные сервисы вуза ядру заранее не известны: вуз регистрирует их как свои сервисы
+# (custom.<код>) — расписание, «Люди», курсовые и любые другие. Каждый работает в своём
+# контейнере вуза на одобренном хосте, получает ключ в админке и сам публикует меню и роли
+# через machine API (CORE_API_SPEC.md §7). Права такого сервиса живут в пространстве <код>.*,
+# поэтому он не может выдать себе права другого сервиса или администрирования.
+# Администрирование — единственный тип, который знает ядро: его роли — права на private API ядра.
 CUSTOM_RE = re.compile(r"^custom\.([a-z][a-z0-9-]{1,39})$")
 
 
@@ -172,7 +119,7 @@ def service_type(code: str) -> dict:
 
 
 def public_service_types() -> List[dict]:
-    """ServiceTypeList: ровно четыре утверждённых типа MVP."""
+    """ServiceTypeList: встроенный тип один — администрирование; остальные сервисы — свои (custom.<код>)."""
     keys = ("code", "deployment", "titles", "supported_profiles", "permission_codes", "protected")
     return [{k: copy.deepcopy(t[k]) for k in keys} for t in SERVICE_TYPES.values()]
 

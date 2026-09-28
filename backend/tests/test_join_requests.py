@@ -20,6 +20,8 @@ os.environ.update(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from tests.keys import issue_key, register_service  # noqa: E402
+
 import manage  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
 from database.tables import JoinRequest, Membership, PlatformStaff, ServiceInstance, StudyGroupMember  # noqa: E402
@@ -47,8 +49,7 @@ class JoinRequests(unittest.TestCase):
     def private(self, inst, admin_service, core_headers):
         actor = self.c.post(f'/api/v1/institution/{inst}/service/{admin_service}/session', json={'profile': 'admin'},
                             headers=core_headers).json()['access_token']
-        binding = self.c.get(f'/api/v1/internal/provisioning/bindings/{admin_service}',
-                             headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        binding = issue_key(admin_service)
         machine = self.c.post('/api/v1/internal/auth/token', auth=(binding['client_id'], binding['client_secret']),
                               json={'grant_type': 'client_credentials'}).json()['access_token']
         return {'Authorization': 'Bearer ' + machine, 'X-Actor-Token': actor}

@@ -115,12 +115,10 @@ class OperatorPanel(unittest.TestCase):
         self.assertEqual(op.post(f'/api/applications/{app_id}/approve', headers=W).json()['error']['code'],
                          'APPLICATION_NOT_PENDING')
 
-        # Вуз напрямую, с владельцем и сервисами платформы.
-        created = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Горный'}, 'owner_user_id': support,
-                                                                'services': ['schedule', 'user-profile']})
+        # Вуз напрямую, с владельцем. У вуза сразу есть только администрирование, остальные — свои сервисы.
+        created = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Горный'}, 'owner_user_id': support})
         self.assertEqual(created.status_code, 201, created.text)
-        self.assertEqual(sorted(s['service_type'] for s in created.json()['services']),
-                         ['administration', 'schedule', 'user-profile'])
+        self.assertEqual([s['service_type'] for s in created.json()['services']], ['administration'])
         names = {i['id']: i['titles']['ru'] for i in op.get('/api/institutions').json()['items']}
         self.assertEqual(names[inst], 'Политех СПб')
 
@@ -154,7 +152,19 @@ class OperatorPanel(unittest.TestCase):
         tag = op.get(f'/api/institutions/{inst}').headers['ETag']
         self.assertEqual(op.patch(f'/api/institutions/{inst}/status', headers={**W, 'If-Match': tag},
                                   json={'status': 'suspended'}).json()['status'], 'suspended')
-        self.assertTrue(op.post(f'/api/institutions/{inst}/cloud/schedule', headers=W).json()['created'])
+        # Администрирование — контейнер вуза: ключ и адреса задаёт оператор.
+        admin_id = next(x['id'] for x in op.get(f'{base}/services').json()['items'] if x['service_type'] == 'administration')
+        key = op.post(f'{base}/services/{admin_id}/credentials', headers=W)
+        self.assertEqual(key.status_code, 201, key.text)
+        self.assertEqual(len(key.json()['client_secret']), 43)
+        etag = op.get(f'{base}/services/{admin_id}').headers['ETag']
+        moved = op.patch(f'{base}/services/{admin_id}', headers={**W, 'If-Match': etag},
+                         json={'api_base_url': 'https://admin.university.ru/api/v1', 'client_base_url': 'https://admin.university.ru'})
+        self.assertEqual(moved.status_code, 200, moved.text)
+        self.assertEqual(moved.json()['api_base_url'], 'https://admin.university.ru/api/v1')
+        etag = op.get(f'{base}/services/{admin_id}').headers['ETag']
+        self.assertEqual(op.patch(f'{base}/services/{admin_id}', headers={**W, 'If-Match': etag}, json={'enabled': False})
+                         .json()['error']['code'], 'PROTECTED_RESOURCE')
         self.assertEqual(op.get(f'{base}/nonsense').status_code, 404)
 
         # Пользователи: поиск по имени и права поддержки.

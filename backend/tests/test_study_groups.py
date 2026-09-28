@@ -20,9 +20,11 @@ os.environ.update(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from tests.keys import issue_key, register_service  # noqa: E402
+
 import manage  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
-from database.tables import Membership, PlatformStaff, RoleAssignment, ServiceInstance, ServiceRole  # noqa: E402
+from database.tables import Membership, PlatformStaff, RoleAssignment, ServiceInstance  # noqa: E402
 from main import app  # noqa: E402
 
 
@@ -47,8 +49,7 @@ class StudyGroups(unittest.TestCase):
     def private(self, inst, admin_service, core_headers):
         actor = self.c.post(f'/api/v1/institution/{inst}/service/{admin_service}/session', json={'profile': 'admin'},
                             headers=core_headers).json()['access_token']
-        binding = self.c.get(f'/api/v1/internal/provisioning/bindings/{admin_service}',
-                             headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        binding = issue_key(admin_service)
         machine = self.c.post('/api/v1/internal/auth/token', auth=(binding['client_id'], binding['client_secret']),
                               json={'grant_type': 'client_credentials'}).json()['access_token']
         return {'Authorization': 'Bearer ' + machine, 'X-Actor-Token': actor}
@@ -111,12 +112,9 @@ class StudyGroups(unittest.TestCase):
         self.assertEqual(self.c.get(f'/api/v1/institution/{inst}/groups', params={'profile': 'teacher'},
                                     headers=s1_core).status_code, 403)
 
-        # Сервис: machine API и group_ids в introspection.
-        manage.install_schedule(inst)
-        with session_local() as db:
-            schedule = db.query(ServiceInstance).filter_by(institution_id=inst, service_type='schedule').one().id
-        binding = self.c.get(f'/api/v1/internal/provisioning/bindings/{schedule}',
-                             headers={'Authorization': 'Bearer ' + 's' * 48}).json()
+        # Сервис (свой сервис вуза custom.schedule): machine API и group_ids в introspection.
+        schedule = register_service(inst, 'schedule', 'schedule.university.ru', manifest={'titles': {'ru': 'Расписание'}, 'menus': [{'id': 'schedule', 'titles': {'ru': 'Расписание'}, 'entrypoint_path': '/', 'profiles': ['student', 'teacher', 'admin'], 'required_permissions': [], 'order': 0}]})
+        binding = issue_key(schedule)
         machine = self.c.post('/api/v1/internal/auth/token', auth=(binding['client_id'], binding['client_secret']),
                               json={'grant_type': 'client_credentials'}).json()
         self.assertIn('groups:read', machine['scopes'])
@@ -175,16 +173,10 @@ class StudyGroups(unittest.TestCase):
         app_id = self.c.post('/api/v1/institution-applications', headers=owner,
                              json={'titles': {'ru': 'Вуз групп'}, 'contact': 'r@example.ru'}).json()['id']
         inst = self.c.post(f'/api/v1/platform/applications/{app_id}/approve', headers=support, json={}).json()['institution_id']
-        manage.install_schedule(inst)
         with session_local() as db:
             for uid, profiles in ((s1, ['student']), (t1, ['teacher']), (admin, ['admin'])):
                 db.add(Membership(institution_id=inst, user_id=uid, profiles=profiles))
-            schedule = db.query(ServiceInstance).filter_by(institution_id=inst, service_type='schedule').one()
-            schedule_id = schedule.id
-            roles = {r.code: r.allowed_profiles for r in schedule.roles}
             db.commit()
-        # В расписании одна роль — включённое редактирование для преподавателя.
-        self.assertEqual(roles, {'schedule_editor': ['teacher']})
         base = f'/api/v1/institution/{inst}/groups'
         q = {'profile': 'admin'}
 
@@ -212,27 +204,6 @@ class StudyGroups(unittest.TestCase):
             self.assertFalse(view['can_manage'])
             self.assertEqual(self.c.post(base, params={'profile': profile}, headers=uid_core, json={'name': 'X'}).status_code, 403)
 
-        # Роли прежних версий удаляются при синхронизации вместе с назначениями.
-        with session_local() as db:
-            db.add(ServiceRole(service_id=schedule_id, code='group_editor', titles={'ru': 'Редактор групп'},
-                               allowed_profiles=['admin', 'teacher'], permissions=['schedule.write'], system=False))
-            role = db.get(ServiceRole, (schedule_id, 'schedule_editor'))
-            role.allowed_profiles = ['admin', 'teacher']
-            db.add(RoleAssignment(service_id=schedule_id, user_id=t1, profile='teacher', roles=['group_editor', 'schedule_editor']))
-            db.add(RoleAssignment(service_id=schedule_id, user_id=admin, profile='admin', roles=['schedule_editor']))
-            # Роль, созданная вручную в прежней версии, с правом на группы, которого больше нет.
-            db.add(ServiceRole(service_id=schedule_id, code='groups_teacher', titles={'ru': 'Создание групп'},
-                               allowed_profiles=['teacher'], permissions=['schedule.groups', 'groups.manage'], system=False))
-            db.add(RoleAssignment(service_id=schedule_id, user_id=s1, profile='teacher', roles=['groups_teacher']))
-            db.commit()
-        manage.install_schedule(inst)
-        with session_local() as db:
-            self.assertIsNone(db.get(ServiceRole, (schedule_id, 'group_editor')))
-            self.assertEqual(db.get(ServiceRole, (schedule_id, 'schedule_editor')).allowed_profiles, ['teacher'])
-            self.assertEqual(db.get(RoleAssignment, (schedule_id, t1, 'teacher')).roles, ['schedule_editor'])
-            self.assertEqual(db.get(RoleAssignment, (schedule_id, admin, 'admin')).roles, [])
-            self.assertIsNone(db.get(ServiceRole, (schedule_id, 'groups_teacher')))
-            self.assertEqual(db.get(RoleAssignment, (schedule_id, s1, 'teacher')).roles, [])
 
 if __name__ == '__main__':
     unittest.main()

@@ -7,7 +7,6 @@ from platform_core.concurrency import (
     compute_etag,
     constant_time_token_match,
     decode_cursor,
-    derive_binding_secret,
     encode_cursor,
     require_if_match,
 )
@@ -17,9 +16,13 @@ KEY = "k" * 40
 
 
 class CatalogTest(unittest.TestCase):
-    def test_four_types_and_admin_roles(self):
+    def test_only_administration_is_built_in(self):
+        # Расписание, «Люди», курсовые — свои сервисы вуза custom.<код>; ядро знает только администрирование.
         types = catalog.public_service_types()
-        self.assertEqual([t["code"] for t in types], ["administration", "schedule", "user-profile", "coursework"])
+        self.assertEqual([t["code"] for t in types], ["administration"])
+        for legacy in ("schedule", "user-profile", "coursework"):
+            with self.assertRaises(DomainError):
+                catalog.service_type(legacy)
         admin = catalog.service_type("administration")
         self.assertTrue(admin["protected"])
         self.assertEqual(admin["supported_profiles"], ["admin"])
@@ -47,7 +50,7 @@ class CatalogTest(unittest.TestCase):
     def test_manifest(self):
         menu = {"id": "coursework", "titles": {"ru": "Курсовые"}, "entrypoint_path": "/coursework",
                 "profiles": ["student", "teacher"], "required_permissions": [], "order": 0}
-        result = catalog.check_manifest({"titles": {"ru": "Курсовые"}, "menus": [menu]}, "coursework",
+        result = catalog.check_manifest({"titles": {"ru": "Курсовые"}, "menus": [menu]}, "custom.coursework",
                                         ["admin", "teacher", "student"])
         self.assertEqual(result["menus"][0]["id"], "coursework")
         for change in [{"entrypoint_path": "//evil"}, {"entrypoint_path": "/a/../b"}, {"entrypoint_path": "/a?b"},
@@ -55,21 +58,21 @@ class CatalogTest(unittest.TestCase):
                        {"extra": 1}]:
             broken = {**menu, **change}
             with self.subTest(change=change), self.assertRaises(DomainError):
-                catalog.check_manifest({"titles": {"ru": "x"}, "menus": [broken]}, "coursework",
+                catalog.check_manifest({"titles": {"ru": "x"}, "menus": [broken]}, "custom.coursework",
                                        ["admin", "teacher", "student"])
         with self.assertRaises(DomainError):
-            catalog.check_manifest({"titles": {"ru": "x"}, "menus": [menu, menu]}, "coursework",
+            catalog.check_manifest({"titles": {"ru": "x"}, "menus": [menu, menu]}, "custom.coursework",
                                    ["admin", "teacher", "student"])
 
     def test_roles(self):
         role = catalog.check_role_input({"code": "editor", "titles": {"ru": "Редактор"}, "allowed_profiles": ["admin"],
-                                         "permissions": ["schedule.write"]}, "schedule", ["admin", "teacher", "student"])
+                                         "permissions": ["schedule.write"]}, "custom.schedule", ["admin", "teacher", "student"])
         self.assertEqual(role["permissions"], ["schedule.write"])
         with self.assertRaises(DomainError):
             catalog.check_role_input({"code": "x", "titles": {"ru": "x"}, "allowed_profiles": ["admin"],
-                                      "permissions": ["members.manage"]}, "schedule", ["admin"])
+                                      "permissions": ["members.manage"]}, "custom.schedule", ["admin"])
         with self.assertRaises(DomainError):
-            catalog.check_role_patch({}, "schedule", ["admin"])
+            catalog.check_role_patch({}, "custom.schedule", ["admin"])
         with self.assertRaises(DomainError):
             catalog.check_profiles(["admin", "admin"])
         self.assertEqual(catalog.check_profiles(["student", "admin"]), ["student", "admin"])
@@ -102,10 +105,6 @@ class ConcurrencyTest(unittest.TestCase):
                          "a2b3c4d5-0000-4000-8000-000000000000")
         with self.assertRaises(DomainError):
             check_idempotency_key("not-a-uuid")
-        secret = derive_binding_secret(KEY, "cred-1")
-        self.assertEqual(secret, derive_binding_secret(KEY, "cred-1"))
-        self.assertNotEqual(secret, derive_binding_secret(KEY, "cred-2"))
-        self.assertEqual(len(secret), 43)
         self.assertTrue(constant_time_token_match("t" * 40, "t" * 40))
         self.assertFalse(constant_time_token_match("t" * 40, "u" * 40))
         self.assertFalse(constant_time_token_match("short", "short"))

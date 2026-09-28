@@ -6,8 +6,6 @@
     python manage.py grant-platform-role USER_UUID
     python manage.py revoke-platform-role USER_UUID
     python manage.py assign-owner INSTITUTION_UUID USER_UUID
-    python manage.py install-people INSTITUTION_UUID
-    python manage.py install-schedule INSTITUTION_UUID
     python manage.py import-groups < groups.json
     python manage.py list-institutions
     python manage.py ensure-invariants
@@ -66,43 +64,6 @@ def assign_owner(institution_id: str, user_id: str) -> None:
     print("Владелец назначен: профиль admin и роль owner в сервисе администрирования.")
 
 
-def install_cloud(institution_id: str, service_type: str) -> None:
-    """Ставит облачный сервис вузу и приводит его настройки к текущим адресам.
-
-    Владелец вуза может сделать то же в админке, оператор — в операторской панели.
-    Повторный запуск безопасен.
-    """
-    from platform_core.errors import DomainError
-    from services.platform_ops import CLOUD_INSTALLS, install_cloud_service
-
-    title, hint = CLOUD_INSTALLS[service_type]
-    with session_local() as db:
-        try:
-            service, created, binding = install_cloud_service(db, institution_id, service_type)
-        except DomainError as error:
-            raise SystemExit(f"{error.message}; изменений нет.")
-        db.commit()
-        service_id = service.id
-    print(f"{title} {'установлен' if created else 'обновлён'}: {service_id}")
-    if binding is None:
-        print("CLOUD_BINDING_KEY не задан: процесс сервиса вернёт 503, пока binding не выдан.")
-    # Настройки выгружаются, чтобы services/connected не ждал перезапуска backend.
-    from platform_core.service_files import export_services
-    try:
-        export_services(session_local)
-    except OSError as error:
-        print(f"Не удалось выгрузить настройки ({error}); запустите manage.py export-services.")
-    print(hint)
-
-
-def install_people(institution_id: str) -> None:
-    install_cloud(institution_id, "user-profile")
-
-
-def install_schedule(institution_id: str) -> None:
-    install_cloud(institution_id, "schedule")
-
-
 def import_groups(stream) -> None:
     """Перенос учебных групп из сервиса расписания в ядро с сохранением UUID.
 
@@ -159,8 +120,6 @@ def main(argv=None) -> None:
     owner = sub.add_parser("assign-owner")
     owner.add_argument("institution_id")
     owner.add_argument("user_id")
-    sub.add_parser("install-people").add_argument("institution_id")
-    sub.add_parser("install-schedule").add_argument("institution_id")
     sub.add_parser("import-groups", help="JSON групп из расписания на stdin")
     sub.add_parser("list-institutions")
     sub.add_parser("ensure-invariants")
@@ -174,10 +133,6 @@ def main(argv=None) -> None:
         revoke(_uuid(args.user_id))
     elif args.command == "assign-owner":
         assign_owner(_uuid(args.institution_id), _uuid(args.user_id))
-    elif args.command == "install-people":
-        install_people(_uuid(args.institution_id))
-    elif args.command == "install-schedule":
-        install_schedule(_uuid(args.institution_id))
     elif args.command == "import-groups":
         import_groups(sys.stdin)
     elif args.command == "list-institutions":

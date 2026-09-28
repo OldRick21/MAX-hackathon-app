@@ -272,7 +272,8 @@ class InstitutionLocalHost(table_class):
 class CloudBinding(table_class):
     """Привязка облачного экземпляра к credential (CLOUD_RUNTIME_SPEC.md §2).
 
-    Секрет не хранится: он выводится из CLOUD_BINDING_KEY и credential_id.
+    Устарело: прежняя облачная выдача ключей. Ядро при запуске отключает все bindings
+    (registry.ensure_platform_invariants); ключи сервисам выдаются в карточке сервиса.
     """
     __tablename__ = "cloud_bindings"
 

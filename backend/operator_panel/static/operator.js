@@ -4,7 +4,6 @@
   const PROFILES = { student: 'Студент', teacher: 'Преподаватель', admin: 'Администратор' };
   const APP_STATUS = { pending: ['На рассмотрении', 'warn'], approved: ['Одобрена', 'ok'], rejected: ['Отклонена', 'danger'], withdrawn: ['Отозвана', ''] };
   const INST_STATUS = { active: ['Активен', 'ok'], suspended: ['Приостановлен', 'danger'], pending: ['Ожидает', 'warn'] };
-  const CLOUD = { 'user-profile': 'Люди (анкеты)', schedule: 'Расписание' };
   const PERMISSION_NAMES = {
     'institution.read': 'Просмотр настроек вуза', 'institution.update': 'Изменение настроек вуза',
     'members.read': 'Просмотр участников', 'members.manage': 'Управление участниками', 'groups.manage': 'Управление группами',
@@ -266,14 +265,11 @@
   async function approveApplication(a) {
     const ru = h('input', { value: a.titles.ru || '', maxLength: 200 });
     const en = h('input', { value: a.titles.en || '', maxLength: 200 });
-    const services = checks('cloud', Object.entries(CLOUD), Object.keys(CLOUD));
     if (!await dialog('Одобрить заявку', [h('p', { class: 'muted' }, 'Название можно поправить перед созданием вуза.'),
-      field('Название (рус.)', ru), field('Название (англ.)', en, 'Необязательно'),
-      h('p', { class: 'm0' }, 'Сразу подключить сервисы платформы:'), services], 'Одобрить и создать вуз')) return;
+      field('Название (рус.)', ru), field('Название (англ.)', en, 'Необязательно')], 'Одобрить и создать вуз')) return;
     await act(async () => {
       const titles = { ru: ru.value.trim() }; if (en.value.trim()) titles.en = en.value.trim();
-      const { data } = await api(`/applications/${a.id}/approve`, { method: 'POST', body: { titles } });
-      for (const s of checked(services, 'cloud')) await api(`/institutions/${data.institution_id}/cloud/${s}`, { method: 'POST' });
+      await api(`/applications/${a.id}/approve`, { method: 'POST', body: { titles } });
       return 'Вуз создан, заявитель назначен владельцем.';
     });
   }
@@ -316,14 +312,12 @@
     const en = h('input', { maxLength: 200 });
     let owner = null;
     const picker = userPicker(u => { owner = u; });
-    const services = checks('cloud', Object.entries(CLOUD), Object.keys(CLOUD));
     if (!await dialog('Подключить вуз', [field('Название (рус.)', ru), field('Название (англ.)', en, 'Необязательно'),
-      field('Владелец', picker, 'Необязательно. Можно назначить позже.'),
-      h('p', { class: 'm0' }, 'Сервисы платформы:'), services], 'Подключить')) return;
+      field('Владелец', picker, 'Необязательно. Можно назначить позже.')], 'Подключить')) return;
     await act(async () => {
       if (!ru.value.trim()) throw new ApiError('Укажите название вуза.');
       const titles = { ru: ru.value.trim() }; if (en.value.trim()) titles.en = en.value.trim();
-      const { data } = await api('/institutions', { method: 'POST', body: { titles, services: checked(services, 'cloud'),
+      const { data } = await api('/institutions', { method: 'POST', body: { titles,
         ...(owner ? { owner_user_id: owner.id } : {}) } });
       location.hash = `#/institutions/${data.id}`;
       return 'Вуз подключён.';
@@ -369,14 +363,6 @@
     hosts.value = i.local_hosts.join('\n');
     let newOwner = null;
     const picker = userPicker(u => { newOwner = u; });
-    const cloud = Object.entries(CLOUD).map(([type, label]) => {
-      const s = i.services.find(x => x.service_type === type);
-      return h('div', { class: 'item' }, h('div', { class: 'item-head' },
-        h('div', {}, h('span', { class: 'item-title' }, label), ' ', s ? badge(s.enabled ? 'включён' : 'выключен', s.enabled ? 'ok' : '') : badge('не подключён')),
-        h('button', { class: s ? 'quiet' : 'primary', onclick: () => act(async () => (await api(`/institutions/${i.id}/cloud/${type}`, { method: 'POST' })).data.message) },
-          s ? 'Обновить и включить' : 'Подключить')));
-    });
-
     body.append(
       h('div', { class: 'grid' },
         h('section', { class: 'card stack' }, h('h2', {}, 'Название и язык'), field('Название (рус.)', ru), field('Название (англ.)', en), field('Язык по умолчанию', locale),
@@ -402,7 +388,6 @@
             if (!newOwner) throw new ApiError('Выберите пользователя из списка.');
             await api(`/institutions/${i.id}/owners`, { method: 'POST', body: { user_id: newOwner.id } });
           }, 'Владелец назначен.') }, 'Назначить'))),
-        h('section', { class: 'card stack' }, h('h2', {}, 'Сервисы платформы'), cloud),
         h('section', { class: 'card stack' }, h('h2', {}, 'Хосты своих сервисов'),
           h('p', { class: 'muted small m0' }, 'DNS-имена, на которых вуз может подключать свои (локальные) сервисы. По одному в строке. Сервисы на удалённых хостах выключатся.'),
           hosts, h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`/institutions/${i.id}/local-hosts`, { method: 'PUT', etag,
@@ -535,13 +520,23 @@
     for (const s of services) {
       const card = h('section', { class: 'card stack' },
         h('div', { class: 'item-head' }, h('h2', { class: 'm0' }, title(s.manifest.titles) || s.service_type),
-          h('div', { class: 'actions' }, badge(s.enabled ? 'включён' : 'выключен', s.enabled ? 'ok' : ''), badge(s.deployment === 'cloud' ? 'облако' : 'свой сервер'),
+          h('div', { class: 'actions' }, badge(s.enabled ? 'включён' : 'выключен', s.enabled ? 'ok' : ''),
             s.protected ? badge('защищён', 'accent') : null)),
         h('dl', { class: 'meta' }, h('dt', {}, 'Тип'), h('dd', {}, s.service_type), h('dt', {}, 'API'), h('dd', {}, h('code', {}, s.api_base_url)),
           h('dt', {}, 'Клиент'), h('dd', {}, h('code', {}, s.client_base_url)),
           h('dt', {}, 'Меню'), h('dd', {}, s.manifest.menus.length ? s.manifest.menus.map(m => title(m.titles)).join(', ') : 'не опубликовано')));
+      // Любой сервис, включая администрирование, работает в своём контейнере и получает ключ здесь.
+      const issueKey = h('button', { class: 'quiet', onclick: () => act(async () => {
+        const { data } = await api(`${base}/services/${s.id}/credentials`, { method: 'POST' });
+        const env = [`CORE_URL=${location.protocol}//${location.hostname}`, `SHELL_ORIGIN=${location.protocol}//${location.hostname}`,
+          `SERVICE_CLIENT_ID=${data.credential.client_id}`, `SERVICE_CLIENT_SECRET=${data.client_secret}`,
+          `SERVICE_API_BASE_URL=${s.api_base_url}`, `SERVICE_CLIENT_BASE_URL=${s.client_base_url}`].join('\n');
+        const area = h('textarea', { rows: 7, readOnly: true }); area.value = env;
+        await dialog('Ключ выдан', [h('p', {}, 'Добавьте строки в .env сервиса этого вуза. Секрет больше не покажется.'), area], 'Готово', { info: true });
+        return false;
+      }) }, 'Выдать ключ');
       if (!s.protected) {
-        const actions = h('div', { class: 'actions' },
+        card.append(h('div', { class: 'actions' }, issueKey,
           h('button', { class: s.enabled ? 'quiet' : 'primary', onclick: () => act(async () => {
             const { etag } = await api(`${base}/services/${s.id}`);
             await api(`${base}/services/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled }, etag });
@@ -549,23 +544,20 @@
           h('button', { class: 'danger', onclick: async () => {
             if (!await confirmDanger('Удалить сервис?', 'Ключи и сессии будут отозваны, назначения ролей удалены.', 'Удалить')) return;
             act(async () => { const { etag } = await api(`${base}/services/${s.id}`); await api(`${base}/services/${s.id}`, { method: 'DELETE', etag }); }, 'Сервис удалён.');
-          } }, 'Удалить'));
-        if (s.deployment === 'local') {
-          actions.prepend(h('button', { class: 'quiet', onclick: () => act(async () => {
-            const { data } = await api(`${base}/services/${s.id}/credentials`, { method: 'POST' });
-            const env = [`CORE_URL=${location.protocol}//${location.hostname}`, `SERVICE_CLIENT_ID=${data.credential.client_id}`,
-              `SERVICE_CLIENT_SECRET=${data.client_secret}`, `SERVICE_API_BASE_URL=${s.api_base_url}`, `SERVICE_CLIENT_BASE_URL=${s.client_base_url}`].join('\n');
-            const area = h('textarea', { rows: 6, readOnly: true }); area.value = env;
-            await dialog('Ключ выдан', [h('p', {}, 'Добавьте строки в .env сервиса на сервере вуза. Секрет больше не покажется.'), area], 'Готово', { info: true });
-            return false;
-          }) }, 'Выдать ключ'));
-        }
-        card.append(actions);
-      } else card.append(h('p', { class: 'muted small m0' }, 'Администрирование есть у каждого вуза и не отключается.'));
+          } }, 'Удалить')));
+      } else {
+        const apiIn = h('input', { value: s.api_base_url }), clientIn = h('input', { value: s.client_base_url });
+        card.append(h('p', { class: 'muted small m0' }, 'Администрирование есть у каждого вуза и не отключается. Адреса и ключ его контейнера задаёт оператор.'),
+          h('div', { class: 'row2' }, field('Адрес API', apiIn), field('Адрес клиента (origin)', clientIn)),
+          h('div', { class: 'actions' }, issueKey, h('button', { class: 'primary', onclick: () => act(async () => {
+            const { etag } = await api(`${base}/services/${s.id}`);
+            await api(`${base}/services/${s.id}`, { method: 'PATCH', body: { api_base_url: apiIn.value.trim(), client_base_url: clientIn.value.trim() }, etag });
+          }, 'Адреса сохранены.') }, 'Сохранить адреса')));
+      }
       body.append(card);
     }
     body.append(h('section', { class: 'card stack' }, h('h2', {}, 'Подключить свой сервис вуза'),
-      h('p', { class: 'muted small m0' }, 'Адреса должны быть на одобренном хосте (вкладка «Обзор»). Администраторам сервис доступен всегда. После регистрации выдайте ключ — сервис сам опубликует меню и роли.'),
+      h('p', { class: 'muted small m0' }, 'Расписание, «Люди», курсовые и любые другие сервисы подключаются здесь: код (schedule, people, coursework…), адреса на одобренном хосте (вкладка «Обзор»). Администраторам сервис доступен всегда. После регистрации выдайте ключ — сервис сам опубликует меню и роли.'),
       h('div', { class: 'row2' }, field('Название', name), field('Код', code, 'латиница, цифры, -')), profiles,
       h('div', { class: 'row2' }, field('Адрес API', apiUrl), field('Адрес клиента (origin)', client)),
       h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`${base}/services`, { method: 'POST', idem: true, body: {

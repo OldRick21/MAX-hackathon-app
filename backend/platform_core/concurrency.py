@@ -122,21 +122,6 @@ def check_idempotency_key(value: Optional[str]) -> str:
 # Секреты cloud bindings
 # --------------------------------------------------------------------------
 
-def derive_binding_secret(binding_key: str, credential_id: str) -> str:
-    """Секрет machine credential облачного экземпляра.
-
-    Ядро хранит только argon2-хеш секрета (как для local). Сам секрет не
-    записывается ни в одну таблицу: его можно воспроизвести только зная ключ
-    CLOUD_BINDING_KEY, который есть у ядра и доставляется через секреты
-    deployment. Смена ключа + перезапуск ядра = ротация всех cloud credentials.
-    """
-    if not binding_key or len(binding_key) < 32:
-        raise ValueError("CLOUD_BINDING_KEY must be at least 32 characters")
-    digest = hmac.new(binding_key.encode("utf-8"), b"cloud-binding:v1:" + credential_id.encode("ascii"),
-                      hashlib.sha256).digest()
-    return _b64(digest)
-
-
 def constant_time_token_match(presented: Optional[str], expected: Optional[str]) -> bool:
     if not presented or not expected or len(expected) < 32:
         return False

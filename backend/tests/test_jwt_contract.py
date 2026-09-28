@@ -278,12 +278,12 @@ class JWTContract(unittest.TestCase):
         self.assertEqual(assigned.status_code, 200, assigned.text)
         child = self.child()
         self.assertEqual(claims(child['access_token'])['permissions'], [])
-        updated = self.c.patch(base + '/roles/' + role, headers=headers, json={'permissions': ['profiles.manage']})
+        updated = self.c.patch(base + '/roles/' + role, headers=headers, json={'permissions': ['people.manage']})
         self.assertEqual(updated.status_code, 200, updated.text)
-        self.assertEqual(self.introspect(child['access_token'], machine).json()['permissions'], ['profiles.manage'])
+        self.assertEqual(self.introspect(child['access_token'], machine).json()['permissions'], ['people.manage'])
         renewed = self.refresh(child, True)
         self.assertEqual(renewed.status_code, 200, renewed.text)
-        self.assertEqual(claims(renewed.json()['access_token'])['permissions'], ['profiles.manage'])
+        self.assertEqual(claims(renewed.json()['access_token'])['permissions'], ['people.manage'])
 
     def test_expired_session_not_revived_by_jwt_skew(self):
         child = self.child()

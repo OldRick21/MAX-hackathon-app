@@ -285,7 +285,7 @@ def set_status(db: Session, staff: StaffContext, institution_id: str, payload, i
             # Приостановка сразу завершает все сервисные сессии вуза.
             registry.revoke_service_sessions(db, institution_id=inst.id)
         elif not registry.admin_service_of(db, inst.id):
-            registry.create_cloud_instance(db, inst.id, "administration")
+            registry.create_admin_instance(db, inst.id)
         staff.audit(db, "institution.status", "institution", inst.id, {"before": old, "after": new_status}, inst.id)
         registry.audit(db, scope="institution", action="institution.status", actor_user_id=staff.user_id,
                        actor_kind="platform_support", institution_id=inst.id, target_type="institution",
@@ -314,11 +314,12 @@ def replace_local_hosts(db: Session, staff: StaffContext, institution_id: str, p
     for host in hosts:
         db.add(InstitutionLocalHost(institution_id=inst.id, hostname=host, approved_by=staff.user_id))
     db.flush()
-    # Экземпляры на хостах, у которых отозвано одобрение, выключаются.
+    # Экземпляры на хостах, у которых отозвано одобрение, выключаются. Администрирование — нет:
+    # его адреса задаёт оператор, и выключить его нельзя.
     disabled = []
     allowed = set(hosts)
     for service in db.query(ServiceInstance).filter(ServiceInstance.institution_id == inst.id,
-                                                    ServiceInstance.deployment == "local").all():
+                                                    ServiceInstance.protected.is_(False)).all():
         used = {(urlsplit(u).hostname or "").lower() for u in (service.api_base_url, service.client_base_url)}
         if not used <= allowed and service.enabled:
             service.enabled = False

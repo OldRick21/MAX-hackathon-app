@@ -136,11 +136,12 @@ def update_own_role(
 def delete_own_role(
     service_id: str,
     role_code: str,
+    cascade: bool = False,
     machine_claims = Depends(RequireMachineScope("roles:write")),
     db: Session = Depends(get_db)
 ):
-    """Удалить неназначенную роль."""
-    ServiceRegistry.delete_service_role(service_id, role_code, machine_claims, db)
+    """Удалить роль; назначенную — только с cascade=true (роль снимается с пользователей)."""
+    ServiceRegistry.delete_service_role(service_id, role_code, machine_claims, db, cascade)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -2,7 +2,6 @@
 
 - /api/v1/institution-applications — заявки пользователя на подключение вуза;
 - /api/v1/platform/... — поддержка платформы (core access + запись в platform_staff);
-- /api/v1/internal/provisioning/... — чтение bindings процессом administration.
   Префикс /api/v1/internal закрыт на публичном Nginx.
 """
 from typing import Any, Optional
@@ -11,14 +10,11 @@ from fastapi import APIRouter, Body, Depends, Header, Query, Request
 from sqlalchemy.orm import Session
 
 from database.create_tables import get_db
-from database.tables import CloudBinding, ServiceCredential, ServiceInstance
 from auth.dependencies import get_current_core_session
-from platform_core.concurrency import constant_time_token_match, derive_binding_secret, is_uuid, split_bearer
 from platform_core.errors import DomainError
 from routes.private_admin import respond
 from services import platform_support as svc
 from services import join_requests
-from settings.config import settings
 from database.tables import PlatformStaff
 
 router_platform = APIRouter(tags=["Platform support"])
@@ -166,47 +162,3 @@ def assign_initial_owner(institution_id: str, payload: Any = Body(None),
 def platform_audit(limit: Optional[int] = Query(None), cursor: Optional[str] = Query(None, max_length=2048),
                    staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
     return respond(svc.list_platform_audit(db, staff, limit, cursor))
-
-
-# --- Provisioning для процесса administration (private listener) ---
-
-@router_platform.get("/api/v1/internal/provisioning/bindings/{service_id}")
-def get_binding(service_id: str, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
-    """Binding облачного экземпляра administration по его UUID.
-
-    Доступ — только токен процесса administration из секретов deployment.
-    Другие типы этим токеном не читаются; tenant выбирается по UUID из уже
-    подписанного service access, а не из пользовательского ввода.
-    """
-    scheme, token = split_bearer(authorization)
-    service_type = None
-    if scheme == "bearer":
-        if constant_time_token_match(token, settings.ADMINISTRATION_PROVISIONING_TOKEN):
-            service_type = "administration"
-        elif constant_time_token_match(token, settings.USER_PROFILE_PROVISIONING_TOKEN):
-            service_type = "user-profile"
-        elif constant_time_token_match(token, settings.SCHEDULE_PROVISIONING_TOKEN):
-            service_type = "schedule"
-    if service_type is None:
-        raise DomainError(404, "RESOURCE_NOT_FOUND", "Ресурс не найден")
-    if not is_uuid(service_id):
-        raise DomainError(404, "RESOURCE_NOT_FOUND", "Binding не найден")
-    binding = db.get(CloudBinding, service_id)
-    service = db.get(ServiceInstance, service_id)
-    if not binding or not binding.active or not service or binding.service_type != service_type \
-            or service.service_type != service_type:
-        raise DomainError(404, "RESOURCE_NOT_FOUND", "Binding не найден")
-    credential = db.get(ServiceCredential, binding.credential_id)
-    if not credential or credential.revoked_at is not None or not settings.CLOUD_BINDING_KEY:
-        raise DomainError(503, "SERVICE_UNAVAILABLE", "Binding ещё не готов")
-    return respond(svc.Result({
-        "institution_id": binding.institution_id,
-        "service_id": binding.service_id,
-        "service_type": binding.service_type,
-        "api_base_url": service.api_base_url,
-        "client_base_url": service.client_base_url,
-        "client_id": binding.client_id,
-        "credential_id": binding.credential_id,
-        "client_secret": derive_binding_secret(settings.CLOUD_BINDING_KEY, binding.credential_id),
-        "binding_revision": binding.revision,
-    }))

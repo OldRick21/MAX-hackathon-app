@@ -9,7 +9,6 @@ from database.tables import (
     Institution,
     ServiceInstance,
     InstitutionStatus,
-    ServiceTypeCode,
     DeploymentType,
     ServiceCredential,
 )
@@ -54,8 +53,8 @@ def create_tables():
                 ServiceInstance(
                     id="b4c51283-fbdf-44a2-91e8-7f3d07f52e1a",
                     institution_id=demo_inst.id,
-                    service_type=ServiceTypeCode.USER_PROFILE.value,
-                    deployment=DeploymentType.CLOUD.value,
+                    service_type="custom.people",
+                    deployment=DeploymentType.LOCAL.value,
                     enabled=True,
                     protected=False,
                     api_base_url="https://profiles-api.platform.example/api/v1",
@@ -78,8 +77,8 @@ def create_tables():
                 ServiceInstance(
                     id="c5d62394-acef-45b3-82f9-8e4e18f63f2b",
                     institution_id=demo_inst.id,
-                    service_type=ServiceTypeCode.SCHEDULE.value,
-                    deployment=DeploymentType.CLOUD.value,
+                    service_type="custom.schedule",
+                    deployment=DeploymentType.LOCAL.value,
                     enabled=True,
                     protected=False,
                     api_base_url="https://schedule-api.platform.example/api/v1",
@@ -101,8 +100,8 @@ def create_tables():
             db.add(cred_profile)
 
             db.commit()
-        # Инварианты платформы: у каждого вуза защищённый administration с
-        # системными ролями и binding. Идемпотентно, безопасно при каждом запуске.
+        # Инварианты платформы: у каждого вуза защищённый administration с системными ролями,
+        # прежние встроенные типы — свои сервисы вуза. Идемпотентно, безопасно при каждом запуске.
         ensure_platform_invariants(db)
         db.commit()
     finally:

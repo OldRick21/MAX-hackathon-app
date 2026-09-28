@@ -18,6 +18,8 @@ os.environ.update(
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from tests.keys import issue_key, register_service  # noqa: E402
+
 from database.create_tables import session_local  # noqa: E402
 from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
 from main import app  # noqa: E402
@@ -62,8 +64,7 @@ class CustomServices(unittest.TestCase):
 
         actor = self.c.post(f'/api/v1/institution/{inst}/service/{admin_service}/session', json={'profile': 'admin'},
                             headers=owner).json()['access_token']
-        binding = self.c.get(f'/api/v1/internal/provisioning/bindings/{admin_service}',
-                             headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        binding = issue_key(admin_service)
         machine = self.c.post('/api/v1/internal/auth/token', auth=(binding['client_id'], binding['client_secret']),
                               json={'grant_type': 'client_credentials'}).json()['access_token']
         private = {'Authorization': 'Bearer ' + machine, 'X-Actor-Token': actor}
@@ -150,6 +151,29 @@ class CustomServices(unittest.TestCase):
             registry.ensure_platform_invariants(db)
             db.commit()
             self.assertEqual(db.get(ServiceInstance, old.id).supported_profiles, ['student', 'admin'])
+
+    def test_startup_turns_built_in_types_into_own_services(self):
+        from database.tables import CloudBinding, ServiceCredential
+        from platform_core import registry
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Вуз с облаком'}, 'ru')
+            legacy = ServiceInstance(id=str(uuid.uuid4()), institution_id=inst.id, service_type='schedule', deployment='cloud',
+                                     enabled=True, protected=False, api_base_url='https://195.133.197.144/schedule/api/v1',
+                                     client_base_url='https://195.133.197.144', supported_profiles=['student', 'teacher', 'admin'],
+                                     manifest={'titles': {'ru': 'Расписание'}, 'menus': []})
+            db.add(legacy)
+            db.flush()
+            cred, _ = registry.issue_credential(db, legacy)
+            db.add(CloudBinding(service_id=legacy.id, institution_id=inst.id, service_type='schedule',
+                                credential_id=cred.id, client_id=cred.client_id, revision=1, active=True))
+            db.commit()
+            registry.ensure_platform_invariants(db)
+            db.commit()
+            migrated = db.get(ServiceInstance, legacy.id)
+            # Тот же UUID (данные сервиса сохраняются), но теперь это свой сервис вуза; облачный ключ отозван.
+            self.assertEqual((migrated.service_type, migrated.deployment), ('custom.schedule', 'local'))
+            self.assertFalse(db.get(CloudBinding, legacy.id).active)
+            self.assertIsNotNone(db.get(ServiceCredential, cred.id).revoked_at)
 
 if __name__ == '__main__':
     unittest.main()

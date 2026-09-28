@@ -15,11 +15,12 @@ os.environ.update(
 )
 from fastapi.testclient import TestClient  # noqa: E402
 
+from tests.keys import issue_key  # noqa: E402
+
 from database.create_tables import session_local  # noqa: E402
 from database.tables import PlatformStaff  # noqa: E402
 from main import app  # noqa: E402
 
-PROV = {"Authorization": "Bearer " + "p" * 48}
 
 
 class AdministrationFlow(unittest.TestCase):
@@ -50,9 +51,7 @@ class AdministrationFlow(unittest.TestCase):
         actor = self.c.post(f"/api/v1/institution/{inst_id}/service/{admin['id']}/session",
                             json={"profile": "admin"}, headers=core_headers)
         self.assertEqual(actor.status_code, 201, actor.text)
-        binding = self.c.get(f"/api/v1/internal/provisioning/bindings/{admin['id']}", headers=PROV)
-        self.assertEqual(binding.status_code, 200, binding.text)
-        b = binding.json()
+        b = issue_key(admin["id"])  # ключ контейнера администрирования выдаёт оператор
         machine = self.c.post("/api/v1/internal/auth/token", auth=(b["client_id"], b["client_secret"]),
                               json={"grant_type": "client_credentials"}).json()
         self.assertIn("institution:manage", machine["scopes"])
@@ -144,42 +143,41 @@ class AdministrationFlow(unittest.TestCase):
         r = self.c.patch(admin_path, headers={**owner_h, "If-Match": self.etag(admin_path, owner_h)},
                          json={"enabled": False})
         self.assertEqual(r.json()["error"]["code"], "PROTECTED_RESOURCE")
-        key = str(uuid.uuid4())
-        body = {"service_type": "schedule", "deployment": "cloud"}
-        first = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=body)
-        self.assertEqual(first.status_code, 201, first.text)
-        again = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=body)
-        self.assertEqual(again.json()["id"], first.json()["id"])
-        self.assertEqual(self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key},
-                                     json={"service_type": "user-profile", "deployment": "cloud"}).status_code, 409)
-        self.assertEqual(self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())},
-                                     json=body).json()["error"]["code"], "SERVICE_ALREADY_EXISTS")
-        schedule_id = first.json()["id"]
-        roles = self.c.get(f"{base}/services/{schedule_id}/roles", headers=owner_h).json()["items"]
-        self.assertEqual([r["code"] for r in roles], ["schedule_editor"])
-
-        # Local: только одобренные хосты.
-        local = {"service_type": "coursework", "deployment": "local",
-                 "api_base_url": "https://cw.university.ru/api/v1", "client_base_url": "https://cw.university.ru"}
+        # Все сервисы вуза — свои (custom.<код>) на одобренных хостах; облачной установки нет.
+        cloud = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())},
+                            json={"service_type": "schedule", "deployment": "cloud"})
+        self.assertEqual(cloud.status_code, 422, cloud.text)
+        local = {"service_type": "custom.schedule", "deployment": "local", "titles": {"ru": "Расписание"},
+                 "supported_profiles": ["student", "teacher"],
+                 "api_base_url": "https://schedule.university.ru/api/v1", "client_base_url": "https://schedule.university.ru"}
         r = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())}, json=local)
-        self.assertEqual(r.status_code, 422, r.text)
+        self.assertEqual(r.status_code, 422, r.text)  # хост не одобрен
         inst_path = f"/api/v1/platform/institutions/{inst_id}"
         r = self.c.put(f"{inst_path}/local-hosts", headers={**support_core, "If-Match": self.etag(inst_path, support_core)},
-                       json={"hostnames": ["cw.university.ru"]})
+                       json={"hostnames": ["schedule.university.ru"]})
         self.assertEqual(r.status_code, 200, r.text)
-        r = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())}, json=local)
-        self.assertEqual(r.status_code, 201, r.text)
-        cw_id = r.json()["id"]
-        self.assertFalse(r.json()["enabled"])
-        cw_path = f"{base}/services/{cw_id}"
-        r = self.c.patch(cw_path, headers={**owner_h, "If-Match": self.etag(cw_path, owner_h)}, json={"enabled": True})
+        key = str(uuid.uuid4())
+        first = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=local)
+        self.assertEqual(first.status_code, 201, first.text)
+        again = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=local)
+        self.assertEqual(again.json()["id"], first.json()["id"])
+        self.assertEqual(self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())},
+                                     json=local).json()["error"]["code"], "SERVICE_ALREADY_EXISTS")
+        schedule_id = first.json()["id"]
+        self.assertFalse(first.json()["enabled"])
+        self.assertEqual(first.json()["supported_profiles"], ["student", "teacher", "admin"])
+        # Ролей и меню у нового сервиса нет: их публикует сам сервис после выдачи ключа.
+        self.assertEqual(self.c.get(f"{base}/services/{schedule_id}/roles", headers=owner_h).json()["items"], [])
+        sched_path = f"{base}/services/{schedule_id}"
+        r = self.c.patch(sched_path, headers={**owner_h, "If-Match": self.etag(sched_path, owner_h)}, json={"enabled": True})
         self.assertEqual(r.json()["error"]["code"], "MANIFEST_REQUIRED")
-        cred = self.c.post(f"{cw_path}/credentials", headers=owner_h)
+        cred = self.c.post(f"{sched_path}/credentials", headers=owner_h)
         self.assertEqual(cred.status_code, 201, cred.text)
         self.assertEqual(len(cred.json()["client_secret"]), 43)
-        self.assertEqual(self.c.post(f"{base}/services/{schedule_id}/credentials", headers=owner_h).status_code, 403)
-        self.assertEqual(self.c.delete(f"{cw_path}/credentials/{cred.json()['credential']['id']}",
+        self.assertEqual(self.c.delete(f"{sched_path}/credentials/{cred.json()['credential']['id']}",
                                        headers=owner_h).status_code, 204)
+        # Ключ администрирования выдаёт только оператор платформы.
+        self.assertEqual(self.c.post(f"{base}/services/{admin_id}/credentials", headers=owner_h).status_code, 403)
 
         # Роли сервиса: создание и назначение.
         r = self.c.post(f"{base}/services/{schedule_id}/roles", headers=owner_h,
