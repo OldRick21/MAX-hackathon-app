@@ -13,6 +13,7 @@ from routes.service_registry import router as router_service_registry
 from routes.system import router as router_system
 from routes.private_admin import router_private
 from routes.platform import router_platform
+from routes.avatars import router as router_avatars
 from platform_core.errors import DomainError
 
 
@@ -66,6 +67,7 @@ app.include_router(router_service_registry)
 app.include_router(router_system)
 app.include_router(router_private)
 app.include_router(router_platform)
+app.include_router(router_avatars)
 
 # --- Обработчики ошибок по схеме ErrorResponse ---
 STATUS_TO_CODE = {

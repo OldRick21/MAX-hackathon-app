@@ -64,12 +64,29 @@ class ServiceRegistry:
         if not membership:
             raise HTTPException(status_code=404, detail="User is not a member of this institution")
 
+        from services.join_requests import display_name
         return {
             "user_id": user_id,
             "institution_id": service.institution_id,
             "profiles": membership.profiles or [],
             "groups": registry.user_group_ids(db, service.institution_id, user_id),
+            # Имя из регистрации: сервис «Люди» показывает его, пока анкета не заполнена.
+            "display_name": display_name(db, service.institution_id, user_id),
+            # Анкета, записанная при прошлом членстве, у «Людей» считается удалённой.
+            "member_since": membership.created_at.isoformat(),
         }
+
+    @staticmethod
+    def list_service_members(service_id: str, machine_claims: dict, db: Session):
+        """Все участники вуза экземпляра с профилями и именем из регистрации."""
+        from services.join_requests import member_names
+        ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        institution_id = machine_claims["institution_id"]
+        names = member_names(db, institution_id)
+        rows = db.query(Membership).filter(Membership.institution_id == institution_id) \
+            .order_by(Membership.user_id).all()
+        return {"items": [{"user_id": m.user_id, "profiles": m.profiles or [], "display_name": names.get(m.user_id),
+                           "member_since": m.created_at.isoformat()} for m in rows], "next_cursor": None}
 
     @staticmethod
     def list_service_groups(service_id: str, machine_claims: dict, db: Session):

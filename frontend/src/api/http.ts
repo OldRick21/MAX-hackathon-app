@@ -18,7 +18,7 @@ const STATUS_MESSAGES: Record<number, string> = {
   404: 'Не удалось найти данные. Возможно, их удалили.',
   409: 'Действие сейчас недоступно. Обновите страницу и попробуйте снова.',
   412: 'Данные успели измениться. Обновите страницу и повторите действие.',
-  413: 'Файл слишком большой. Максимальный размер — 20 МБ.',
+  413: 'Файл слишком большой.',
   415: 'Можно загрузить только PDF-файл.',
   422: 'Проверьте заполненные поля.',
   428: 'Данные успели измениться. Обновите страницу и повторите действие.',
@@ -44,6 +44,8 @@ export interface RequestOptions {
   method?: string;
   body?: unknown;
   form?: FormData;
+  /** Бинарное тело (картинка): Content-Type берётся из blob.type. */
+  blob?: Blob;
   token?: string;
   signal?: AbortSignal;
   headers?: Record<string, string>;
@@ -65,7 +67,7 @@ export function toApiError(status: number, payload: unknown, url: string): ApiEr
 }
 
 export async function request<T>(url: string, opts: RequestOptions = {}): Promise<ResponseMeta<T>> {
-  const { method = 'GET', body, form, token, signal, headers = {} } = opts;
+  const { method = 'GET', body, form, blob, token, signal, headers = {} } = opts;
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
@@ -81,10 +83,11 @@ export async function request<T>(url: string, opts: RequestOptions = {}): Promis
       headers: {
         Accept: opts.raw ? '*/*' : 'application/json',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(blob ? { 'Content-Type': blob.type } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
+      body: form ?? blob ?? (body !== undefined ? JSON.stringify(body) : undefined),
     });
     const etag = res.headers.get('ETag');
     if (opts.raw && res.ok) return { data: res as unknown as T, etag };

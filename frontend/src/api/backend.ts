@@ -53,8 +53,13 @@ export interface Backend {
   mode: 'mock' | 'real';
   coreCall?: <T>(path: string, options?: import('./http').RequestOptions) => Promise<T>;
   coreCallMeta?: <T>(path: string, options?: import('./http').RequestOptions) => Promise<{data: T; etag: string | null}>;
-  /** Имя и фото из MAX — только для отображения. */
+  /** Имя из MAX — только подсказка в форме регистрации. */
   maxUser(): MaxUserInfo | null;
+  /** Аватар пользователя (один на все вузы) или null, если его нет или он недоступен. */
+  getAvatar(userId: string, signal?: AbortSignal): Promise<Blob | null>;
+  /** Загрузить свой аватар: картинка уже уменьшена до квадрата. */
+  setAvatar(image: Blob): Promise<void>;
+  deleteAvatar(): Promise<void>;
   /** Вход через MAX. Бросает NotInMaxError, если приложение открыто не из MAX. */
   login(): Promise<User>;
   listInstitutions(signal?: AbortSignal): Promise<InstitutionView[]>;

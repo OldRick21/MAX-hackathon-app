@@ -147,12 +147,27 @@ class CoreClient:
             raise CoreUnavailable(f"manifest read failed: {response.status_code}")
         return self._json(response) or {}
 
-    def member(self, binding, user_id) -> bool:
-        """Действующее членство в вузе экземпляра: 404 ядра — не участник, сбой — 503."""
+    def member(self, binding, user_id):
+        """Действующее членство в вузе экземпляра: 404 ядра — не участник (False), сбой — 503.
+
+        Участнику возвращается ответ ядра (dict, истинный): в нём display_name —
+        имя из регистрации, которое показывается, пока анкета не заполнена.
+        """
         response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/users/{user_id}/profiles")
         if response.status_code == 404:
             return False
         if response.status_code != 200:
             raise CoreUnavailable("membership lookup failed")
         data = self._json(response) or {}
-        return bool(data.get("profiles"))
+        return data if data.get("profiles") else False
+
+    def members(self, binding) -> Dict[str, dict]:
+        """Все участники вуза: user_id → {display_name, member_since}."""
+        response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/members")
+        if response.status_code != 200:
+            raise CoreUnavailable("members lookup failed")
+        items = (self._json(response) or {}).get("items")
+        if not isinstance(items, list):
+            raise CoreUnavailable("malformed members list")
+        return {m["user_id"]: {"display_name": m.get("display_name"), "member_since": m.get("member_since")}
+                for m in items if isinstance(m, dict) and m.get("profiles")}

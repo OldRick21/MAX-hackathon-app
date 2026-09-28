@@ -57,6 +57,16 @@ def get_service_user_profiles(
     return ServiceRegistry.get_service_user_profiles(service_id, user_id, machine_claims, db)
 
 
+@router.get("/api/v1/internal/service/{service_id}/members")
+def list_service_members(
+    service_id: str,
+    machine_claims = Depends(RequireMachineScope("profiles:read")),
+    db: Session = Depends(get_db)
+):
+    """Участники вуза своего экземпляра: профили и имя из регистрации."""
+    return ServiceRegistry.list_service_members(service_id, machine_claims, db)
+
+
 @router.get("/api/v1/internal/service/{service_id}/groups")
 def list_institution_groups(
     service_id: str,

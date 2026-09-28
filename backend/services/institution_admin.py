@@ -291,6 +291,9 @@ def remove_member(db: Session, ctx: ActorContext, user_id: str, if_match: Option
     registry.drop_assignments(db, ctx.institution_id, user_id)
     registry.revoke_service_sessions(db, institution_id=ctx.institution_id, user_id=user_id)
     registry.drop_group_membership(db, ctx.institution_id, user_id)
+    from database.tables import JoinRequest
+    db.query(JoinRequest).filter(JoinRequest.institution_id == ctx.institution_id,
+                                 JoinRequest.user_id == user_id).delete(synchronize_session=False)
     db.delete(member)
     ctx.audit(db, "member.remove", "member", user_id, {"profiles": before["profiles"]})
     db.commit()

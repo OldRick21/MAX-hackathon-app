@@ -56,3 +56,6 @@
   .dl dd + dt { margin-top: 1.2rem; }
   .actions > * { flex: 1; }
 }
+
+/* Своё фото: загрузка и удаление под именем */
+.photoActions { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 1.2rem; }

@@ -60,6 +60,9 @@ def prepare():
             institution_id TEXT NOT NULL, service_id TEXT NOT NULL, user_id TEXT NOT NULL,
             display_name TEXT, about TEXT NOT NULL DEFAULT '', position TEXT, academic_degree TEXT,
             revision INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(institution_id, service_id, user_id))''')
+        # Начало членства, при котором записана анкета. Том до этой версии — колонка добавляется.
+        if 'member_since' not in {r['name'] for r in db.execute('PRAGMA table_info(cards)')}:
+            db.execute('ALTER TABLE cards ADD COLUMN member_since TEXT')
         db.commit()
 
 app = FastAPI(lifespan=lifespan)
@@ -119,24 +122,59 @@ def authenticate(request: Request):
     return binding,info
 
 
+class Membership:
+    """Что ядро знает об участнике: имя из регистрации и начало текущего членства."""
+    def __init__(self, data):
+        data = data if isinstance(data, dict) else {}
+        name = data.get('display_name')
+        self.name = name if isinstance(name, str) and name.strip() else None
+        since = data.get('member_since')
+        self.since = since if isinstance(since, str) else None
+
+
 def member(ctx, user_id):
-    if not core.member(ctx[0],user_id):
+    """Проверяет членство; 404, если человек не участник вуза."""
+    found = core.member(ctx[0],user_id)
+    if not found:
         raise HTTPException(404,'Участник не найден')
+    return Membership(found)
 
 
-def card(db, ctx, user_id):
+def forget_stale(db, ctx, user_id, since):
+    """Анкета от прошлого членства удаляется: удалённого и снова добавленного участника
+    встречает новая пустая анкета. Анкете без отметки (старый том) отметка ставится."""
+    if not since:
+        return
+    row = db.execute('SELECT member_since FROM cards WHERE institution_id=? AND service_id=? AND user_id=?',
+                     (ctx[0].institution_id,ctx[0].service_id,user_id)).fetchone()
+    if row is None or row['member_since'] == since:
+        return
+    if row['member_since'] is None:
+        db.execute('UPDATE cards SET member_since=? WHERE institution_id=? AND service_id=? AND user_id=?',
+                   (since,ctx[0].institution_id,ctx[0].service_id,user_id))
+    else:
+        db.execute('DELETE FROM cards WHERE institution_id=? AND service_id=? AND user_id=?',
+                   (ctx[0].institution_id,ctx[0].service_id,user_id))
+
+
+def card(db, ctx, user_id, registered_name=None):
+    """Анкета участника. Пока человек не задал имя сам, показывается имя из регистрации."""
     row = db.execute('SELECT * FROM cards WHERE institution_id=? AND service_id=? AND user_id=?',
                      (ctx[0].institution_id,ctx[0].service_id,user_id)).fetchone()
     data = dict(row) if row else dict(institution_id=ctx[0].institution_id,service_id=ctx[0].service_id,user_id=user_id,
                                    display_name=None,about='',position=None,academic_degree=None,revision=0)
     tag = '"'+hashlib.sha256(json.dumps([data['institution_id'],data['service_id'],user_id,data['revision']]).encode()).hexdigest()+'"'
-    return {k:data[k] for k in ('user_id','display_name','about','position','academic_degree')},tag,data['revision']
+    value = {k:data[k] for k in ('user_id','display_name','about','position','academic_degree')}
+    if not value['display_name']:
+        value['display_name'] = registered_name
+    return value,tag,data['revision']
 
 
 def get_card(ctx,user_id):
-    member(ctx,user_id)
+    who = member(ctx,user_id)
     with database() as db:
-        value,etag,_ = card(db,ctx,user_id)
+        forget_stale(db,ctx,user_id,who.since)
+        value,etag,_ = card(db,ctx,user_id,who.name)
     return JSONResponse(value,headers={'ETag':etag})
 
 class SelfPatch(BaseModel):
@@ -156,20 +194,22 @@ class AcademicPatch(BaseModel):
 
 
 def patch_card(ctx,user_id,values,if_match):
-    member(ctx,user_id)
+    who = member(ctx,user_id)
     if not if_match: raise HTTPException(428,'Сначала загрузите актуальный профиль')
     with database() as db:
         # Serializes creation of virtual rows and updates, including concurrent first PATCH.
         db.execute('BEGIN IMMEDIATE')
+        forget_stale(db,ctx,user_id,who.since)
         old,etag,revision = card(db,ctx,user_id)
         if if_match != etag: raise HTTPException(412,'Профиль изменился. Обновите страницу')
         old.update(values)
-        db.execute('''INSERT INTO cards VALUES (?,?,?,?,?,?,?,?)
+        db.execute('''INSERT INTO cards (institution_id,service_id,user_id,display_name,about,position,academic_degree,revision,member_since)
+            VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(institution_id,service_id,user_id) DO UPDATE SET
             display_name=excluded.display_name,about=excluded.about,position=excluded.position,
-            academic_degree=excluded.academic_degree,revision=excluded.revision''',
-            (ctx[0].institution_id,ctx[0].service_id,user_id,old['display_name'],old['about'],old['position'],old['academic_degree'],revision+1))
-        value,new_tag,_=card(db,ctx,user_id)
+            academic_degree=excluded.academic_degree,revision=excluded.revision,member_since=excluded.member_since''',
+            (ctx[0].institution_id,ctx[0].service_id,user_id,old['display_name'],old['about'],old['position'],old['academic_degree'],revision+1,who.since))
+        value,new_tag,_=card(db,ctx,user_id,who.name)
         db.commit()
     return JSONResponse(value,headers={'ETag':new_tag})
 
@@ -225,15 +265,32 @@ def users(q:str=Query('',max_length=200),cursor:str|None=Query(None,max_length=2
         after,_,expiry=payload.partition(':')
         if not sep or not expiry.isdigit() or int(expiry)<time.time() or not hmac.compare_digest(signature,sign(payload)):
             raise HTTPException(400,'Недействительный курсор')
+    # Список — действующие участники вуза из ядра, у которых есть имя: своё из анкеты
+    # или указанное при регистрации. Заполнять анкету, чтобы попасть в «Людей», не нужно.
+    registered={u:Membership(v) for u,v in core.members(ctx[0]).items()}
     with database() as db:
-        rows=db.execute('''SELECT user_id,display_name,position FROM cards WHERE institution_id=? AND service_id=?
-            AND display_name IS NOT NULL AND display_name != '' AND user_id>? ORDER BY user_id LIMIT ?''',
-            (ctx[0].institution_id,ctx[0].service_id,after,limit+1)).fetchall()
-        items=[]
-        for row in rows[:limit]:
-            if q.casefold() in (row['display_name']+' '+(row['position'] or '')).casefold() and core.member(ctx[0],row['user_id']):
-                items.append(card(db,ctx,row['user_id'])[0])
+        stored={}
+        for r in db.execute('SELECT user_id,member_since FROM cards WHERE institution_id=? AND service_id=?',
+                            (ctx[0].institution_id,ctx[0].service_id)).fetchall():
+            if r['user_id'] not in registered:
+                # Человека удалили из вуза — его анкета удаляется вместе с членством.
+                db.execute('DELETE FROM cards WHERE institution_id=? AND service_id=? AND user_id=?',
+                           (ctx[0].institution_id,ctx[0].service_id,r['user_id']))
+                continue
+            forget_stale(db,ctx,r['user_id'],registered[r['user_id']].since)
+            stored[r['user_id']]=True
+        needle=q.casefold()
+        matched=[]
+        for user_id in sorted(u for u in registered if u>after):
+            who=registered[user_id]
+            value=card(db,ctx,user_id,who.name)[0] if user_id in stored else \
+                {'user_id':user_id,'display_name':who.name,'about':'','position':None,'academic_degree':None}
+            if value['display_name'] and needle in (value['display_name']+' '+(value['position'] or '')).casefold():
+                matched.append(value)
+                if len(matched)>limit:
+                    break
+        items=matched[:limit]
         next_cursor=None
-        if len(rows)>limit:
-            last=rows[limit-1]['user_id']+':'+str(int(time.time())+900);next_cursor=last+'.'+sign(last)
+        if len(matched)>limit:
+            last=items[-1]['user_id']+':'+str(int(time.time())+900);next_cursor=last+'.'+sign(last)
     return {'items':items,'next_cursor':next_cursor}

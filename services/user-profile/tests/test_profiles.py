@@ -43,7 +43,8 @@ class Profiles(unittest.TestCase):
         state=info()
         h=head()
         with patch.object(m.core,'binding',return_value=BINDING), patch.object(m.core,'introspect',side_effect=lambda *a: state), \
-             patch.object(m.core,'member',return_value=True) as member, TestClient(m.app) as c:
+             patch.object(m.core,'member',return_value=True) as member, \
+             patch.object(m.core,'members',side_effect=lambda b: {U: None} if m.core.member(b,U) else {}), TestClient(m.app) as c:
             self.assertEqual(c.get('/api/v1/profile/me').status_code,401)
             empty=c.get('/api/v1/profile/me',headers=h)
             self.assertIsNone(empty.json()['display_name'])
@@ -89,6 +90,58 @@ class Profiles(unittest.TestCase):
             with patch.object(m.core,'binding',return_value=SimpleNamespace(service_id=S,institution_id=V,api_base_url='x',client_base_url='y')):
                 state.update(info('admin',['profiles.manage']),institution_id=V)
                 self.assertEqual(c.get('/api/v1/profile/users',headers=admin).json()['items'],[])
+
+    def test_registered_name_without_card(self):
+        """Имя из регистрации: участник сразу в «Людях», своя правка имени важнее."""
+        state=info()
+        h=head()
+        registered={'profiles':['student'],'display_name':'Мария Ильина'}
+        with tempfile.TemporaryDirectory() as folder, patch.object(m,'DB',folder+'/names.db'), \
+             patch.object(m.core,'binding',return_value=BINDING), patch.object(m.core,'introspect',side_effect=lambda *a: state), \
+             patch.object(m.core,'member',return_value=registered), \
+             patch.object(m.core,'members',return_value={U:{'display_name':'Мария Ильина'},V:{'display_name':None}}), TestClient(m.app) as c:
+            me=c.get('/api/v1/profile/me',headers=h)
+            self.assertEqual(me.json()['display_name'],'Мария Ильина')
+            # V без имени в список не попадает; U — попадает без заполненной анкеты.
+            self.assertEqual([x['display_name'] for x in c.get('/api/v1/profile/users',headers=h).json()['items']],['Мария Ильина'])
+            self.assertEqual(len(c.get('/api/v1/profile/users?q=ильина',headers=h).json()['items']),1)
+            # Правка должности администратором не записывает имя из регистрации в анкету.
+            state.update(info('admin',['profiles.manage']))
+            saved=c.patch('/api/v1/profile/users/'+U,headers={**head('admin'),'If-Match':me.headers['etag']},json={'position':'Староста'})
+            self.assertEqual(saved.json()['display_name'],'Мария Ильина')
+            with m.database() as db:
+                self.assertIsNone(db.execute('SELECT display_name FROM cards').fetchone()[0])
+            state.update(info())
+            me=c.get('/api/v1/profile/me',headers=h)
+            c.patch('/api/v1/profile/me',headers={**h,'If-Match':me.headers['etag']},json={'display_name':'Маша'})
+            self.assertEqual(c.get('/api/v1/profile/users',headers=h).json()['items'][0]['display_name'],'Маша')
+
+    def test_card_removed_with_membership(self):
+        """Удалённого и снова добавленного участника встречает новая анкета."""
+        state=info()
+        h=head()
+        who={'profiles':['student'],'display_name':None,'member_since':'2026-09-01T10:00:00'}
+        people={U:who}
+        with tempfile.TemporaryDirectory() as folder, patch.object(m,'DB',folder+'/lifecycle.db'), \
+             patch.object(m.core,'binding',return_value=BINDING), patch.object(m.core,'introspect',side_effect=lambda *a: state), \
+             patch.object(m.core,'member',side_effect=lambda b,u: people.get(u) or False), \
+             patch.object(m.core,'members',side_effect=lambda b: dict(people)), TestClient(m.app) as c:
+            etag=c.get('/api/v1/profile/me',headers=h).headers['etag']
+            c.patch('/api/v1/profile/me',headers={**h,'If-Match':etag},json={'display_name':'Старое имя','about':'Старое'})
+            self.assertEqual(c.get('/api/v1/profile/me',headers=h).json()['about'],'Старое')
+            # Снова добавлен: членство новое — анкета прежнего членства не показывается и удаляется.
+            who['member_since']='2026-09-02T10:00:00'
+            fresh=c.get('/api/v1/profile/me',headers=h).json()
+            self.assertEqual((fresh['display_name'],fresh['about']),(None,''))
+            with m.database() as db:
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM cards').fetchone()[0],0)
+            # Удалён из вуза: список «Людей» стирает его анкету.
+            etag=c.get('/api/v1/profile/me',headers=h).headers['etag']
+            c.patch('/api/v1/profile/me',headers={**h,'If-Match':etag},json={'display_name':'Новое'})
+            people.clear()
+            self.assertEqual(c.get('/api/v1/profile/users',headers=h).json()['items'],[])
+            with m.database() as db:
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM cards').fetchone()[0],0)
 
     def test_survives_restart(self):
         """Старт на существующем томе: схема создаётся повторно, анкеты остаются."""
