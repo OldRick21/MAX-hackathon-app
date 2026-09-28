@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { IconServices } from '../../components/icons/figma';
 import { serviceEntries } from '../../components/layout/navigation';
 import type { ScheduleEvent } from '../../api/types';
 import { Avatar, Button, Skeleton, toast } from '../../components/ui';
@@ -38,6 +39,9 @@ function useHomeSchedule() {
     return { day: key ? new Date(dayEvents[0].starts_at) : null, isToday: key === dayKey(today), events: dayEvents, groupName };
   }, [schedule, profile]);
 }
+
+/** Сколько плиток сервисов помещается на главную; остальные — на вкладке «Сервисы». */
+const HOME_TILES = 4;
 
 export function HomeScreen() {
   const { maxUser, user } = useSession();
@@ -129,9 +133,13 @@ export function HomeScreen() {
 
       {services.length > 0 && (
         <section className={s.services} aria-label="Сервисы">
-          <h2 className={s.sectionTitle}>Сервисы</h2>
+          <div className={s.sectionHead}>
+            <h2 className={s.sectionTitle}>Сервисы</h2>
+            <Link to={`${base}/services`} className={s.more}>Все сервисы</Link>
+          </div>
           <ul className={s.tiles}>
-            {services.map(({ key, to, name, desc, Icon }) => (
+            {/* На главной — первые HOME_TILES сервисов, остальные — на вкладке «Сервисы». */}
+            {(services.length > HOME_TILES ? services.slice(0, HOME_TILES - 1) : services).map(({ key, to, name, desc, Icon }) => (
               <li key={key}>
                 <Link to={to} className={s.tile}>
                   <span className={s.tileIcon}><Icon /></span>
@@ -139,6 +147,17 @@ export function HomeScreen() {
                 </Link>
               </li>
             ))}
+            {services.length > HOME_TILES && (
+              <li>
+                <Link to={`${base}/services`} className={s.tile}>
+                  <span className={s.tileIcon}><IconServices /></span>
+                  <span className={s.tileText}>
+                    <span className={s.tileName}>Ещё {services.length - HOME_TILES + 1}</span>
+                    <span className={s.tileDesc}>Все сервисы вуза</span>
+                  </span>
+                </Link>
+              </li>
+            )}
           </ul>
         </section>
       )}
