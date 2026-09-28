@@ -21,6 +21,7 @@ from uuid import UUID
 
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -197,7 +198,8 @@ async def failed(request, exc: Fail):
     return JSONResponse(error_body(request, exc.code, exc.message, exc.details), status_code=exc.status)
 
 
-@app.exception_handler(HTTPException)
+# Starlette HTTPException ловит и 404/405 маршрутизатора — все ошибки в формате контракта.
+@app.exception_handler(StarletteHTTPException)
 async def http_error(request, exc):
     codes = {401: 'UNAUTHENTICATED', 403: 'FORBIDDEN', 404: 'RESOURCE_NOT_FOUND', 405: 'BAD_REQUEST'}
     return JSONResponse(error_body(request, codes.get(exc.status_code, 'BAD_REQUEST'), str(exc.detail)),

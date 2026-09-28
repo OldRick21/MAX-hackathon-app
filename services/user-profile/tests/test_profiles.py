@@ -192,4 +192,15 @@ class Profiles(unittest.TestCase):
             bad=c.get('/api/v1/service?locale=de',headers=head('admin'))
             self.assertEqual((bad.status_code,bad.json()['error']['code']),(422,'VALIDATION_ERROR'))
 
+    def test_client_pages(self):
+        with TestClient(m.app) as c:
+            for path in ('/home', '/users'):
+                page = c.get(path)
+                self.assertEqual(page.status_code, 200)
+                self.assertIn('frame-ancestors https://shell.test', page.headers['content-security-policy'])
+                self.assertNotIn('__BOOT__', page.text)
+            missing = c.get('/assets/nothing.js')
+            self.assertEqual((missing.status_code, missing.json()['error']['code']), (404, 'RESOURCE_NOT_FOUND'))
+
+
 if __name__=='__main__':unittest.main()

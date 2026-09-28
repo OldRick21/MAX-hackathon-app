@@ -35,43 +35,32 @@
   }
 
   let me = null;
+  // Контракт: имён в ответах нет — участники показываются по UUID.
+  const who = id => `ID ${id.slice(0, 8)}`;
 
   async function start() {
     const ctx = await ServiceSDK.ready;
     ServiceSDK.onEnd(() => { $('root').replaceChildren(); say('Сессия завершена. Откройте сервис заново.', true); });
-    me = (await ServiceSDK.api('/coursework/me')).data;
-    // Имя нужно, чтобы студенты видели проверяющего, а преподаватель — автора работы.
-    if (!me.display_name && ctx.profile !== 'admin') return askName();
+    const view = (await ServiceSDK.api('/service')).data;
+    me = { profile: ctx.profile, user_id: ctx.user_id, manages: view.permissions.includes('coursework.manage') };
     render();
-  }
-
-  function askName() {
-    const input = h('input', { placeholder: 'Например, Иванова Анна Сергеевна', maxLength: 200 });
-    say('');
-    $('root').replaceChildren(h('section', { class: 'card' }, h('h2', {}, 'Как вас показывать?'),
-      h('p', { class: 'muted' }, me.profile === 'teacher'
-        ? 'Под этим именем студенты выберут вас проверяющим.' : 'Это имя увидит преподаватель в вашей работе.'),
-      field('Имя и фамилия', input),
-      h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
-        if (!input.value.trim()) throw new Error('Укажите имя.');
-        me = (await ServiceSDK.api('/coursework/me', { method: 'PUT', body: { display_name: input.value.trim() } })).data;
-        render();
-      }) }, 'Сохранить'))));
   }
 
   async function render() {
     say('Загружаем…');
+    if (me.profile === 'admin' && !me.manages) {
+      $('root').replaceChildren();
+      return say('Работы вуза видит администратор с ролью «Менеджер курсовых».');
+    }
     const { data } = await ServiceSDK.api('/coursework/submissions?limit=100');
-    const people = data.people || {};
-    const who = id => people[id] || `без имени · ${id.slice(0, 8)}`;
     const parts = [];
-    if (me.profile === 'student') parts.push(await uploadForm());
+    if (me.profile === 'student') parts.push(uploadForm());
     const list = h('section', { class: 'card' }, h('h2', {}, me.profile === 'teacher' ? 'Работы на проверку' : me.profile === 'admin' ? 'Все работы вуза' : 'Мои работы'));
     if (!data.items.length) list.append(h('p', { class: 'muted' }, 'Работ пока нет.'));
     for (const w of data.items) list.append(workRow(w, who));
     parts.push(list);
     $('root').replaceChildren(...parts);
-    say(me.display_name ? `Вы: ${me.display_name}` : '');
+    say(`Ваш ID: ${me.user_id}`);
   }
 
   function workRow(w, who) {
@@ -85,24 +74,22 @@
     if (me.manages) actions.append(h('button', { class: 'danger', onclick: () => guarded(() => removeWork(w)) }, 'Удалить'));
     return h('div', { class: 'row' },
       h('div', { class: 'row-main' }, h('strong', {}, w.title), h('span', { class: `badge ${tone}` }, label), h('span', { class: 'badge' }, `версия ${w.version}`)),
-      h('small', { class: 'muted' }, me.profile === 'student' ? `Проверяет: ${who(w.teacher_id)}` : `Автор: ${who(w.student_id)}` + (me.profile === 'admin' ? ` · проверяет: ${who(w.teacher_id)}` : '')),
+      h('small', { class: 'muted' }, me.profile === 'student' ? `Проверяет: ${who(w.teacher_id)}` : `Автор: ${who(w.student_id)}` + (me.manages ? ` · проверяет: ${who(w.teacher_id)}` : '')),
       w.review ? h('small', {}, `Отзыв: ${w.review.comment || (w.review.decision === 'accepted' ? 'принята' : 'без комментария')}`) : null,
       actions);
   }
 
-  async function uploadForm() {
-    const { data } = await ServiceSDK.api('/coursework/teachers');
+  function uploadForm() {
     const title = h('input', { maxLength: 200, placeholder: 'Тема работы' });
-    const teacher = h('select', {}, h('option', { value: '' }, data.items.length ? 'Выберите преподавателя' : 'Преподаватели ещё не открывали сервис'),
-      data.items.map(t => h('option', { value: t.user_id }, t.display_name)));
+    const teacher = h('input', { placeholder: 'UUID преподавателя', maxLength: 36, spellcheck: false, autocomplete: 'off' });
     const file = h('input', { type: 'file', accept: 'application/pdf,.pdf' });
     return h('section', { class: 'card' }, h('h2', {}, 'Отправить работу'),
-      field('Тема', title), field('Проверяющий', teacher), field('Файл PDF', file, 'До 20 МБ'),
+      field('Тема', title), field('Проверяющий', teacher, 'ID преподавателя вуза: он показан у преподавателя в приложении'), field('Файл PDF', file, 'До 20 МБ'),
       h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
-        if (!title.value.trim() || !teacher.value || !file.files[0]) throw new Error('Заполните тему, проверяющего и выберите PDF.');
+        if (!title.value.trim() || !teacher.value.trim() || !file.files[0]) throw new Error('Заполните тему, проверяющего и выберите PDF.');
         const form = new FormData();
         form.set('title', title.value.trim());
-        form.set('teacher_id', teacher.value);
+        form.set('teacher_id', teacher.value.trim());
         form.set('file', file.files[0], file.files[0].name);
         say('Загружаем файл…');
         await ServiceSDK.raw('/coursework/submissions', { method: 'POST', body: form, headers: { 'Idempotency-Key': crypto.randomUUID() } });

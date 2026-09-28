@@ -1,4 +1,4 @@
-"""Подключение курсовых как своего сервиса (custom.coursework) против живого ядра.
+"""Подключение курсовых (тип coursework, контейнер вуза) против живого ядра.
 
 Регистрация → ключ → сервис сам создаёт роль и публикует меню → включение → загрузка работы.
 
@@ -105,8 +105,7 @@ class CourseworkAgainstCore(unittest.TestCase):
                    'X-Actor-Token': admin_core['Authorization'].removeprefix('Bearer ')}
         base = f'/api/v1/institution/{inst_id}/internal'
         created = self.core.post(f'{base}/services', headers={**private, 'Idempotency-Key': str(uuid.uuid4())},
-                                 json={'service_type': 'custom.coursework', 'deployment': 'local',
-                                       'titles': {'ru': 'Курсовые работы'}, 'supported_profiles': ['admin', 'teacher', 'student'],
+                                 json={'service_type': 'coursework', 'deployment': 'local',
                                        'api_base_url': 'https://coursework.university.ru/api/v1',
                                        'client_base_url': 'https://coursework.university.ru'})
         self.assertEqual(created.status_code, 201, created.text)

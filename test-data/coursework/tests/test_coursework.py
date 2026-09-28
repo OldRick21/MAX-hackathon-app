@@ -88,16 +88,16 @@ class Coursework(unittest.TestCase):
         self.assertEqual(work['file']['original_name'], 'работа.pdf')
         path = f'/api/v1/coursework/submissions/{work["id"]}'
 
-        # Видимость: автор, назначенный преподаватель и любой администратор; чужим — 404.
+        # Видимость: автор, назначенный преподаватель и менеджер курсовых; чужим — 404.
         self.assertEqual(self.c.get(path, headers=st2).status_code, 404)
         self.assertEqual(self.c.get(path, headers=t2).status_code, 404)
         self.assertEqual(self.c.get(path, headers=t1).status_code, 200)
         self.assertEqual(self.c.get(path, headers=manager).status_code, 200)
-        # Администратор без роли видит все работы, но не удаляет — это право менеджера курсовых.
-        self.assertEqual(self.c.get(path, headers=plain_admin).status_code, 200)
-        self.assertEqual(len(self.c.get('/api/v1/coursework/submissions', headers=plain_admin).json()['items']), 1)
-        self.assertEqual(self.c.delete(path, headers={**plain_admin, 'If-Match': self.c.get(path, headers=plain_admin).headers['etag']})
-                         .status_code, 403)
+        # Контракт: admin без coursework.manage работ не видит.
+        self.assertEqual(self.c.get(path, headers=plain_admin).status_code, 404)
+        self.assertEqual(self.c.get('/api/v1/coursework/submissions', headers=plain_admin).status_code, 403)
+        listing = self.c.get('/api/v1/coursework/submissions', headers=t1).json()
+        self.assertEqual(set(listing), {'items', 'next_cursor'})  # имён (people) в контракте нет
         self.assertEqual(len(self.c.get('/api/v1/coursework/submissions', headers=t1).json()['items']), 1)
         self.assertEqual(self.c.get('/api/v1/coursework/submissions', headers=t2).json()['items'], [])
 
@@ -221,19 +221,10 @@ class Coursework(unittest.TestCase):
         self.assertNotEqual(evil.headers.get('access-control-allow-origin'), 'https://evil.test')
 
 
-    def test_names_and_teacher_directory(self):
-        t1, st = self.as_(T1, 'teacher'), self.as_(ST1, 'student')
-        self.assertIsNone(self.c.get('/api/v1/coursework/me', headers=t1).json()['display_name'])
-        self.assertEqual(self.c.get('/api/v1/coursework/teachers', headers=st).json()['items'], [])
-        self.c.put('/api/v1/coursework/me', headers=t1, json={'display_name': ' Иванова Анна '})
-        self.c.put('/api/v1/coursework/me', headers=st, json={'display_name': 'Петров Пётр'})
-        # В справочнике проверяющих только преподаватели.
-        self.assertEqual(self.c.get('/api/v1/coursework/teachers', headers=st).json()['items'],
-                         [{'user_id': T1, 'display_name': 'Иванова Анна'}])
-        self.upload(st)
-        listed = self.c.get('/api/v1/coursework/submissions', headers=t1).json()
-        self.assertEqual(listed['people'], {T1: 'Иванова Анна', ST1: 'Петров Пётр'})
-        self.assertEqual(self.c.put('/api/v1/coursework/me', headers=st, json={'display_name': '  '}).status_code, 422)
+    def test_no_non_contract_endpoints(self):
+        student = self.as_(ST1, 'student')
+        for path in ('/api/v1/coursework/me', '/api/v1/coursework/teachers'):
+            self.assertIn(self.c.get(path, headers=student).status_code, (404, 405))
 
     def test_client_page(self):
         page = self.c.get('/coursework')

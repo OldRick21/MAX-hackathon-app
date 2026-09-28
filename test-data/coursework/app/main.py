@@ -30,7 +30,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from app import sdk
@@ -45,7 +45,7 @@ MANIFEST = {
         {'id': 'coursework', 'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'}, 'entrypoint_path': '/coursework',
          'profiles': ['student', 'teacher'], 'required_permissions': [], 'order': 0},
         {'id': 'coursework_admin', 'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'}, 'entrypoint_path': '/coursework',
-         'profiles': ['admin'], 'required_permissions': [], 'order': 0},
+         'profiles': ['admin'], 'required_permissions': [MANAGE], 'order': 0},
     ],
 }
 ROLES = [{'code': 'coursework_manager', 'titles': {'ru': 'Менеджер курсовых', 'en': 'Coursework manager'},
@@ -106,10 +106,6 @@ CREATE TABLE IF NOT EXISTS submissions (
     PRIMARY KEY (institution_id, service_id, id));
 CREATE INDEX IF NOT EXISTS submissions_by_student ON submissions (institution_id, service_id, student_id);
 CREATE INDEX IF NOT EXISTS submissions_by_teacher ON submissions (institution_id, service_id, teacher_id);
-CREATE TABLE IF NOT EXISTS people (
-    institution_id TEXT NOT NULL, service_id TEXT NOT NULL, user_id TEXT NOT NULL,
-    display_name TEXT NOT NULL, is_teacher INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (institution_id, service_id, user_id));
 CREATE TABLE IF NOT EXISTS cleanup (file_key TEXT PRIMARY KEY, not_before REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS idempotency (
     institution_id TEXT NOT NULL, service_id TEXT NOT NULL, actor TEXT NOT NULL, key TEXT NOT NULL,
@@ -176,7 +172,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
-sdk.install(app, core, settings, MANIFEST, f'custom.{SERVICE_CODE}', state, CLIENT, ['/coursework'])
+sdk.install(app, core, settings, MANIFEST, SERVICE_CODE, state, CLIENT, ['/coursework'])
 authenticate = app.state.authenticate
 
 
@@ -185,58 +181,8 @@ def manages(ctx: sdk.Ctx) -> bool:
 
 
 def sees_all(ctx: sdk.Ctx) -> bool:
-    """Администратор видит все работы вуза и без роли; удаляет — только менеджер курсовых."""
-    return ctx.profile == 'admin'
-
-
-# --------------------------------------------------------------------------
-# Имена: сервис независим и не вызывает «Людей» — пользователи представляются здесь
-# --------------------------------------------------------------------------
-
-class NameInput(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    display_name: str = Field(min_length=1, max_length=200)
-
-    @field_validator('display_name')
-    @classmethod
-    def strip(cls, v):
-        if not v.strip():
-            raise ValueError('Укажите имя')
-        return v.strip()
-
-
-def names(db, ctx: sdk.Ctx, ids) -> dict:
-    ids = sorted(set(ids))
-    if not ids:
-        return {}
-    rows = db.execute(f'SELECT user_id, display_name FROM people WHERE institution_id=? AND service_id=? '
-                      f'AND user_id IN ({",".join("?" * len(ids))})', (*ctx.tenant, *ids))
-    return {r['user_id']: r['display_name'] for r in rows}
-
-
-@app.get('/api/v1/coursework/me')
-def get_me(ctx: sdk.Ctx = Depends(authenticate)):
-    with database() as db:
-        return {'user_id': ctx.user_id, 'profile': ctx.profile, 'manages': manages(ctx),
-                'display_name': names(db, ctx, [ctx.user_id]).get(ctx.user_id)}
-
-
-@app.put('/api/v1/coursework/me')
-def set_me(body: NameInput, ctx: sdk.Ctx = Depends(authenticate)):
-    """Имя для списков сервиса. Преподаватель с именем появляется в выборе проверяющего."""
-    with database() as db:
-        db.execute('INSERT INTO people VALUES (?,?,?,?,?) ON CONFLICT(institution_id, service_id, user_id) DO UPDATE '
-                   'SET display_name=excluded.display_name, is_teacher=MAX(is_teacher, excluded.is_teacher)',
-                   (*ctx.tenant, ctx.user_id, body.display_name, int(ctx.profile == 'teacher')))
-    return get_me(ctx)
-
-
-@app.get('/api/v1/coursework/teachers')
-def teachers(ctx: sdk.Ctx = Depends(authenticate)):
-    with database() as db:
-        rows = db.execute('SELECT user_id, display_name FROM people WHERE institution_id=? AND service_id=? '
-                          'AND is_teacher=1 AND user_id != ? ORDER BY display_name', (*ctx.tenant, ctx.user_id)).fetchall()
-    return {'items': [{'user_id': r['user_id'], 'display_name': r['display_name']} for r in rows]}
+    """Контракт: все работы экземпляра видит только admin с coursework.manage."""
+    return manages(ctx)
 
 
 # --------------------------------------------------------------------------
@@ -412,6 +358,8 @@ def list_submissions(status: Optional[Literal['submitted', 'accepted', 'changes_
     sql = ['SELECT * FROM submissions WHERE institution_id=? AND service_id=? AND deleted=0']
     args = list(ctx.tenant)
     if not sees_all(ctx):
+        if ctx.profile == 'admin':
+            raise Fail(403, 'FORBIDDEN', 'Нужна роль «Менеджер курсовых»')
         sql.append('AND student_id=?' if ctx.profile == 'student' else 'AND teacher_id=?')
         args.append(ctx.user_id)
     if status:
@@ -425,12 +373,11 @@ def list_submissions(status: Optional[Literal['submitted', 'accepted', 'changes_
     with database() as db:
         rows = db.execute(' '.join(sql), args).fetchall()
         page = rows[:limit]
-        people = names(db, ctx, [r['student_id'] for r in page] + [r['teacher_id'] for r in page])
     next_cursor = None
     if len(rows) > limit:
         payload = json.dumps([page[-1]['created_at'], page[-1]['id'], int(time.time()) + CURSOR_TTL])
         next_cursor = payload + '.' + sign(scope + payload)
-    return {'items': [row_json(r) for r in page], 'next_cursor': next_cursor, 'people': people}
+    return {'items': [row_json(r) for r in page], 'next_cursor': next_cursor}
 
 
 @app.post('/api/v1/coursework/submissions', status_code=201)
