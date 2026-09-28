@@ -152,7 +152,7 @@ class CustomServices(unittest.TestCase):
             db.commit()
             self.assertEqual(db.get(ServiceInstance, old.id).supported_profiles, ['student', 'admin'])
 
-    def test_startup_turns_built_in_types_into_own_services(self):
+    def test_startup_turns_old_hosting_into_institution_services(self):
         from database.tables import CloudBinding, ServiceCredential
         from platform_core import registry
         with session_local() as db:
@@ -170,8 +170,8 @@ class CustomServices(unittest.TestCase):
             registry.ensure_platform_invariants(db)
             db.commit()
             migrated = db.get(ServiceInstance, legacy.id)
-            # Тот же UUID (данные сервиса сохраняются), но теперь это свой сервис вуза; облачный ключ отозван.
-            self.assertEqual((migrated.service_type, migrated.deployment), ('custom.schedule', 'local'))
+            # Тот же UUID и тип контракта, но теперь это контейнер вуза (local); облачный ключ отозван.
+            self.assertEqual((migrated.service_type, migrated.deployment), ('schedule', 'local'))
             self.assertFalse(db.get(CloudBinding, legacy.id).active)
             self.assertIsNotNone(db.get(ServiceCredential, cred.id).revoked_at)
 
@@ -188,7 +188,7 @@ class CustomServices(unittest.TestCase):
             self.assertEqual(env['SERVICE_API_BASE_URL'], 'https://schedule-x.1-2-3-4.sslip.io:9445/api/v1')
             self.assertEqual(env['CORE_URL'], 'https://core.test')
             service = db.get(ServiceInstance, first['service_id'])
-            self.assertEqual((service.service_type, service.enabled), ('custom.schedule', False))
+            self.assertEqual((service.service_type, service.enabled), ('schedule', False))
             self.assertIsNotNone(db.get(InstitutionLocalHost, (inst, 'schedule-x.1-2-3-4.sslip.io')))
             # Ключ рабочий: ядро меняет его на machine token этого сервиса.
             token = self.c.post('/api/v1/internal/auth/token', auth=(env['SERVICE_CLIENT_ID'], env['SERVICE_CLIENT_SECRET']),
@@ -213,6 +213,20 @@ class CustomServices(unittest.TestCase):
             db.commit()
             self.assertEqual(db.get(ServiceInstance, admin['service_id']).client_base_url, 'https://admin-x.1-2-3-4.sslip.io:9444')
             self.assertTrue(platform_ops.enable_service(db, inst, 'administration'))
+
+    def test_intermediate_custom_types_become_contract_types(self):
+        from platform_core import registry
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Промежуточный'}, 'ru')
+            ids = {}
+            for old in ('custom.schedule', 'custom.people', 'custom.coursework'):
+                ids[old] = registry.create_local_instance(db, inst.id, old, 'https://x.university.ru/api/v1',
+                                                          'https://x.university.ru', {'ru': old}, ['admin']).id
+            db.commit()
+            registry.ensure_platform_invariants(db)
+            db.commit()
+            got = {old: db.get(ServiceInstance, sid).service_type for old, sid in ids.items()}
+        self.assertEqual(got, {'custom.schedule': 'schedule', 'custom.people': 'user-profile', 'custom.coursework': 'coursework'})
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Подставляет сервер: origin оболочки и адрес API. Токенов и данных здесь нет. -->
+  <meta name="service-boot" content="__BOOT__">
+  <title>Люди</title>
+  <style>
+    :root { color-scheme: light dark; --muted: #667085; --line: #e4e7ef; }
+    @media (prefers-color-scheme: dark) { :root { --muted: #9ba3b5; --line: #262a36; } }
+    body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 920px; margin: 0 auto; padding: 20px 16px; }
+    .muted { color: var(--muted); }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Люди</h1>
+    <p id="status" class="muted">Подключаемся…</p>
+    <div id="root"></div>
+  </main>
+  <script src="/assets/sdk-client.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

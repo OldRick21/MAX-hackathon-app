@@ -16,6 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app import onboarding
 from app.core_client import CoreClient, CoreUnavailable, BindingMissing
@@ -31,7 +32,7 @@ DB = os.environ.get('PROFILE_DB', '/data/profiles.db')
 core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
 
 # Меню и роль сервиса публикует он сам (как курсовые). Экраны рисует оболочка по id меню.
-MANAGE = 'people.manage'
+MANAGE = 'profiles.manage'
 MANIFEST = {'titles': {'ru': 'Люди', 'en': 'People'}, 'menus': [
     {'id': 'home', 'titles': {'ru': 'Главная', 'en': 'Home'}, 'entrypoint_path': '/home',
      'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 0},
@@ -263,7 +264,7 @@ def service_view(locale:str|None=Query(None,max_length=8),ctx=Depends(authentica
             menus.append({'id':item['id'],'display_name':name,'locale':used,
                           'entrypoint_path':item['entrypoint_path'],'order':item.get('order',0)})
     name,used=text(manifest.get('titles') or {'ru':'Люди'},locale)
-    return {'id':binding.service_id,'institution_id':binding.institution_id,'service_type':'custom.people',
+    return {'id':binding.service_id,'institution_id':binding.institution_id,'service_type':'user-profile',
             'deployment':'local','display_name':name,'locale':used,'api_base_url':binding.api_base_url,
             'client_base_url':binding.client_base_url,'profile':info['profile'],
             'roles':list(info.get('roles') or []),'permissions':permissions,'menus':menus}
@@ -323,3 +324,30 @@ def users(q:str=Query('',max_length=200),cursor:str|None=Query(None,max_length=2
         if len(matched)>limit:
             last=items[-1]['user_id']+':'+str(int(time.time())+900);next_cursor=last+'.'+sign(last)
     return {'items':items,'next_cursor':next_cursor}
+
+# --------------------------------------------------------------------------
+# HTML-клиент (SDK §6–7): статическая оболочка без токенов и данных, в iframe — только оболочка и MAX Web
+# --------------------------------------------------------------------------
+
+CLIENT_DIR = Path(__file__).resolve().parent.parent / 'client'
+
+
+def client_page():
+    page = (CLIENT_DIR / 'index.html').read_text(encoding='utf-8')
+    boot = json.dumps({'shell_origin': SHELL_ORIGIN, 'api_base_url': API_BASE}).replace('"', '&quot;')
+    return HTMLResponse(page.replace('__BOOT__', boot), headers={
+        'Content-Security-Policy': f'frame-ancestors {SHELL_ORIGIN} https://web.max.ru',
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+for _path in ['/home', '/users']:
+    app.add_api_route(_path, client_page, methods=['GET'], include_in_schema=False)
+
+
+@app.get('/assets/{name}', include_in_schema=False)
+def client_asset(name: str):
+    target = (CLIENT_DIR / 'assets' / name).resolve()
+    if target.parent != (CLIENT_DIR / 'assets').resolve() or not target.is_file():
+        raise HTTPException(status_code=404, detail='Файл не найден')
+    return FileResponse(target, headers={'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff'})
+

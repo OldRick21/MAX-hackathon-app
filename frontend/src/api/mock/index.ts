@@ -64,7 +64,7 @@ export function createMockBackend(): Backend {
       return e;
     };
     // Как сервис: администратор правит всегда, преподаватель — если ему включили schedule.write.
-    function writesAny() { return s.profile === 'admin' || (s.profile === 'teacher' && has(s, 'schedule.write')); }
+    function writesAny() { return s.profile === 'admin' && has(s, 'schedule.write'); }
     const requireWrite = (_input?: Omit<ScheduleEvent, 'id'>, _existing?: string) => {
       if (!writesAny()) throw new ApiError('Нет доступа к этому действию.', 403);
     };
@@ -146,7 +146,7 @@ export function createMockBackend(): Backend {
       },
       async patchUser(id, patch, etag) {
         await wait();
-        if (s.profile !== 'admin' || !has(s, 'people.manage')) throw new ApiError('Нет доступа к этому действию.', 403);
+        if (s.profile !== 'admin' || !has(s, 'profiles.manage')) throw new ApiError('Нет доступа к этому действию.', 403);
         checkEtag(key(id), etag);
         const c = { ...card(id), ...patch };
         save(c);

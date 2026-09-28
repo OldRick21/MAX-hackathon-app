@@ -519,7 +519,14 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
     deployment = payload.get("deployment")
     service_type = payload.get("service_type")
     approved = registry.approved_hosts(db, ctx.institution_id)
-    if deployment == "local" and catalog.is_custom(service_type):
+    if deployment == "local" and service_type in catalog.INSTITUTION_TYPES:
+        # Тип контракта: название и профили — из каталога, меню и роли публикует сам сервис.
+        _body(payload, {"service_type", "deployment", "api_base_url", "client_base_url"},
+              {"service_type", "deployment", "api_base_url", "client_base_url"})
+        api_url = catalog.check_api_url(payload["api_base_url"], approved)
+        client_url = catalog.check_origin(payload["client_base_url"], approved)
+        titles, profiles = None, None
+    elif deployment == "local" and catalog.is_custom(service_type):
         # Свой сервис вуза: код, название и профили задаёт администратор, меню и роли
         # публикует сам сервис через machine API после выдачи ключа.
         _body(payload, {"service_type", "deployment", "api_base_url", "client_base_url", "titles", "supported_profiles"},
@@ -532,8 +539,7 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
         api_url = catalog.check_api_url(payload["api_base_url"], approved)
         client_url = catalog.check_origin(payload["client_base_url"], approved)
     else:
-        # Все сервисы вуза — свои: deployment local, тип custom.<код> (расписание, «Люди», курсовые…).
-        raise validation("Сервис подключается как свой: deployment local, service_type custom.<код>", "service_type")
+        raise validation("deployment local и service_type: schedule, user-profile, coursework или custom.<код>", "service_type")
 
     if db.query(ServiceInstance).filter(ServiceInstance.institution_id == ctx.institution_id,
                                         ServiceInstance.service_type == service_type).first():

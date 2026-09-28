@@ -509,6 +509,15 @@
       }) : h('p', { class: 'muted' }, 'Групп пока нет. Без групп студенты не смогут подать заявку на вступление.')));
   }
 
+  // Коды типов контракта регистрируются как есть (название и профили — из каталога ядра), остальные — custom.<код>.
+  const CONTRACT_TYPES = { schedule: 'schedule', people: 'user-profile', 'user-profile': 'user-profile', coursework: 'coursework' };
+  function registrationBody(code, name, profiles, apiUrl, clientUrl) {
+    const c = code.trim().toLowerCase();
+    if (CONTRACT_TYPES[c]) return { service_type: CONTRACT_TYPES[c], deployment: 'local', api_base_url: apiUrl, client_base_url: clientUrl };
+    return { service_type: `custom.${c}`, deployment: 'local', titles: { ru: name }, supported_profiles: profiles,
+      api_base_url: apiUrl, client_base_url: clientUrl };
+  }
+
   async function instServices(body, i) {
     const base = M(i.id);
     const services = await listAll(`${base}/services`);
@@ -560,9 +569,9 @@
       h('p', { class: 'muted small m0' }, 'Расписание, «Люди», курсовые и любые другие сервисы подключаются здесь: код (schedule, people, coursework…), адреса на одобренном хосте (вкладка «Обзор»). Администраторам сервис доступен всегда. После регистрации выдайте ключ — сервис сам опубликует меню и роли.'),
       h('div', { class: 'row2' }, field('Название', name), field('Код', code, 'латиница, цифры, -')), profiles,
       h('div', { class: 'row2' }, field('Адрес API', apiUrl), field('Адрес клиента (origin)', client)),
-      h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`${base}/services`, { method: 'POST', idem: true, body: {
-        service_type: `custom.${code.value.trim().toLowerCase()}`, deployment: 'local', titles: { ru: name.value.trim() },
-        supported_profiles: checked(profiles, 'custom-profiles'), api_base_url: apiUrl.value.trim(), client_base_url: client.value.trim() } }), 'Сервис зарегистрирован.') }, 'Зарегистрировать'))));
+      h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`${base}/services`, { method: 'POST', idem: true,
+        body: registrationBody(code.value, name.value.trim(), checked(profiles, 'custom-profiles'), apiUrl.value.trim(), client.value.trim()) }),
+        'Сервис зарегистрирован.') }, 'Зарегистрировать'))));
   }
 
   let rolesService = null;

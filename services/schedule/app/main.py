@@ -1,8 +1,8 @@
 """Schedule cloud service: учебные группы и занятия, своя SQLite, online introspection ядра.
 
 Контракт — docs/services/schedule/SPEC.md и OPENAPI.yaml; отличия — IMPLEMENTATION.md.
-Смотреть расписание любой группы и все группы может любой участник вуза. Менять занятия —
-администратор (без ролей) и преподаватель, которому администратор включил «Редактирование расписания».
+Права — по контракту (SPEC §1): студент видит свою группу, преподаватель — свои занятия, admin — только
+с ролью «Редактор расписания» (schedule.read_all, schedule.write). Отличие: учебные группы хранит ядро.
 """
 import base64
 import hashlib
@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app import onboarding
 from app.core_client import Binding, BindingMissing, CoreClient, CoreUnavailable
@@ -40,13 +41,15 @@ CLIENT_BASE = os.environ.get('SERVICE_CLIENT_BASE_URL', '').rstrip('/')
 DB = os.environ.get('SCHEDULE_DB', '/data/schedule.db')
 core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
 
-# Меню и роль сервиса публикует он сам (как курсовые). Администратор правит всё без ролей;
-# преподавателю правку включает роль «Редактирование расписания».
+# Меню и роль — по контракту (SPEC §1); сервис публикует их сам. groups.manage в роль не входит:
+# группы ведёт ядро (администрирование → «Группы»).
 MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus': [
     {'id': 'schedule', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
-     'profiles': ['student', 'teacher', 'admin'], 'required_permissions': [], 'order': 0}]}
-ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактирование расписания', 'en': 'Schedule editing'},
-          'allowed_profiles': ['teacher'], 'permissions': ['schedule.write']}]
+     'profiles': ['student', 'teacher'], 'required_permissions': [], 'order': 0},
+    {'id': 'schedule_admin', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
+     'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'order': 0}]}
+ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактор расписания', 'en': 'Schedule editor'},
+          'allowed_profiles': ['admin'], 'permissions': ['schedule.read_all', 'schedule.write']}]
 RETIRED_ROLES = ('group_editor',)
 STATE = {'onboarding': 'pending', 'error': None}
 
@@ -230,10 +233,17 @@ class Ctx:
     def tenant(self):
         return (self.binding.institution_id, self.binding.service_id)
 
+    def admin_can(self, permission):
+        return self.profile == 'admin' and permission in self.permissions
+
+    @property
+    def reads_all(self):
+        return self.admin_can('schedule.read_all')
+
     @property
     def writes_any(self):
-        """Занятия правит любой администратор; преподаватель — если ему включили schedule.write."""
-        return self.profile == 'admin' or (self.profile == 'teacher' and 'schedule.write' in self.permissions)
+        """Контракт: занятия пишет admin AND schedule.write."""
+        return self.admin_can('schedule.write')
 
 
 def authenticate(request: Request) -> Ctx:
@@ -411,7 +421,7 @@ def service_view(locale: Optional[str] = Query(None, max_length=8), ctx: Ctx = D
             menus.append({'id': item['id'], 'display_name': name, 'locale': used,
                           'entrypoint_path': item['entrypoint_path'], 'order': item.get('order', 0)})
     name, used = text(manifest.get('titles') or {'ru': 'Расписание'}, locale)
-    return {'id': ctx.binding.service_id, 'institution_id': ctx.binding.institution_id, 'service_type': 'custom.schedule',
+    return {'id': ctx.binding.service_id, 'institution_id': ctx.binding.institution_id, 'service_type': 'schedule',
             'deployment': 'local', 'display_name': name, 'locale': used, 'api_base_url': ctx.binding.api_base_url,
             'client_base_url': ctx.binding.client_base_url, 'profile': ctx.profile, 'roles': list(ctx.roles),
             'permissions': permissions, 'menus': menus}
@@ -423,15 +433,29 @@ def service_view(locale: Optional[str] = Query(None, max_length=8), ctx: Ctx = D
 # --------------------------------------------------------------------------
 
 def visible_groups(ctx: Ctx) -> list:
-    """Все группы вуза видны любому участнику: просмотр — часть сервиса, а не право."""
-    return core.groups(ctx.binding)
+    """Контракт: студент — своя текущая группа; преподаватель — названия групп вуза; admin — с schedule.read_all.
+
+    Группы берутся из ядра (machine API groups:read), своя группа студента — из group_ids introspection.
+    """
+    if ctx.profile == 'teacher' or ctx.reads_all:
+        groups = core.groups(ctx.binding)
+    elif ctx.profile == 'student':
+        groups = [g for g in core.groups(ctx.binding) if g['id'] in ctx.group_ids] if ctx.group_ids else []
+    else:
+        raise forbidden('Нужна роль «Редактор расписания»')
+    return sorted(groups, key=lambda g: g['id'])
 
 
 @app.get('/api/v1/schedule/groups')
-def list_groups(limit: int = Query(100, ge=1, le=100), cursor: Optional[str] = Query(None, max_length=2048),
+def list_groups(limit: int = Query(50, ge=1, le=100), cursor: Optional[str] = Query(None, max_length=2048),
                 ctx: Ctx = Depends(authenticate)):
-    groups = visible_groups(ctx)
-    return {'items': [{'id': g['id'], 'name': g['name']} for g in groups[:limit]], 'next_cursor': None}
+    """Порядок id ASC, keyset-курсор."""
+    scope = ['groups', *ctx.tenant, ctx.sub, ctx.profile, limit]
+    after = read_cursor(cursor, scope)
+    groups = [g for g in visible_groups(ctx) if not after or g['id'] > after[0]]
+    page = groups[:limit]
+    next_cursor = make_cursor(scope, [page[-1]['id']]) if len(groups) > limit else None
+    return {'items': [{'id': g['id'], 'name': g['name']} for g in page], 'next_cursor': next_cursor}
 
 
 @app.get('/api/v1/schedule/groups/{group_id}')
@@ -480,8 +504,14 @@ def load_event(db, ctx: Ctx, event_id: str):
 
 
 def sees_event(db, ctx: Ctx, event: dict) -> bool:
-    """Любое занятие вуза видно любому участнику."""
-    return True
+    """Контракт: студент — занятия своей группы, преподаватель — свои, admin — с schedule.read_all."""
+    if ctx.reads_all:
+        return True
+    if ctx.profile == 'teacher':
+        return ctx.sub in event['teacher_ids']
+    if ctx.profile == 'student':
+        return any(g in event['group_ids'] for g in ctx.group_ids)
+    return False
 
 
 def event_response(ctx, row, value, status=200, extra=None):
@@ -490,9 +520,9 @@ def event_response(ctx, row, value, status=200, extra=None):
 
 
 def need_writer(ctx: Ctx):
-    """Занятия меняет администратор или преподаватель с включённым редактированием."""
+    """Контракт: занятия пишет только admin AND schedule.write."""
     if not ctx.writes_any:
-        raise forbidden('Редактирование расписания вам не включено')
+        raise forbidden('Нужна роль «Редактор расписания»')
 
 
 def checked_event(ctx: Ctx, body: EventInput) -> dict:
@@ -537,6 +567,8 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
     start, end = utc(from_, 'from'), utc(to, 'to')
     if not start < end or parse_utc(end) - parse_utc(start) > MAX_RANGE:
         raise Fail(422, 'INVALID_TIME_RANGE', 'Период должен быть непустым и не длиннее 31 дня')
+    if ctx.profile == 'admin' and not ctx.reads_all:
+        raise forbidden('Нужна роль «Редактор расписания»')
     scope = ['events', *ctx.tenant, ctx.sub, ctx.profile, start, end, str(group_id or ''), str(teacher_id or ''), limit]
     after = read_cursor(cursor, scope)
     sql = ['SELECT e.* FROM events e WHERE e.institution_id=? AND e.service_id=? AND e.starts_at < ? AND e.ends_at > ?']
@@ -544,9 +576,8 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
     link = ('EXISTS (SELECT 1 FROM {t} x WHERE x.institution_id=e.institution_id AND x.service_id=e.service_id '
             'AND x.event_id=e.id AND x.{c}=?)')
     with database() as db:
-        # Видно всё. Без фильтров показываем «своё»: студенту — его группу, преподавателю — его занятия;
-        # администратору и редактору — всё. Фильтр group_id/teacher_id открывает любую группу/преподавателя.
-        if not (group_id or teacher_id or ctx.writes_any or ctx.profile == 'admin'):
+        # Видимость по профилю; фильтры ниже только сужают её (контракт §2).
+        if not ctx.reads_all:
             if ctx.profile == 'teacher':
                 sql.append('AND ' + link.format(t='event_teachers', c='user_id'))
                 args.append(ctx.sub)
@@ -612,7 +643,7 @@ def get_event(event_id: UUID, ctx: Ctx = Depends(authenticate)):
 
 def editable_event(db, ctx: Ctx, event_id: str, if_match: Optional[str]):
     row, data = load_event(db, ctx, event_id)
-    if not row:
+    if not row or not sees_event(db, ctx, data):
         raise not_found('Занятие не найдено')
     check_if_match(if_match, etag('event', ctx, row['id'], row['revision']))
     return row
@@ -648,3 +679,30 @@ def delete_event(event_id: UUID, if_match: Optional[str] = Header(None), ctx: Ct
         db.execute('DELETE FROM events WHERE institution_id=? AND service_id=? AND id=?', (*ctx.tenant, row['id']))
         db.commit()
     return Response(status_code=204)
+
+# --------------------------------------------------------------------------
+# HTML-клиент (SDK §6–7): статическая оболочка без токенов и данных, в iframe — только оболочка и MAX Web
+# --------------------------------------------------------------------------
+
+CLIENT_DIR = Path(__file__).resolve().parent.parent / 'client'
+
+
+def client_page():
+    page = (CLIENT_DIR / 'index.html').read_text(encoding='utf-8')
+    boot = json.dumps({'shell_origin': SHELL_ORIGIN, 'api_base_url': API_BASE}).replace('"', '&quot;')
+    return HTMLResponse(page.replace('__BOOT__', boot), headers={
+        'Content-Security-Policy': f'frame-ancestors {SHELL_ORIGIN} https://web.max.ru',
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+for _path in ['/schedule']:
+    app.add_api_route(_path, client_page, methods=['GET'], include_in_schema=False)
+
+
+@app.get('/assets/{name}', include_in_schema=False)
+def client_asset(name: str):
+    target = (CLIENT_DIR / 'assets' / name).resolve()
+    if target.parent != (CLIENT_DIR / 'assets').resolve() or not target.is_file():
+        raise HTTPException(status_code=404, detail='Файл не найден')
+    return FileResponse(target, headers={'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff'})
+

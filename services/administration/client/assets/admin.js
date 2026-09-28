@@ -433,6 +433,15 @@
   // ------------------------------------------------------------------
   // Сервисы
   // ------------------------------------------------------------------
+  // Коды типов контракта регистрируются как есть (название и профили — из каталога ядра), остальные — custom.<код>.
+  const CONTRACT_TYPES = { schedule: 'schedule', people: 'user-profile', 'user-profile': 'user-profile', coursework: 'coursework' };
+  function registrationBody(code, name, profiles, apiUrl, clientUrl) {
+    const c = code.trim().toLowerCase();
+    if (CONTRACT_TYPES[c]) return { service_type: CONTRACT_TYPES[c], deployment: 'local', api_base_url: apiUrl, client_base_url: clientUrl };
+    return { service_type: `custom.${c}`, deployment: 'local', titles: { ru: name }, supported_profiles: profiles,
+      api_base_url: apiUrl, client_base_url: clientUrl };
+  }
+
   async function renderServices(view) {
     const [services, typesResp] = await Promise.all([listAll('/services'), api('/service-types')]);
     const types = Object.fromEntries(typesResp.data.items.map(t => [t.code, t]));
@@ -456,12 +465,9 @@
         h('p', {}, 'Кому доступен сервис:'), profiles,
         field('Адрес API', api_), field('Адрес клиента (origin)', client),
         h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
-          if (!name.value.trim()) throw new ApiError('Укажите название сервиса.');
-          await api('/services', { method: 'POST', idempotencyKey: key, body: {
-            service_type: `custom.${code.value.trim().toLowerCase()}`, deployment: 'local',
-            titles: { ru: name.value.trim() }, supported_profiles: checked(profiles, 'custom-profiles'),
-            api_base_url: api_.value.trim(), client_base_url: client.value.trim(),
-          } });
+          if (!name.value.trim() && !CONTRACT_TYPES[code.value.trim().toLowerCase()]) throw new ApiError('Укажите название сервиса.');
+          await api('/services', { method: 'POST', idempotencyKey: key, body: registrationBody(code.value, name.value.trim(),
+            checked(profiles, 'custom-profiles'), api_.value.trim(), client.value.trim()) });
           key = crypto.randomUUID();
           toast('Сервис зарегистрирован. Дальше — шаги в его карточке: ключ, запуск на сервере вуза, включение.');
         }, reload) }, 'Зарегистрировать'))));

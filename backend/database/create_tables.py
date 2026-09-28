@@ -53,7 +53,7 @@ def create_tables():
                 ServiceInstance(
                     id="b4c51283-fbdf-44a2-91e8-7f3d07f52e1a",
                     institution_id=demo_inst.id,
-                    service_type="custom.people",
+                    service_type="user-profile",
                     deployment=DeploymentType.LOCAL.value,
                     enabled=True,
                     protected=False,
@@ -77,7 +77,7 @@ def create_tables():
                 ServiceInstance(
                     id="c5d62394-acef-45b3-82f9-8e4e18f63f2b",
                     institution_id=demo_inst.id,
-                    service_type="custom.schedule",
+                    service_type="schedule",
                     deployment=DeploymentType.LOCAL.value,
                     enabled=True,
                     protected=False,

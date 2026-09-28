@@ -49,8 +49,13 @@ def delete_user(db: Session, user_id: str) -> None:
                    target_type="user", target_id=user_id)
 
 
-# Названия сервисов вуза по умолчанию при автоподключении (scripts/connect-services.sh).
-DEFAULT_TITLES = {"schedule": "Расписание", "people": "Люди", "coursework": "Курсовые работы"}
+# Код в scripts/connect-services.sh → тип сервиса (контракт); прочие коды — свои сервисы custom.<код>.
+TYPE_BY_CODE = {"schedule": "schedule", "people": "user-profile", "user-profile": "user-profile", "coursework": "coursework"}
+
+
+def _service_type(code: str) -> str:
+    from platform_core import catalog
+    return "administration" if code == "administration" else TYPE_BY_CODE.get(code) or catalog.custom_code(code)
 
 
 def connect_service(db: Session, institution_id: str, code: str, host: str, port: int) -> dict:
@@ -76,14 +81,15 @@ def connect_service(db: Session, institution_id: str, code: str, host: str, port
         service = registry.admin_service_of(db, institution_id) or registry.create_admin_instance(db, institution_id)
         service.api_base_url, service.client_base_url = api_url, client_url
     else:
-        service_type = catalog.custom_code(code)
+        service_type = _service_type(code)
         if not db.get(InstitutionLocalHost, (institution_id, host)):
             db.add(InstitutionLocalHost(institution_id=institution_id, hostname=host, approved_by=None))
         service = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
                                                    ServiceInstance.service_type == service_type).first()
         if not service:
+            custom = catalog.is_custom(service_type)
             service = registry.create_local_instance(db, institution_id, service_type, api_url, client_url,
-                                                     {"ru": DEFAULT_TITLES.get(code, code)}, list(catalog.PROFILES))
+                                                     {"ru": code} if custom else None, list(catalog.PROFILES))
         elif (service.api_base_url, service.client_base_url) != (api_url, client_url):
             service.api_base_url, service.client_base_url, service.enabled = api_url, client_url, False
             registry.revoke_service_sessions(db, service_id=service.id)
@@ -105,7 +111,7 @@ def enable_service(db: Session, institution_id: str, code: str) -> bool:
     """Включает сервис вуза, когда он опубликовал меню. False — меню ещё нет."""
     from database.tables import ServiceInstance
     from platform_core import catalog
-    service_type = "administration" if code == "administration" else catalog.custom_code(code)
+    service_type = _service_type(code)
     service = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
                                                ServiceInstance.service_type == service_type).first()
     if not service:

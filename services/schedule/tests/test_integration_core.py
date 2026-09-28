@@ -112,7 +112,7 @@ class ScheduleAgainstCore(unittest.TestCase):
         # Расписание — свой сервис вуза: одобренный хост, регистрация, ключ; меню и роль публикует сам сервис.
         with session_local() as db:
             db.add(InstitutionLocalHost(institution_id=inst_id, hostname=HOST, approved_by=support_id))
-            schedule_id = registry.create_local_instance(db, inst_id, 'custom.schedule', API, CLIENT, {'ru': 'Расписание'},
+            schedule_id = registry.create_local_instance(db, inst_id, 'schedule', API, CLIENT, {'ru': 'Расписание'},
                                                          ['student', 'teacher', 'admin']).id
             admin_service_id = db.query(ServiceInstance).filter_by(institution_id=inst_id,
                                                                    service_type='administration').one().id
@@ -123,36 +123,38 @@ class ScheduleAgainstCore(unittest.TestCase):
         onboarding.sync(schedule.core, schedule.MANIFEST, schedule.ROLES, schedule.RETIRED_ROLES)
         with session_local() as db:
             service = db.get(ServiceInstance, schedule_id)
-            self.assertEqual([m['id'] for m in service.manifest['menus']], ['schedule'])
-            self.assertEqual({r.code: r.allowed_profiles for r in service.roles}, {'schedule_editor': ['teacher']})
+            # Меню и роль — по контракту (SPEC §1).
+            self.assertEqual([m['id'] for m in service.manifest['menus']], ['schedule', 'schedule_admin'])
+            self.assertEqual({r.code: (r.allowed_profiles, r.permissions) for r in service.roles},
+                             {'schedule_editor': (['admin'], ['schedule.read_all', 'schedule.write'])})
             service.enabled = True
             db.add(Membership(institution_id=inst_id, user_id=teacher_id, profiles=['teacher']))
             db.add(Membership(institution_id=inst_id, user_id=student_id, profiles=['student']))
             db.commit()
 
-        admin_h = self.service_session(inst_id, schedule_id, owner_core, 'admin')
         teacher_h = self.service_session(inst_id, schedule_id, teacher_core, 'teacher')
         student_h = self.service_session(inst_id, schedule_id, student_core, 'student')
+        admin_h = self.service_session(inst_id, schedule_id, owner_core, 'admin')
 
         view = self.svc.get('/api/v1/service', headers=teacher_h)
         self.assertEqual(view.status_code, 200, view.text)
-        self.assertEqual(view.json()['api_base_url'], API)
+        self.assertEqual((view.json()['service_type'], view.json()['api_base_url']), ('schedule', API))
         self.assertEqual([m['id'] for m in view.json()['menus']], ['schedule'])
 
-        def catalog():
-            items = self.core.get(f'/api/v1/institution/{inst_id}/service', params={'profile': 'admin'},
-                                  headers=owner_core).json()['items']
-            return next(x for x in items if x['id'] == schedule_id)
-        # Расписание видно администратору без ролей; ролей для admin в расписании нет вовсе.
-        self.assertEqual(([m['id'] for m in catalog()['menus']], catalog()['permissions']), (['schedule'], []))
-        roles_path = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{owner_id}/profiles/admin/roles'
+        # Admin без роли расписания не видит (контракт); роль даёт schedule_admin и права.
+        self.assertEqual(self.svc.get('/api/v1/schedule/groups', headers=admin_h).status_code, 403)
         machine, actor = self.admin_headers(inst_id, admin_service_id, owner_core)
         private = {**machine, **actor}
+        roles_path = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{owner_id}/profiles/admin/roles'
         etag = self.core.get(roles_path, headers=private).headers['ETag']
-        refused = self.core.put(roles_path, headers={**private, 'If-Match': etag}, json={'roles': ['schedule_editor']})
+        granted = self.core.put(roles_path, headers={**private, 'If-Match': etag}, json={'roles': ['schedule_editor']})
+        self.assertEqual(granted.status_code, 200, granted.text)
+        teacher_roles = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{teacher_id}/profiles/teacher/roles'
+        tag = self.core.get(teacher_roles, headers=private).headers['ETag']
+        refused = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
         self.assertIn(refused.status_code, (409, 422), refused.text)
 
-        # Группы ведёт администрирование ядра; расписание их только читает.
+        # Группы ведёт ядро (отличие от контракта); расписание их только читает.
         base = f'/api/v1/institution/{inst_id}/internal/groups'
         group = self.core.post(base, headers=private, json={'name': 'ИВТ-21'})
         self.assertEqual(group.status_code, 201, group.text)
@@ -163,29 +165,21 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(self.svc.get('/api/v1/schedule/groups', headers=student_h).json()['items'],
                          [{'id': group_id, 'name': 'ИВТ-21'}])
 
-        # Преподаватель только смотрит: занятия не ставит, и роль редактора ему не назначить.
+        # Занятия пишет admin с schedule.write; преподаватель — нет.
         event = {'title': 'Базы данных', 'starts_at': '2026-09-28T06:00:00Z', 'ends_at': '2026-09-28T07:30:00Z',
                  'group_ids': [group_id], 'teacher_ids': [teacher_id], 'location': '301', 'description': '',
                  'status': 'scheduled'}
         denied = self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
                                json=event)
         self.assertEqual(denied.status_code, 403, denied.text)
-        teacher_roles = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{teacher_id}/profiles/teacher/roles'
-        tag = self.core.get(teacher_roles, headers=private).headers['ETag']
-        # Администратор включает преподавателю редактирование — тот ставит занятие.
-        granted = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
-        self.assertEqual(granted.status_code, 200, granted.text)
-        editor_h = teacher_h
-        by_admin = self.svc.post('/api/v1/schedule/events', headers={**self.service_session(inst_id, schedule_id, owner_core, 'admin'),
-                                                                   'Idempotency-Key': str(uuid.uuid4())},
-                                 json={**event, 'starts_at': '2026-10-01T06:00:00Z', 'ends_at': '2026-10-01T07:00:00Z'})
-        self.assertEqual(by_admin.status_code, 201, by_admin.text)
+        editor_h = admin_h
         created = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},
                                 json=event)
         self.assertEqual(created.status_code, 201, created.text)
         week = {'from': '2026-09-28T00:00:00Z', 'to': '2026-10-05T00:00:00Z'}
-        seen = self.svc.get('/api/v1/schedule/events', headers=student_h, params=week).json()['items']
-        self.assertEqual([e['id'] for e in seen], [created.json()['id'], by_admin.json()['id']])
+        for who in (student_h, teacher_h):
+            seen = self.svc.get('/api/v1/schedule/events', headers=who, params=week).json()['items']
+            self.assertEqual([e['id'] for e in seen], [created.json()['id']])
 
         # Студент в преподаватели не годится — проверка идёт через ядро.
         bad = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},

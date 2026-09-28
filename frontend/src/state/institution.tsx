@@ -130,10 +130,10 @@ export function useInstitution() {
 
 /** Меню встроенных экранов: тип сервиса → id меню (таблицы меню в docs/services/<сервис>/SPEC.md). */
 export const NATIVE_MENUS = {
-  // «Люди» и расписание — свои сервисы вуза (custom.<код>); их экраны оболочка рисует сама.
-  home: { type: 'custom.people', menus: ['home'] },
-  users: { type: 'custom.people', menus: ['users'] },
-  schedule: { type: 'custom.schedule', menus: ['schedule', 'schedule_admin'] },
+  // «Люди» и расписание — сервисы вуза с типами контракта; их экраны оболочка рисует сама.
+  home: { type: 'user-profile', menus: ['home'] },
+  users: { type: 'user-profile', menus: ['users'] },
+  schedule: { type: 'schedule', menus: ['schedule', 'schedule_admin'] },
   coursework: { type: 'coursework', menus: ['coursework', 'coursework_admin'] },
 } as const;
 

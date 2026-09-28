@@ -285,8 +285,8 @@ def sync_admin_instance(db: Session, service: ServiceInstance) -> None:
         db.delete(legacy)
 
 
-# Прежние встроенные типы: теперь это свои сервисы вуза (custom.<код>) со своими контейнерами.
-LEGACY_TYPES = {"schedule": "custom.schedule", "user-profile": "custom.people", "coursework": "custom.coursework"}
+# Типы промежуточной версии → типы контракта (сервис тот же, UUID сохраняется).
+LEGACY_TYPES = {"custom.schedule": "schedule", "custom.people": "user-profile", "custom.coursework": "coursework"}
 
 
 def provision_institution(db: Session, titles: dict, default_locale: str, status: str = InstitutionStatus.ACTIVE.value) -> Institution:
@@ -318,8 +318,8 @@ def ensure_platform_invariants(db: Session) -> None:
     """Выполняется при запуске ядра и командами оператора. Идемпотентна.
 
     - у каждого вуза есть защищённый экземпляр administration с manifest и ролями из каталога;
-    - прежние встроенные типы (расписание, «Люди», курсовые) становятся своими сервисами вуза:
-      тип custom.<код>, deployment local; меню и роли они публикуют сами;
+    - расписание, «Люди» и курсовые — сервисы вуза с типами контракта (schedule, user-profile, coursework),
+      deployment local; custom.schedule/custom.people/custom.coursework прежней версии переименовываются;
     - ключи прежней облачной выдачи (cloud bindings) отзываются: ключ сервису выдаётся в карточке;
     - профиль admin есть у каждого сервиса: администраторы видят любой сервис вуза.
     """

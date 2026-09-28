@@ -108,7 +108,7 @@ class PeopleAgainstCore(unittest.TestCase):
         # «Люди» — свой сервис вуза: одобренный хост, регистрация, ключ; меню и роль публикует сам сервис.
         with session_local() as db:
             db.add(InstitutionLocalHost(institution_id=inst_id, hostname=HOST, approved_by=support_id))
-            people_id = registry.create_local_instance(db, inst_id, 'custom.people', API, CLIENT, {'ru': 'Люди'},
+            people_id = registry.create_local_instance(db, inst_id, 'user-profile', API, CLIENT, {'ru': 'Люди'},
                                                        ['student', 'teacher', 'admin']).id
             db.commit()
         key = self.issue_key(people_id)
@@ -117,7 +117,7 @@ class PeopleAgainstCore(unittest.TestCase):
         onboarding.sync(people.core, people.MANIFEST, people.ROLES)
         with session_local() as db:
             service = db.get(ServiceInstance, people_id)
-            self.assertEqual({r.code: r.permissions for r in service.roles}, {'profile_editor': ['people.manage']})
+            self.assertEqual({r.code: r.permissions for r in service.roles}, {'profile_editor': ['profiles.manage']})
             service.enabled = True
             admin_service_id = db.query(ServiceInstance).filter_by(institution_id=inst_id,
                                                                    service_type='administration').one().id
@@ -131,7 +131,7 @@ class PeopleAgainstCore(unittest.TestCase):
         view = self.people.get('/api/v1/service', headers=teacher_h)
         self.assertEqual(view.status_code, 200, view.text)
         view = view.json()
-        self.assertEqual((view['id'], view['institution_id'], view['service_type']), (people_id, inst_id, 'custom.people'))
+        self.assertEqual((view['id'], view['institution_id'], view['service_type']), (people_id, inst_id, 'user-profile'))
         self.assertEqual(view['api_base_url'], API)
         self.assertEqual([m['id'] for m in view['menus']], ['home', 'users'])
 
@@ -160,7 +160,7 @@ class PeopleAgainstCore(unittest.TestCase):
         granted = self.core.put(roles_path, headers={**machine, **actor, 'If-Match': etag},
                                 json={'roles': ['profile_editor']})
         self.assertEqual(granted.status_code, 200, granted.text)
-        self.assertEqual(granted.json()['permissions'], ['people.manage'])
+        self.assertEqual(granted.json()['permissions'], ['profiles.manage'])
 
         # Права берутся из ядра онлайн: прежний токен уже видит новое право.
         updated = self.people.patch(f'/api/v1/profile/users/{teacher_id}',

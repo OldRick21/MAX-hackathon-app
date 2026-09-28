@@ -191,25 +191,24 @@ const basic = (menus: string[]) => ({ roles: [], permissions: [], menus });
 
 export const serviceSeeds: Record<string, ServiceSeed[]> = {
   [INST_MEPHI]: [
-    svc('5e000000-0000-4000-8000-000000000101', 'custom.people', 'Люди', 'local', 'people.university.example',
+    svc('5e000000-0000-4000-8000-000000000101', 'user-profile', 'Люди', 'local', 'people.university.example',
       [m('home', 'Главная', '/home'), m('users', 'Пользователи', '/users', 10)],
       { student: basic(['home', 'users']), teacher: basic(['home', 'users']) }),
-    svc('5e000000-0000-4000-8000-000000000102', 'custom.schedule', 'Расписание', 'local', 'schedule.university.example',
+    svc('5e000000-0000-4000-8000-000000000102', 'schedule', 'Расписание', 'local', 'schedule.university.example',
       [m('schedule', 'Расписание', '/schedule')],
-      // Преподавателю МИФИ администратор включил редактирование расписания.
-      { student: basic(['schedule']), teacher: { roles: ['schedule_editor'], permissions: ['schedule.write'], menus: ['schedule'] } }),
+      { student: basic(['schedule']), teacher: basic(['schedule']) }),
     svc('5e000000-0000-4000-8000-000000000103', 'coursework', 'Курсовые работы', 'local', 'coursework.mephi.example',
       [m('coursework', 'Курсовые', '/coursework')],
       { student: basic(['coursework']), teacher: basic(['coursework']) }),
   ],
   [INST_MTUCI]: [
-    svc('5e000000-0000-4000-8000-000000000201', 'custom.people', 'Люди', 'local', 'people.university.example',
+    svc('5e000000-0000-4000-8000-000000000201', 'user-profile', 'Люди', 'local', 'people.university.example',
       [m('home', 'Главная', '/home'), m('users', 'Пользователи', '/users', 10)],
-      { teacher: basic(['home', 'users']), admin: { roles: ['profile_editor'], permissions: ['people.manage'], menus: ['home', 'users'] } }),
-    svc('5e000000-0000-4000-8000-000000000202', 'custom.schedule', 'Расписание', 'local', 'schedule.university.example',
+      { teacher: basic(['home', 'users']), admin: { roles: ['profile_editor'], permissions: ['profiles.manage'], menus: ['home', 'users'] } }),
+    svc('5e000000-0000-4000-8000-000000000202', 'schedule', 'Расписание', 'local', 'schedule.university.example',
       [m('schedule', 'Расписание', '/schedule'), m('schedule_admin', 'Расписание', '/schedule')],
       { teacher: basic(['schedule']),
-        admin: basic(['schedule_admin']) }),
+        admin: { roles: ['schedule_editor'], permissions: ['schedule.read_all', 'schedule.write'], menus: ['schedule_admin'] } }),
     svc('5e000000-0000-4000-8000-000000000203', 'administration', 'Администрирование', 'cloud', 'admin.platform.example',
       [m('administration', 'Администрирование', '/admin')],
       { admin: { roles: ['owner'], permissions: ['institution.read', 'members.read', 'members.manage'], menus: ['administration'] } }),

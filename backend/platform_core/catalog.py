@@ -71,8 +71,20 @@ SERVICE_TYPES: Dict[str, dict] = {
     },
 }
 
-# Остальные сервисы вуза ядру заранее не известны: вуз регистрирует их как свои сервисы
-# (custom.<код>) — расписание, «Люди», курсовые и любые другие. Каждый работает в своём
+# Сервисы вуза с типами из контракта: свой контейнер вуза, ключ из карточки, меню и роли
+# публикует сам сервис. Ядро знает только словарь их прав (docs/services/<тип>/SPEC.md §1).
+for _code, _titles, _perms in (
+    ("schedule", {"ru": "Расписание", "en": "Schedule"}, ["schedule.read_all", "schedule.write", "groups.manage"]),
+    ("user-profile", {"ru": "Люди", "en": "People"}, ["profiles.manage"]),
+    ("coursework", {"ru": "Курсовые работы", "en": "Coursework"}, ["coursework.manage"]),
+):
+    SERVICE_TYPES[_code] = {"code": _code, "deployment": "local", "titles": _titles,
+                            "supported_profiles": ["admin", "teacher", "student"], "permission_codes": _perms,
+                            "protected": False, "menus": [], "initial_roles": [], "system_roles": False}
+INSTITUTION_TYPES = ("schedule", "user-profile", "coursework")
+
+# Любые другие сервисы вуза ядру заранее не известны: вуз регистрирует их как свои сервисы
+# (custom.<код>). Каждый работает в своём
 # контейнере вуза на одобренном хосте, получает ключ в админке и сам публикует меню и роли
 # через machine API (CORE_API_SPEC.md §7). Права такого сервиса живут в пространстве <код>.*,
 # поэтому он не может выдать себе права другого сервиса или администрирования.
@@ -119,7 +131,7 @@ def service_type(code: str) -> dict:
 
 
 def public_service_types() -> List[dict]:
-    """ServiceTypeList: встроенный тип один — администрирование; остальные сервисы — свои (custom.<код>)."""
+    """ServiceTypeList: четыре типа контракта; любые другие сервисы — свои (custom.<код>)."""
     keys = ("code", "deployment", "titles", "supported_profiles", "permission_codes", "protected")
     return [{k: copy.deepcopy(t[k]) for k in keys} for t in SERVICE_TYPES.values()]
 

@@ -35,7 +35,7 @@ function UserProfile({ service }: { service: ServiceView }) {
     return api.getUser(userId, signal);
   }, [api, userId, isMe]);
 
-  const canManage = profile === 'admin' && service.permissions.includes('people.manage');
+  const canManage = profile === 'admin' && service.permissions.includes('profiles.manage');
   const back = isMe
     ? <Link to={`/institution/${institution.id}/users`} className={p.back}><IconArrowLeft />Люди</Link>
     : <Link to={`/institution/${institution.id}/users`} className={p.back}><IconArrowLeft />Все пользователи</Link>;
@@ -67,7 +67,7 @@ function UserProfile({ service }: { service: ServiceView }) {
 
         <section className={s.details} aria-label="Данные профиля">
           {/* Только поля, которые здесь же можно изменить: «О себе» — сам участник,
-              должность и степень — администратор с people.manage. */}
+              должность и степень — администратор с profiles.manage. */}
           <dl className={s.dl}>
             <dt>О себе</dt><dd>{c.about || (isMe ? 'Расскажите о себе — это увидят другие участники вуза.' : '—')}</dd>
             {canManage && <><dt>Должность</dt><dd>{c.position || '—'}</dd></>}

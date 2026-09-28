@@ -16,13 +16,13 @@ KEY = "k" * 40
 
 
 class CatalogTest(unittest.TestCase):
-    def test_only_administration_is_built_in(self):
-        # Расписание, «Люди», курсовые — свои сервисы вуза custom.<код>; ядро знает только администрирование.
+    def test_contract_types(self):
+        # Четыре типа контракта; расписание, «Люди», курсовые — сервисы вуза, меню и роли публикуют сами.
         types = catalog.public_service_types()
-        self.assertEqual([t["code"] for t in types], ["administration"])
-        for legacy in ("schedule", "user-profile", "coursework"):
-            with self.assertRaises(DomainError):
-                catalog.service_type(legacy)
+        self.assertEqual([t["code"] for t in types], ["administration", "schedule", "user-profile", "coursework"])
+        self.assertEqual(catalog.service_type("schedule")["permission_codes"],
+                         ["schedule.read_all", "schedule.write", "groups.manage"])
+        self.assertEqual(catalog.service_type("user-profile")["initial_roles"], [])
         admin = catalog.service_type("administration")
         self.assertTrue(admin["protected"])
         self.assertEqual(admin["supported_profiles"], ["admin"])
@@ -66,13 +66,13 @@ class CatalogTest(unittest.TestCase):
 
     def test_roles(self):
         role = catalog.check_role_input({"code": "editor", "titles": {"ru": "Редактор"}, "allowed_profiles": ["admin"],
-                                         "permissions": ["schedule.write"]}, "custom.schedule", ["admin", "teacher", "student"])
+                                         "permissions": ["schedule.write"]}, "schedule", ["admin", "teacher", "student"])
         self.assertEqual(role["permissions"], ["schedule.write"])
         with self.assertRaises(DomainError):
             catalog.check_role_input({"code": "x", "titles": {"ru": "x"}, "allowed_profiles": ["admin"],
-                                      "permissions": ["members.manage"]}, "custom.schedule", ["admin"])
+                                      "permissions": ["members.manage"]}, "schedule", ["admin"])
         with self.assertRaises(DomainError):
-            catalog.check_role_patch({}, "custom.schedule", ["admin"])
+            catalog.check_role_patch({}, "schedule", ["admin"])
         with self.assertRaises(DomainError):
             catalog.check_profiles(["admin", "admin"])
         self.assertEqual(catalog.check_profiles(["student", "admin"]), ["student", "admin"])
