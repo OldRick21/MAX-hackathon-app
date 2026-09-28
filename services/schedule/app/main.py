@@ -2,7 +2,7 @@
 
 Контракт — docs/services/schedule/SPEC.md и OPENAPI.yaml; отличия — IMPLEMENTATION.md.
 Смотреть расписание любой группы и все группы может любой участник вуза. Менять занятия —
-только с правом schedule.write (роль «Редактор расписания», её выдают администратору или преподавателю).
+только администратор с правом schedule.write (роль «Редактор расписания»).
 """
 import base64
 import hashlib
@@ -204,8 +204,8 @@ class Ctx:
 
     @property
     def writes_any(self):
-        """Редактор расписания: право schedule.write в любом профиле (admin или teacher)."""
-        return 'schedule.write' in self.permissions
+        """Редактор расписания: администратор с правом schedule.write. Преподаватель только смотрит."""
+        return self.profile == 'admin' and 'schedule.write' in self.permissions
 
 
 def authenticate(request: Request) -> Ctx:

@@ -101,7 +101,9 @@ def _member(db: Session, institution_id: str, user_id: str, profile: str) -> Mem
 
 
 def manages_groups(db: Session, institution_id: str, user_id: str, profile: str) -> bool:
-    """Группы ведёт «Редактор групп» расписания (admin или teacher) или администратор с groups.manage."""
+    """Группы ведёт администратор: «Редактор групп» расписания или groups.manage в администрировании."""
+    if profile != "admin":
+        return False
     schedule = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
                                                 ServiceInstance.service_type == "schedule",
                                                 ServiceInstance.enabled.is_(True)).first()
@@ -109,7 +111,7 @@ def manages_groups(db: Session, institution_id: str, user_id: str, profile: str)
             db, schedule.id, registry.assigned_roles(db, schedule.id, user_id, profile)):
         return True
     admin = registry.admin_service_of(db, institution_id)
-    return bool(admin and profile == "admin" and "groups.manage" in registry.permissions_for(
+    return bool(admin and "groups.manage" in registry.permissions_for(
         db, admin.id, registry.assigned_roles(db, admin.id, user_id, "admin")))
 
 

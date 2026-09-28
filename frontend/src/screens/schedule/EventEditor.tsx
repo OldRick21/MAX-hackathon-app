@@ -1,4 +1,4 @@
-// Создание и изменение занятия — «Редактор расписания» (право schedule.write, админ или преподаватель).
+// Создание и изменение занятия — администратор с ролью «Редактор расписания» (schedule.write).
 import { useState, type FormEvent } from 'react';
 import type { ProfilesApi, ScheduleApi } from '../../api/backend';
 import { humanMessage, isUUID } from '../../api/http';

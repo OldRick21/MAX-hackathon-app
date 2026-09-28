@@ -75,7 +75,7 @@ SERVICE_TYPES: Dict[str, dict] = {
         "titles": {"ru": "Расписание", "en": "Schedule"},
         "supported_profiles": ["admin", "teacher", "student"],
         # Смотреть расписание и группы может любой участник — это не право, а часть сервиса.
-        # Права дают только правку: schedule.write — занятия, schedule.groups — группы.
+        # Права дают только правку администраторам: schedule.write — занятия, schedule.groups — группы.
         "permission_codes": ["schedule.read_all", "schedule.write", "schedule.groups"],
         "protected": False,
         "menus": [
@@ -84,9 +84,9 @@ SERVICE_TYPES: Dict[str, dict] = {
         ],
         "initial_roles": [
             {"code": "schedule_editor", "titles": {"ru": "Редактор расписания", "en": "Schedule editor"},
-             "allowed_profiles": ["admin", "teacher"], "permissions": ["schedule.read_all", "schedule.write"]},
+             "allowed_profiles": ["admin"], "permissions": ["schedule.read_all", "schedule.write"]},
             {"code": "group_editor", "titles": {"ru": "Редактор групп", "en": "Group editor"},
-             "allowed_profiles": ["admin", "teacher"], "permissions": ["schedule.groups"]},
+             "allowed_profiles": ["admin"], "permissions": ["schedule.groups"]},
         ],
         "system_roles": False,
     },

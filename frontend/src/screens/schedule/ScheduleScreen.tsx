@@ -38,8 +38,8 @@ function Schedule({ service }: { service: ServiceView }) {
   const [deleting, setDeleting] = useState<ScheduleEvent | null>(null);
   const [opening, setOpening] = useState(false);
 
-  // Смотреть может любой участник; менять — только «Редактор расписания» (админ или преподаватель).
-  const canWrite = service.permissions.includes('schedule.write');
+  // Смотреть может любой участник; менять — только администратор с ролью «Редактор расписания».
+  const canWrite = service.profile === 'admin' && service.permissions.includes('schedule.write');
   const isTeacher = service.profile === 'teacher';
   const weekStart = addDays(startOfWeek(now()), weekOffset * 7);
   const weekEnd = addDays(weekStart, 7);

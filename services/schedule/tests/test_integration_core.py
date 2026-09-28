@@ -143,7 +143,7 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(self.svc.get('/api/v1/schedule/groups', headers=student_h).json()['items'],
                          [{'id': group_id, 'name': 'ИВТ-21'}])
 
-        # Без роли преподаватель занятия не ставит; владелец выдаёт ему «Редактора расписания» в профиле teacher.
+        # Преподаватель только смотрит: занятия не ставит, и роль редактора ему не назначить.
         event = {'title': 'Базы данных', 'starts_at': '2026-09-28T06:00:00Z', 'ends_at': '2026-09-28T07:30:00Z',
                  'group_ids': [group_id], 'teacher_ids': [teacher_id], 'location': '301', 'description': '',
                  'status': 'scheduled'}
@@ -152,9 +152,11 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(denied.status_code, 403, denied.text)
         teacher_roles = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{teacher_id}/profiles/teacher/roles'
         tag = self.core.get(teacher_roles, headers=private).headers['ETag']
-        granted = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
-        self.assertEqual(granted.status_code, 200, granted.text)
-        created = self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
+        refused = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
+        self.assertIn(refused.status_code, (409, 422), refused.text)
+        # Занятие ставит администратор с ролью «Редактор расписания» (выдана выше).
+        editor_h = self.service_session(inst_id, schedule_id, owner_core, 'admin')
+        created = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},
                                 json=event)
         self.assertEqual(created.status_code, 201, created.text)
         week = {'from': '2026-09-28T00:00:00Z', 'to': '2026-10-05T00:00:00Z'}
@@ -162,7 +164,7 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual([e['id'] for e in seen], [created.json()['id']])
 
         # Студент в преподаватели не годится — проверка идёт через ядро.
-        bad = self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
+        bad = self.svc.post('/api/v1/schedule/events', headers={**editor_h, 'Idempotency-Key': str(uuid.uuid4())},
                             json={**event, 'teacher_ids': [teacher_id, student_id]})
         self.assertEqual(bad.json()['error']['code'], 'INVALID_REFERENCE')
 
