@@ -46,3 +46,23 @@
   .arrow { width: 2.2rem; height: 2.2rem; }
   .code { font-size: 1.4rem; }
 }
+
+/* ---------- Заявка на вступление ---------- */
+.request {
+  display: grid; gap: 1.2rem; padding: 2.4rem 2.8rem; border-radius: var(--r-card);
+  border: 1px solid var(--line); background: var(--surface); transition: border-color .15s;
+}
+.request[data-selected] { border-color: var(--accent); }
+.requestHead { display: flex; align-items: center; justify-content: space-between; gap: 1.2rem; flex-wrap: wrap; }
+.check { display: flex; align-items: flex-start; gap: 1.6rem; cursor: pointer; }
+.check input { flex: none; width: 2.6rem; height: 2.6rem; margin-top: .4rem; accent-color: var(--accent); }
+.choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1.6rem; }
+.formError { color: var(--error, #d33); font-size: 2rem; text-align: center; }
+
+@media (max-width: 767px) {
+  .request { padding: 1.4rem 1.6rem; border-radius: 2rem; gap: .8rem; }
+  .check { gap: 1rem; }
+  .check input { width: 2rem; height: 2rem; margin-top: .1rem; }
+  .choice { grid-template-columns: 1fr; gap: 1rem; }
+  .formError { font-size: 1.4rem; }
+}

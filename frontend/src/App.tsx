@@ -1,4 +1,4 @@
-import { PlatformLinks, PlatformScreen } from './platform/PlatformScreen';
+import { PlatformScreen } from './platform/PlatformScreen';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ErrorState, ToastHost } from './components/ui';
@@ -8,8 +8,9 @@ import { SessionProvider, useSession } from './state/session';
 import { AllServicesScreen } from './screens/services/AllServicesScreen';
 import { CourseworkScreen } from './screens/coursework/CourseworkScreen';
 import {
-  BootScreen, NoInstitutionsScreen, NotInMaxScreen, SelectInstitutionScreen, SessionProblemScreen,
+  BootScreen, NotInMaxScreen, SelectInstitutionScreen, SessionProblemScreen,
 } from './screens/entry/EntryScreens';
+import { JoinScreen } from './screens/entry/JoinScreen';
 import { HomeScreen } from './screens/home/HomeScreen';
 import { GroupsScreen } from './screens/schedule/GroupsScreen';
 import { ScheduleScreen } from './screens/schedule/ScheduleScreen';
@@ -19,10 +20,11 @@ import { UsersScreen } from './screens/users/UsersScreen';
 
 function Root() {
   const { institutions } = useSession();
-  if (institutions.length === 0) return <><PlatformLinks /><NoInstitutionsScreen /></>;
+  // Первый вход: выбор вузов и групп, заявка администраторам.
+  if (institutions.length === 0) return <JoinScreen />;
   // Один вуз — сразу его интерфейс, без экрана выбора (handoff, раздел 4).
   if (institutions.length === 1) return <Navigate to={`/institution/${institutions[0].id}`} replace />;
-  return <><PlatformLinks /><SelectInstitutionScreen /></>;
+  return <SelectInstitutionScreen />;
 }
 
 function InstitutionRoute() {
@@ -65,8 +67,8 @@ function Gate() {
       return (
         <Routes>
           <Route path="/" element={<Root />} />
+          <Route path="/join" element={<JoinScreen />} />
           <Route path="/applications" element={<PlatformScreen />} />
-          <Route path="/support" element={<PlatformScreen support />} />
           <Route path="/institution" element={<Root />} />
           <Route path="/institution/:institutionId/*" element={<InstitutionRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />

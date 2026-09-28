@@ -13,6 +13,12 @@ export const institutions: InstitutionView[] = [
   { id: INST_MTUCI, display_name: 'Московский технический университет связи и информатики', locale: 'ru', default_locale: 'ru', status: 'active', profiles: ['teacher', 'admin'] },
 ];
 
+/** Вуз, в котором пользователь ещё не состоит, — для формы заявки. */
+export const extraInstitution: InstitutionView = {
+  id: '5c3d1e2f-7a8b-4c9d-8e0f-1a2b3c4d5e33', display_name: 'Московский физико-технический институт', locale: 'ru',
+  default_locale: 'ru', status: 'active', profiles: [],
+};
+
 const T = {
   ivanov: 'a1e0c7b2-0000-4000-8000-000000000001',
   petrova: 'a1e0c7b2-0000-4000-8000-000000000002',
@@ -50,6 +56,10 @@ export const groups: Record<string, Group[]> = {
   [INST_MEPHI]: [
     { id: 'c3a2e9d4-0000-4000-8000-000000000021', name: 'Б21-161' },
     { id: 'c3a2e9d4-0000-4000-8000-000000000022', name: 'Б21-162' },
+  ],
+  '5c3d1e2f-7a8b-4c9d-8e0f-1a2b3c4d5e33': [
+    { id: 'c3a2e9d4-0000-4000-8000-000000000041', name: 'Б05-321' },
+    { id: 'c3a2e9d4-0000-4000-8000-000000000042', name: 'Б05-322' },
   ],
   [INST_MTUCI]: [
     { id: 'c3a2e9d4-0000-4000-8000-000000000031', name: 'БИБ2301' },

@@ -1,28 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useBackend, useSession } from '../state/session';
 import { createPlatform } from './platform';
 import styles from './platform.css?inline';
 import ui from './platform.module.css';
 
-export function PlatformLinks() {
-  const backend = useBackend();
-  const [staff, setStaff] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    backend.coreCall?.<{roles: string[]}>('/api/v1/platform/me').then(r => {
-      if (alive) setStaff(r.roles.includes('platform_support'));
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, [backend]);
-  if (!backend.coreCall) return null;
-  return <nav className={ui.links} aria-label="Платформа">
-    <Link to="/applications">Подключить вуз</Link>
-    {staff && <Link to="/support">Поддержка платформы</Link>}
-  </nav>;
-}
-
-export function PlatformScreen({support = false}: {support?: boolean}) {
+/** Заявка на подключение нового вуза. Рассматривает её оператор платформы в операторской панели. */
+export function PlatformScreen() {
   const backend = useBackend();
   const { user } = useSession();
   const ref = useRef<HTMLDivElement>(null);
@@ -42,16 +26,11 @@ export function PlatformScreen({support = false}: {support?: boolean}) {
       showError: (e: Error) => { error.textContent = e.message; },
       clearError: () => { error.textContent = ''; }, onChanged: () => {},
     });
-    (async () => {
-      if (support) {
-        if (!await ui.detect()) throw new Error('Для этого раздела нужны права поддержки платформы.');
-        await ui.showSupport();
-      } else await ui.showApplications();
-    })().catch(e => { error.textContent = e.message; });
+    ui.showApplications().catch((e: Error) => { error.textContent = e.message; });
     return () => { ui.cancel(); shadow.replaceChildren(); };
-  }, [backend, support]);
+  }, [backend]);
   return <main className={ui.page}>
-    <Link to="/">← К вузам</Link><PlatformLinks />
+    <Link to="/join">← К регистрации</Link>
     <p>ID пользователя: {user?.id}</p><div ref={ref} />
   </main>;
 }

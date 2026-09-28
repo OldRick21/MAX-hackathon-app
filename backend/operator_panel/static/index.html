@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Пульт оператора</title>
+  <link rel="stylesheet" href="/static/operator.css">
+  <script src="/static/operator.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand"><span class="logo">В</span><div><strong>Вузы России</strong><small>Пульт оператора платформы</small></div></div>
+      <label class="field"><span>Пароль оператора</span><input id="password" type="password" autocomplete="current-password" required autofocus></label>
+      <p id="login-error" class="error" role="alert"></p>
+      <button class="primary block" type="submit">Войти</button>
+      <p class="muted small">Пароль задаётся переменной OPERATOR_PASSWORD в .env на сервере.</p>
+    </form>
+  </div>
+
+  <div id="app" class="shell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">В</span><div><strong>Вузы России</strong><small>Пульт оператора</small></div></div>
+      <nav id="nav" class="nav" aria-label="Разделы"></nav>
+      <button id="logout" class="quiet block" type="button">Выйти</button>
+    </aside>
+    <main class="main">
+      <div id="notice" class="notice" role="alert" hidden></div>
+      <section id="view" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <dialog id="dialog">
+    <form method="dialog" class="dialog">
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-body" class="stack"></div>
+      <div class="actions end"><button id="dialog-cancel" value="cancel" class="quiet">Отмена</button><button id="dialog-ok" value="ok" class="primary">OK</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

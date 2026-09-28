@@ -9,7 +9,7 @@
 
 import type { Backend, CourseworkApi, ProfilesApi, ScheduleApi } from '../backend';
 import { ApiError } from '../http';
-import type { Profile, ProfileCard, ScheduleEvent, ServiceView, Submission } from '../types';
+import type { JoinRequest, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission } from '../types';
 import { now, setClock } from '../../utils/time';
 import avatar from './assets/demo-avatar.webp';
 import * as D from './data';
@@ -38,7 +38,12 @@ export function createMockBackend(): Backend {
   const submissions = D.buildSubmissions();
   const cards = clone(D.cards);
 
-  const insts = scenario === 'none' ? [] : scenario === 'single' ? D.institutions.slice(0, 1) : D.institutions;
+  const insts = scenario === 'none' ? [] : scenario === 'single' ? D.institutions.slice(0, 1) : [...D.institutions];
+  const joinRequests: JoinRequest[] = [];
+  const joinOptions = () => [...D.institutions, D.extraInstitution].map(i => ({
+    id: i.id, display_name: i.display_name, groups: clone(D.groups[i.id] ?? []),
+    profiles: insts.find(x => x.id === i.id)?.profiles ?? [],
+  }));
 
   const has = (s: ServiceView, p: string) => s.permissions.includes(p);
 
@@ -237,6 +242,33 @@ export function createMockBackend(): Backend {
       return { id: D.ME, max_user_id: '100200300', created_at: '2026-09-01T09:00:00Z' };
     },
     async listInstitutions() { await wait(); return clone(insts); },
+    async listJoinOptions() { await wait(); return joinOptions(); },
+    async listJoinRequests() { await wait(); return clone(joinRequests); },
+    async submitJoinRequests(fullName, items) {
+      await wait();
+      if (!fullName.trim()) throw new ApiError('Укажите имя.', 422);
+      const created = items.map(item => {
+        const opt = joinOptions().find(o => o.id === item.institution_id);
+        if (!opt) throw new ApiError('Вуз не найден.', 404);
+        if (joinRequests.some(r => r.institution_id === opt.id && r.status === 'pending')) throw new ApiError(`Заявка в вуз «${opt.display_name}» уже ждёт решения.`, 409);
+        const group = opt.groups.find(g => g.id === item.group_id);
+        if (item.profile === 'student' && !group) throw new ApiError('Выберите группу из списка.', 422);
+        return {
+          id: crypto.randomUUID(), institution_id: opt.id, institution_name: opt.display_name, user_id: D.ME,
+          full_name: fullName.trim(), profile: item.profile, group_id: group?.id ?? null, group_name: group?.name ?? null,
+          status: 'pending' as const, decision_reason: null, created_at: new Date().toISOString(), reviewed_at: null,
+        };
+      });
+      joinRequests.unshift(...created);
+      return clone(created);
+    },
+    async withdrawJoinRequest(id) {
+      await wait();
+      const r = joinRequests.find(x => x.id === id);
+      if (!r || r.status !== 'pending') throw new ApiError('Заявка уже рассмотрена.', 409);
+      r.status = 'withdrawn';
+      return clone(r);
+    },
     async getInstitution(id) {
       await wait(150);
       const i = insts.find(x => x.id === id);

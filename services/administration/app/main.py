@@ -199,6 +199,9 @@ OPERATIONS = [
     ("DELETE", "/members/{user_id}", "members.manage", True, False, False),
     ("PUT", "/members/{user_id}/profiles", "members.manage", True, False, True),
     ("PUT", "/members/{user_id}/group", "groups.manage", False, False, True),
+    ("GET", "/join-requests", "members.read", False, False, False),
+    ("POST", "/join-requests/{request_id}/approve", "members.manage", False, False, False),
+    ("POST", "/join-requests/{request_id}/reject", "members.manage", False, False, True),
     ("GET", "/groups", "members.read", False, False, False),
     ("POST", "/groups", "groups.manage", False, False, True),
     ("GET", "/groups/{group_id}", "members.read", False, False, False),
@@ -225,7 +228,7 @@ OPERATIONS = [
 ]
 
 PARAM_RULES = {
-    "user_id": UUID_RE, "service_id": UUID_RE, "credential_id": UUID_RE, "group_id": UUID_RE, "role_code": CODE_RE,
+    "user_id": UUID_RE, "service_id": UUID_RE, "request_id": UUID_RE, "credential_id": UUID_RE, "group_id": UUID_RE, "role_code": CODE_RE,
     "profile": re.compile(r"^(admin|teacher|student)$"),
 }
 
@@ -262,7 +265,7 @@ def forward(request: Request, method: str, suffix: str, permission: Optional[str
     if permission and permission not in ctx.permissions:
         # Ранний понятный отказ; ядро всё равно проверит права заново.
         raise FacadeError(403, "FORBIDDEN", f"Нужно разрешение {permission}")
-    query = {k: v for k, v in request.query_params.items() if k in ("limit", "cursor")}
+    query = {k: v for k, v in request.query_params.items() if k in ("limit", "cursor", "status")}
     upstream = core().private(ctx.binding, method, suffix, ctx.token, body=body, query=query, if_match=if_match,
                               idempotency_key=idem, facade_request_id=ctx.request_id)
     headers = {}

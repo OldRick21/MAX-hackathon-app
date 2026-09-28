@@ -206,8 +206,11 @@ def list_members(db: Session, ctx: ActorContext, limit, cursor) -> Result:
     ctx.require("members.read")
     query = db.query(Membership).filter(Membership.institution_id == ctx.institution_id)
     groups = member_group_map(db, ctx.institution_id)
+    from services.join_requests import member_names
+    names = member_names(db, ctx.institution_id)
     return _page(ctx, "members", query, Membership.user_id, lambda m: m.user_id,
-                 lambda m: {**member_view(m), "group_id": groups.get(m.user_id)}, limit, cursor)
+                 lambda m: {**member_view(m), "group_id": groups.get(m.user_id), "full_name": names.get(m.user_id)},
+                 limit, cursor)
 
 
 def get_member(db: Session, ctx: ActorContext, user_id: str) -> Result:

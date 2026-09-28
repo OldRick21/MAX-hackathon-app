@@ -1,9 +1,7 @@
 """Команды оператора платформы для первоначальной настройки.
 
-Повседневные операции (заявки вузов, участники, роли, сервисы) выполняются в
-интерфейсе. Здесь только то, что по определению нельзя сделать из интерфейса:
-назначить первого сотрудника поддержки и восстановить владельца, если доступа
-к поддержке ещё нет.
+Всё это (и больше) делается в операторской веб-панели (operator_panel, порт 8445).
+Команды остаются для автоматизации и аварийного доступа без браузера.
 
     python manage.py grant-platform-role USER_UUID
     python manage.py revoke-platform-role USER_UUID
@@ -21,7 +19,7 @@ import sys
 from uuid import UUID
 
 from database.create_tables import create_tables, session_local
-from database.tables import Institution, PlatformRole, PlatformStaff, ServiceInstance, User
+from database.tables import Institution, User
 from platform_core import registry
 
 
@@ -33,30 +31,24 @@ def _uuid(value: str) -> str:
 
 
 def grant(user_id: str) -> None:
+    from platform_core.errors import DomainError
+    from services.platform_ops import grant_staff
     with session_local() as db:
-        if not db.get(User, user_id):
+        try:
+            granted = grant_staff(db, user_id, "operator-cli")
+        except DomainError:
             raise SystemExit("Пользователь не найден. Он должен войти через MAX; изменений нет.")
-        if db.get(PlatformStaff, user_id):
-            print("Пользователь уже в поддержке платформы.")
-            return
-        db.add(PlatformStaff(user_id=user_id, role=PlatformRole.SUPPORT.value, granted_by="operator-cli"))
-        registry.audit(db, scope="platform", action="staff.grant", actor_user_id=None, actor_kind="operator",
-                       target_type="user", target_id=user_id, details={"role": PlatformRole.SUPPORT.value})
         db.commit()
-    print("Права поддержки платформы выданы. Пользователю нужно заново открыть приложение.")
+    print("Права поддержки платформы выданы. Пользователю нужно заново открыть приложение." if granted
+          else "Пользователь уже в поддержке платформы.")
 
 
 def revoke(user_id: str) -> None:
+    from services.platform_ops import revoke_staff
     with session_local() as db:
-        staff = db.get(PlatformStaff, user_id)
-        if not staff:
-            print("Пользователь не в поддержке платформы.")
-            return
-        db.delete(staff)
-        registry.audit(db, scope="platform", action="staff.revoke", actor_user_id=None, actor_kind="operator",
-                       target_type="user", target_id=user_id)
+        revoked = revoke_staff(db, user_id)
         db.commit()
-    print("Права поддержки платформы отозваны.")
+    print("Права поддержки платформы отозваны." if revoked else "Пользователь не в поддержке платформы.")
 
 
 def assign_owner(institution_id: str, user_id: str) -> None:
@@ -74,48 +66,21 @@ def assign_owner(institution_id: str, user_id: str) -> None:
     print("Владелец назначен: профиль admin и роль owner в сервисе администрирования.")
 
 
-CLOUD_INSTALLS = {
-    "user-profile": ("Сервис «Люди»", "Роль «Редактор анкет» (profile_editor) назначает владелец вуза в админке."),
-    "schedule": ("Сервис расписания",
-                 "Преподаватели задают свои занятия без отдельной роли. Роль «Редактор расписания» "
-                 "(schedule_editor: всё расписание) назначает владелец вуза в админке. Группы — в «Администрирование» → «Группы»."),
-}
-
-
 def install_cloud(institution_id: str, service_type: str) -> None:
     """Ставит облачный сервис вузу и приводит его настройки к текущим адресам.
 
-    Владелец вуза может сделать то же в админке. Команда нужна, когда сервис
-    подключают до появления владельца или когда после переезда platform-адресов
-    нужно починить существующий экземпляр. Повторный запуск безопасен.
+    Владелец вуза может сделать то же в админке, оператор — в операторской панели.
+    Повторный запуск безопасен.
     """
     from platform_core.errors import DomainError
+    from services.platform_ops import CLOUD_INSTALLS, install_cloud_service
 
     title, hint = CLOUD_INSTALLS[service_type]
     with session_local() as db:
         try:
-            registry.lock_institution(db, institution_id)
-        except DomainError:
-            raise SystemExit("Вуз не найден; изменений нет.")
-        service = db.query(ServiceInstance).filter_by(
-            institution_id=institution_id, service_type=service_type).first()
-        created = service is None
-        if created:
-            # create_cloud_instance уже добавила роли и binding; flush делает их
-            # видимыми для повторных ensure_* ниже, иначе появится второй binding.
-            service = registry.create_cloud_instance(db, institution_id, service_type)
-            db.flush()
-        elif service.deployment != "cloud":
-            raise SystemExit("Существующий экземпляр не облачный; изменений нет.")
-        # Адреса, манифест и профили задаёт платформа, а не администратор вуза.
-        registry.sync_cloud_instance(db, service)
-        service.enabled = True
-        binding = registry.ensure_cloud_binding(db, service)
-        registry.audit(db, scope="institution", action="service.install" if created else "service.update",
-                       actor_user_id=None, actor_kind="operator", institution_id=institution_id,
-                       target_type="service", target_id=service.id,
-                       details={"service_type": service_type, "deployment": "cloud",
-                                "api_base_url": service.api_base_url, "client_base_url": service.client_base_url})
+            service, created, binding = install_cloud_service(db, institution_id, service_type)
+        except DomainError as error:
+            raise SystemExit(f"{error.message}; изменений нет.")
         db.commit()
         service_id = service.id
     print(f"{title} {'установлен' if created else 'обновлён'}: {service_id}")

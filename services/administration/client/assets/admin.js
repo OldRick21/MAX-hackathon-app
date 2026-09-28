@@ -19,6 +19,8 @@
   const ACTIONS = {
     'institution.update': 'Изменены настройки вуза', 'institution.provision': 'Вуз подключён платформой',
     'institution.status': 'Изменён статус вуза', 'group.create': 'Создана группа', 'group.rename': 'Группа переименована', 'group.delete': 'Группа удалена', 'group.members.replace': 'Изменён состав группы', 'member.group.set': 'Изменена группа студента', 'service.manifest.publish': 'Сервис опубликовал меню', 'institution.local_hosts': 'Изменены одобренные хосты',
+    'join_request.submit': 'Подана заявка на вступление', 'join_request.approve': 'Заявка на вступление одобрена',
+    'join_request.reject': 'Заявка на вступление отклонена',
     'owner.initial_assign': 'Назначен первый владелец', 'member.add': 'Добавлен участник',
     'member.remove': 'Удалён участник', 'member.profiles.replace': 'Изменены профили участника',
     'service.install': 'Установлен сервис', 'service.update': 'Изменён сервис', 'service.uninstall': 'Удалён сервис',
@@ -220,6 +222,7 @@
 
   const TABS = [
     { id: 'institution', label: 'Вуз', allowed: () => can('institution.read'), render: renderInstitution },
+    { id: 'requests', label: 'Заявки', allowed: () => can('members.read'), render: renderRequests },
     { id: 'members', label: 'Участники', allowed: () => can('members.read'), render: renderMembers },
     { id: 'groups', label: 'Группы', allowed: () => can('members.read'), render: renderGroups },
     { id: 'services', label: 'Сервисы', allowed: () => can('services.read'), render: renderServices },
@@ -251,6 +254,7 @@
     $('tabs').replaceChildren(...tabs.map(t => h('button', { type: 'button', class: 'tab', 'data-tab': t.id,
       onclick: () => openTab(t.id) }, t.label)));
     $('tabs').hidden = false;
+    refreshRequestBadge();
     await openTab(tabs.some(t => t.id === activeTab) ? activeTab : tabs[0].id);
   }
 
@@ -264,6 +268,19 @@
     catch (error) { $('view').replaceChildren(); showError(error); }
   }
   const reload = () => openTab(activeTab);
+
+  // Счётчик новых заявок на вкладке: заявки приходят, пока админка открыта.
+  let badgeTimer = null;
+  async function refreshRequestBadge() {
+    clearTimeout(badgeTimer);
+    if (!can('members.read') || session.ended) return;
+    try {
+      const { data } = await api('/join-requests?status=pending');
+      const tab = $('tabs').querySelector('[data-tab="requests"]');
+      if (tab) tab.textContent = data.items.length ? `Заявки (${data.items.length})` : 'Заявки';
+    } catch { /* счётчик необязателен */ }
+    badgeTimer = setTimeout(refreshRequestBadge, 30000);
+  }
 
   function checkboxGroup(name, options, selected = [], disabled = false) {
     return h('div', { class: 'checks' }, options.map(([value, label]) =>
@@ -341,7 +358,8 @@
       const me = m.user_id === session.userId;
       const profiles = checkboxGroup(`p-${m.user_id}`, profileOptions, m.profiles, !manage);
       row.append(h('div', { class: 'row-main' },
-        h('code', { title: m.user_id }, m.user_id), me ? h('span', { class: 'badge' }, 'вы') : null,
+        m.full_name ? h('strong', {}, m.full_name) : null,
+        h('code', { title: m.user_id }, m.full_name ? short(m.user_id) : m.user_id), me ? h('span', { class: 'badge' }, 'вы') : null,
         h('small', { class: 'muted' }, ` с ${fmtDate(m.created_at)}`)), profiles);
       if (m.profiles.includes('student')) {
         row.append(manageGroups
@@ -372,6 +390,44 @@
     parts.push(h('section', { class: 'card' }, h('h2', {}, `Участники (${members.length})`),
       rows.length ? rows : h('p', { class: 'muted' }, 'Участников пока нет.')));
     view.replaceChildren(...parts);
+  }
+
+  // ------------------------------------------------------------------
+  // Заявки на вступление: карточка с данными, которые ввёл пользователь
+  // ------------------------------------------------------------------
+  async function renderRequests(view) {
+    const { data } = await api('/join-requests');
+    const pending = data.items.filter(r => r.status === 'pending');
+    const done = data.items.filter(r => r.status !== 'pending').slice(0, 30);
+    const manage = can('members.manage');
+    const STATUS = { approved: ['одобрена', 'ok'], rejected: ['отклонена', ''], withdrawn: ['отозвана', ''] };
+    const card = (r) => h('div', { class: 'request' },
+      h('div', { class: 'row-main' }, h('strong', { class: 'request-name' }, r.full_name),
+        r.status !== 'pending' ? h('span', { class: `badge ${STATUS[r.status][1]}` }, STATUS[r.status][0]) : null),
+      h('dl', { class: 'meta' },
+        h('dt', {}, 'Профиль'), h('dd', {}, PROFILES[r.profile] || r.profile),
+        r.profile === 'student' ? [h('dt', {}, 'Группа'), h('dd', {}, r.group_name || '—')] : null,
+        h('dt', {}, 'ID'), h('dd', {}, h('code', {}, r.user_id)),
+        h('dt', {}, 'Подана'), h('dd', {}, fmtDate(r.created_at)),
+        r.decision_reason ? [h('dt', {}, 'Причина'), h('dd', {}, r.decision_reason)] : null),
+      r.status === 'pending' && manage ? h('div', { class: 'actions' },
+        h('button', { class: 'primary', onclick: () => guarded(async () => {
+          await api(`/join-requests/${r.id}/approve`, { method: 'POST' });
+          toast(`${r.full_name} добавлен(а) в вуз.`);
+        }, () => reload().then(refreshRequestBadge)) }, 'Одобрить'),
+        h('button', { class: 'danger', onclick: () => guarded(async () => {
+          const reason = h('input', { maxLength: 500, placeholder: 'Необязательно' });
+          if (!await confirmDialog('Отклонить заявку?', [h('p', {}, `${r.full_name} не получит доступ к вузу.`),
+            field('Причина (увидит пользователь)', reason)], 'Отклонить')) return;
+          await api(`/join-requests/${r.id}/reject`, { method: 'POST', body: reason.value.trim() ? { reason: reason.value.trim() } : {} });
+          toast('Заявка отклонена.');
+        }, () => reload().then(refreshRequestBadge)) }, 'Отклонить')) : null);
+    view.replaceChildren(
+      h('section', { class: 'card' }, h('h2', {}, `Новые заявки (${pending.length})`),
+        h('p', { class: 'muted' }, 'Пользователь сам выбрал вуз, профиль и группу из списка и указал имя. Одобрение добавляет его в вуз и в группу.'),
+        pending.length ? pending.map(card) : h('p', { class: 'muted' }, 'Новых заявок нет.'),
+        manage ? null : h('p', { class: 'hint' }, 'Для решения по заявкам нужна роль администратора участников.')),
+      done.length ? h('section', { class: 'card' }, h('h2', {}, 'Рассмотренные'), done.map(card)) : '');
   }
 
   // ------------------------------------------------------------------

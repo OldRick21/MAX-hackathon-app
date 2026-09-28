@@ -54,3 +54,6 @@ pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); border-radi
 dialog { border: 0; border-radius: 16px; padding: 0; width: min(560px, 94vw); background: var(--card); color: var(--text); }
 dialog::backdrop { background: rgb(0 0 0 / .4); }
 .dialog { padding: 18px; max-height: 86vh; overflow: auto; }
+.request { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; display: grid; gap: 8px; }
+.request-name { font-size: 1.1em; }
+.request .meta { margin: 0; }
