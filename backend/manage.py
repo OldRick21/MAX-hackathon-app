@@ -99,12 +99,8 @@ def install_people(institution_id: str) -> None:
         elif service.deployment != "cloud":
             raise SystemExit("Существующий экземпляр не облачный; изменений нет.")
         # Адреса, манифест и профили задаёт платформа, а не администратор вуза.
-        service.api_base_url = settings.USER_PROFILE_API_BASE_URL
-        service.client_base_url = settings.USER_PROFILE_CLIENT_BASE_URL
-        service.manifest = catalog.default_manifest("user-profile")
-        service.supported_profiles = list(catalog.service_type("user-profile")["supported_profiles"])
+        registry.sync_profile_instance(db, service)
         service.enabled = True
-        registry.create_initial_roles(db, service)
         binding = registry.ensure_cloud_binding(db, service)
         registry.audit(db, scope="institution", action="service.install" if created else "service.update",
                        actor_user_id=None, actor_kind="operator", institution_id=institution_id,

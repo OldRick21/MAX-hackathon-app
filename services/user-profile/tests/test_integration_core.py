@@ -184,6 +184,26 @@ class PeopleAgainstCore(unittest.TestCase):
         return ({'Authorization': 'Bearer ' + machine['access_token']},
                 {'X-Actor-Token': actor['Authorization'].removeprefix('Bearer ')})
 
+    def test_startup_repairs_stale_addresses(self):
+        # Экземпляр, созданный до настройки адресов, чинится при запуске ядра без install-people.
+        from platform_core import registry
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Старый вуз'}, 'ru')
+            service = registry.create_cloud_instance(db, inst.id, 'user-profile')
+            service.api_base_url = 'https://profiles.platform.example/api/v1'
+            service.client_base_url = 'https://profiles.platform.example'
+            service.enabled = False
+            db.commit()
+            service_id = service.id
+        with session_local() as db:
+            registry.ensure_platform_invariants(db)
+            db.commit()
+        with session_local() as db:
+            service = db.get(ServiceInstance, service_id)
+            self.assertEqual((service.api_base_url, service.client_base_url),
+                             ('https://shell.test/people/api/v1', 'https://shell.test'))
+            self.assertFalse(service.enabled)
+
 
 if __name__ == '__main__':
     unittest.main()

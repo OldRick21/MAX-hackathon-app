@@ -307,6 +307,23 @@ def sync_admin_instance(db: Session, service: ServiceInstance) -> None:
         db.delete(legacy)
 
 
+def sync_profile_instance(db: Session, service: ServiceInstance) -> None:
+    """Приводит облачный user-profile к конфигурации платформы.
+
+    Адреса, манифест и профили задаёт платформа: экземпляр, созданный до
+    настройки USER_PROFILE_*_BASE_URL или до переезда, иначе остаётся со
+    старыми адресами. Включение/отключение остаётся за администратором вуза.
+    """
+    api_url, client_url = settings.cloud_endpoints("user-profile")
+    if (service.api_base_url, service.client_base_url) != (api_url, client_url):
+        logger.info("user-profile %s: addresses %s -> %s", service.id, service.api_base_url, api_url)
+    service.api_base_url = api_url
+    service.client_base_url = client_url
+    service.manifest = catalog.default_manifest("user-profile")
+    service.supported_profiles = list(catalog.service_type("user-profile")["supported_profiles"])
+    create_initial_roles(db, service)
+
+
 def provision_institution(db: Session, titles: dict, default_locale: str, status: str = InstitutionStatus.ACTIVE.value) -> Institution:
     inst = Institution(id=generate_uuid(), titles=titles, default_locale=default_locale, status=status)
     db.add(inst)
@@ -337,6 +354,7 @@ def ensure_platform_invariants(db: Session) -> None:
 
     - у каждого вуза есть защищённый экземпляр administration;
     - его адреса, manifest и системные роли совпадают с каталогом;
+    - адреса и manifest облачных user-profile совпадают с настройками платформы;
     - у облачных экземпляров есть действующий binding (если задан ключ).
     """
     for inst in db.query(Institution).all():
@@ -345,6 +363,9 @@ def ensure_platform_invariants(db: Session) -> None:
             create_cloud_instance(db, inst.id, "administration")
         else:
             sync_admin_instance(db, admin)
+    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type == "user-profile",
+                                                    ServiceInstance.deployment == "cloud").all():
+        sync_profile_instance(db, service)
     db.flush()
     if not settings.CLOUD_BINDING_KEY:
         logger.warning("CLOUD_BINDING_KEY is not set: cloud services (administration) cannot authenticate to core")
