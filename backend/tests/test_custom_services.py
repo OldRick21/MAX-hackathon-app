@@ -84,7 +84,7 @@ class CustomServices(unittest.TestCase):
         self.assertEqual(created.status_code, 201, created.text)
         service = created.json()
         self.assertEqual((service['enabled'], service['manifest']['titles'], service['supported_profiles']),
-                         (False, {'ru': 'Библиотека'}, ['student', 'teacher']))
+                         (False, {'ru': 'Библиотека'}, ['student', 'teacher', 'admin']))  # admin — всегда
         dup = self.c.post(f'{base}/services', headers={**private, 'Idempotency-Key': str(uuid.uuid4())}, json=body)
         self.assertEqual(dup.status_code, 409)
         # Второй свой сервис с другим кодом — можно.
@@ -112,7 +112,7 @@ class CustomServices(unittest.TestCase):
         current = self.c.get(f'{own}/manifest', headers=svc)
         manifest = {'titles': {'ru': 'Библиотека'}, 'menus': [MENU]}
         self.assertEqual(self.c.put(f'{own}/manifest', headers=svc, json=manifest).status_code, 428)
-        wrong = {'titles': {'ru': 'Библиотека'}, 'menus': [{**MENU, 'profiles': ['admin']}]}
+        wrong = {'titles': {'ru': 'Библиотека'}, 'menus': [{**MENU, 'profiles': ['guest']}]}
         self.assertEqual(self.c.put(f'{own}/manifest', headers={**svc, 'If-Match': current.headers['etag']},
                                     json=wrong).status_code, 422)
         published = self.c.put(f'{own}/manifest', headers={**svc, 'If-Match': current.headers['etag']}, json=manifest)
@@ -130,6 +130,26 @@ class CustomServices(unittest.TestCase):
         self.assertEqual((card['service_type'], card['display_name'], [m['id'] for m in card['menus']]),
                          ('custom.library', 'Библиотека', ['books']))
 
+        # Администратор видит любой сервис вуза, даже без меню для admin и без ролей.
+        admin_items = self.c.get(f'/api/v1/institution/{inst}/service', params={'profile': 'admin'}, headers=owner).json()['items']
+        admin_card = next(x for x in admin_items if x['id'] == service['id'])
+        self.assertEqual(([m['id'] for m in admin_card['menus']], admin_card['permissions']), (['books'], []))
+        opened = self.c.post(f'/api/v1/institution/{inst}/service/{service["id"]}/session', json={'profile': 'admin'}, headers=owner)
+        self.assertEqual(opened.status_code, 201, opened.text)
+
+
+    def test_startup_gives_admins_every_service(self):
+        from platform_core import registry
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Старый вуз'}, 'ru')
+            old = ServiceInstance(id=str(uuid.uuid4()), institution_id=inst.id, service_type='custom.old', deployment='local',
+                                  enabled=True, protected=False, api_base_url='https://old.example.ru/api/v1',
+                                  client_base_url='https://old.example.ru', supported_profiles=['student'], manifest={})
+            db.add(old)
+            db.commit()
+            registry.ensure_platform_invariants(db)
+            db.commit()
+            self.assertEqual(db.get(ServiceInstance, old.id).supported_profiles, ['student', 'admin'])
 
 if __name__ == '__main__':
     unittest.main()

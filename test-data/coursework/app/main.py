@@ -45,7 +45,7 @@ MANIFEST = {
         {'id': 'coursework', 'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'}, 'entrypoint_path': '/coursework',
          'profiles': ['student', 'teacher'], 'required_permissions': [], 'order': 0},
         {'id': 'coursework_admin', 'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'}, 'entrypoint_path': '/coursework',
-         'profiles': ['admin'], 'required_permissions': [MANAGE], 'order': 0},
+         'profiles': ['admin'], 'required_permissions': [], 'order': 0},
     ],
 }
 ROLES = [{'code': 'coursework_manager', 'titles': {'ru': 'Менеджер курсовых', 'en': 'Coursework manager'},
@@ -184,6 +184,11 @@ def manages(ctx: sdk.Ctx) -> bool:
     return ctx.profile == 'admin' and MANAGE in ctx.permissions
 
 
+def sees_all(ctx: sdk.Ctx) -> bool:
+    """Администратор видит все работы вуза и без роли; удаляет — только менеджер курсовых."""
+    return ctx.profile == 'admin'
+
+
 # --------------------------------------------------------------------------
 # Имена: сервис независим и не вызывает «Людей» — пользователи представляются здесь
 # --------------------------------------------------------------------------
@@ -265,7 +270,7 @@ def load(db, ctx, submission_id):
 
 def visible_row(db, ctx, submission_id):
     row = load(db, ctx, submission_id)
-    if not row or not (manages(ctx) or (ctx.profile == 'student' and row['student_id'] == ctx.user_id)
+    if not row or not (sees_all(ctx) or (ctx.profile == 'student' and row['student_id'] == ctx.user_id)
                        or (ctx.profile == 'teacher' and row['teacher_id'] == ctx.user_id)):
         raise not_found()
     return row
@@ -406,13 +411,8 @@ def list_submissions(status: Optional[Literal['submitted', 'accepted', 'changes_
             raise Fail(400, 'INVALID_CURSOR', 'Недействительный курсор')
     sql = ['SELECT * FROM submissions WHERE institution_id=? AND service_id=? AND deleted=0']
     args = list(ctx.tenant)
-    if not manages(ctx):
-        if ctx.profile == 'student':
-            sql.append('AND student_id=?')
-        elif ctx.profile == 'teacher':
-            sql.append('AND teacher_id=?')
-        else:
-            raise Fail(403, 'FORBIDDEN', 'Нужна роль «Менеджер курсовых»')
+    if not sees_all(ctx):
+        sql.append('AND student_id=?' if ctx.profile == 'student' else 'AND teacher_id=?')
         args.append(ctx.user_id)
     if status:
         sql.append('AND status=?')

@@ -403,6 +403,11 @@ def ensure_platform_invariants(db: Session) -> None:
     for service in db.query(ServiceInstance).filter(ServiceInstance.service_type.in_(PLATFORM_SYNCED_TYPES),
                                                     ServiceInstance.deployment == "cloud").all():
         sync_cloud_instance(db, service)
+    # Администраторы видят любой сервис вуза: профиль admin добавляется и ранее подключённым.
+    for service in db.query(ServiceInstance).all():
+        if "admin" not in (service.supported_profiles or []):
+            logger.info("%s %s: admin profile added", service.service_type, service.id)
+            service.supported_profiles = [*(service.supported_profiles or []), "admin"]
     db.flush()
     if not settings.CLOUD_BINDING_KEY:
         logger.warning("CLOUD_BINDING_KEY is not set: cloud services (administration) cannot authenticate to core")

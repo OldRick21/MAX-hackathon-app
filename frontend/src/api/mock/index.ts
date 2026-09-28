@@ -161,7 +161,7 @@ export function createMockBackend(): Backend {
     const visible = (x: Submission) =>
       s.profile === 'student' ? x.student_id === D.ME
         : s.profile === 'teacher' ? x.teacher_id === D.ME
-          : has(s, 'coursework.manage');
+          : true; // администратор видит все работы; удаляет — только с coursework.manage
     const find = (id: string) => {
       const x = list().find(y => y.id === id && visible(y));
       if (!x) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);

@@ -565,7 +565,7 @@
       body.append(card);
     }
     body.append(h('section', { class: 'card stack' }, h('h2', {}, 'Подключить свой сервис вуза'),
-      h('p', { class: 'muted small m0' }, 'Адреса должны быть на одобренном хосте (вкладка «Обзор»). После регистрации выдайте ключ — сервис сам опубликует меню и роли.'),
+      h('p', { class: 'muted small m0' }, 'Адреса должны быть на одобренном хосте (вкладка «Обзор»). Администраторам сервис доступен всегда. После регистрации выдайте ключ — сервис сам опубликует меню и роли.'),
       h('div', { class: 'row2' }, field('Название', name), field('Код', code, 'латиница, цифры, -')), profiles,
       h('div', { class: 'row2' }, field('Адрес API', apiUrl), field('Адрес клиента (origin)', client)),
       h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`${base}/services`, { method: 'POST', idem: true, body: {

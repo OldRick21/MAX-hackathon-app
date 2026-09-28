@@ -88,12 +88,16 @@ class Coursework(unittest.TestCase):
         self.assertEqual(work['file']['original_name'], 'работа.pdf')
         path = f'/api/v1/coursework/submissions/{work["id"]}'
 
-        # Видимость: автор, назначенный преподаватель и менеджер; чужим — 404.
+        # Видимость: автор, назначенный преподаватель и любой администратор; чужим — 404.
         self.assertEqual(self.c.get(path, headers=st2).status_code, 404)
         self.assertEqual(self.c.get(path, headers=t2).status_code, 404)
         self.assertEqual(self.c.get(path, headers=t1).status_code, 200)
         self.assertEqual(self.c.get(path, headers=manager).status_code, 200)
-        self.assertEqual(self.c.get('/api/v1/coursework/submissions', headers=plain_admin).status_code, 403)
+        # Администратор без роли видит все работы, но не удаляет — это право менеджера курсовых.
+        self.assertEqual(self.c.get(path, headers=plain_admin).status_code, 200)
+        self.assertEqual(len(self.c.get('/api/v1/coursework/submissions', headers=plain_admin).json()['items']), 1)
+        self.assertEqual(self.c.delete(path, headers={**plain_admin, 'If-Match': self.c.get(path, headers=plain_admin).headers['etag']})
+                         .status_code, 403)
         self.assertEqual(len(self.c.get('/api/v1/coursework/submissions', headers=t1).json()['items']), 1)
         self.assertEqual(self.c.get('/api/v1/coursework/submissions', headers=t2).json()['items'], [])
 

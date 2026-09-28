@@ -531,6 +531,9 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
               {"service_type", "deployment", "api_base_url", "client_base_url", "titles", "supported_profiles"})
         titles = catalog.check_localized(payload["titles"], "titles")
         profiles = catalog.check_profiles(payload["supported_profiles"], "supported_profiles")
+        # Администраторы видят любой сервис вуза: профиль admin входит всегда.
+        if "admin" not in profiles:
+            profiles = [*profiles, "admin"]
         api_url = catalog.check_api_url(payload["api_base_url"], approved)
         client_url = catalog.check_origin(payload["client_base_url"], approved)
     elif deployment == "local":

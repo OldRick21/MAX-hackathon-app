@@ -19,21 +19,26 @@ def service_card(db: Session, service: ServiceInstance, user_id: str, profile: s
 
     Меню с required_permissions показывается, только если у профиля есть все права: иначе
     shell открывал бы раздел, в котором сервис ответит 403, и не видел бы прав на запись.
+    Исключение — администратор: он видит любой сервис вуза по умолчанию. Ему меню показываются
+    без учёта прав (что можно — решает сам сервис), а если меню для admin в манифесте нет,
+    показываются меню других профилей.
     """
     roles = registry.assigned_roles(db, service.id, user_id, profile)
     permissions = registry.permissions_for(db, service.id, roles)
     manifest = service.manifest or {}
-    menus = []
-    for m in sorted(manifest.get("menus", []), key=lambda m: (m.get("order", 0), m.get("id", ""))):
-        if (profile in [p.lower() for p in m.get("profiles", [])]
-                and set(m.get("required_permissions") or []) <= set(permissions)):
-            menus.append({
-                "id": m["id"],
-                "display_name": m.get("titles", {}).get("ru", m["id"]),
-                "locale": "ru",
-                "entrypoint_path": m.get("entrypoint_path", "/"),
-                "order": m.get("order", 0)
-            })
+    ordered = sorted(manifest.get("menus", []), key=lambda m: (m.get("order", 0), m.get("id", "")))
+    if profile == "admin":
+        chosen = [m for m in ordered if "admin" in [p.lower() for p in m.get("profiles", [])]] or ordered
+    else:
+        chosen = [m for m in ordered if profile in [p.lower() for p in m.get("profiles", [])]
+                  and set(m.get("required_permissions") or []) <= set(permissions)]
+    menus = [{
+        "id": m["id"],
+        "display_name": m.get("titles", {}).get("ru", m["id"]),
+        "locale": "ru",
+        "entrypoint_path": m.get("entrypoint_path", "/"),
+        "order": m.get("order", 0)
+    } for m in chosen]
     return {
         "id": service.id,
         "institution_id": service.institution_id,

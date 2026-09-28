@@ -66,7 +66,7 @@
     const who = id => people[id] || `без имени · ${id.slice(0, 8)}`;
     const parts = [];
     if (me.profile === 'student') parts.push(await uploadForm());
-    const list = h('section', { class: 'card' }, h('h2', {}, me.profile === 'teacher' ? 'Работы на проверку' : me.manages ? 'Все работы вуза' : 'Мои работы'));
+    const list = h('section', { class: 'card' }, h('h2', {}, me.profile === 'teacher' ? 'Работы на проверку' : me.profile === 'admin' ? 'Все работы вуза' : 'Мои работы'));
     if (!data.items.length) list.append(h('p', { class: 'muted' }, 'Работ пока нет.'));
     for (const w of data.items) list.append(workRow(w, who));
     parts.push(list);
@@ -85,7 +85,7 @@
     if (me.manages) actions.append(h('button', { class: 'danger', onclick: () => guarded(() => removeWork(w)) }, 'Удалить'));
     return h('div', { class: 'row' },
       h('div', { class: 'row-main' }, h('strong', {}, w.title), h('span', { class: `badge ${tone}` }, label), h('span', { class: 'badge' }, `версия ${w.version}`)),
-      h('small', { class: 'muted' }, me.profile === 'student' ? `Проверяет: ${who(w.teacher_id)}` : `Автор: ${who(w.student_id)}` + (me.manages ? ` · проверяет: ${who(w.teacher_id)}` : '')),
+      h('small', { class: 'muted' }, me.profile === 'student' ? `Проверяет: ${who(w.teacher_id)}` : `Автор: ${who(w.student_id)}` + (me.profile === 'admin' ? ` · проверяет: ${who(w.teacher_id)}` : '')),
       w.review ? h('small', {}, `Отзыв: ${w.review.comment || (w.review.decision === 'accepted' ? 'принята' : 'без комментария')}`) : null,
       actions);
   }
