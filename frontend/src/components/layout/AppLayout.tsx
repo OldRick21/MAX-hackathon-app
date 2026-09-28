@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import logo from '../../assets/logo-buildings.png';
 import { useInstitution } from '../../state/institution';
 import { Wordmark } from '../icons/figma';
@@ -46,6 +46,7 @@ function BottomNavigation({ items }: { items: NavItem[] }) {
 
 export function AppLayout() {
   const { institution, catalog } = useInstitution();
+  const location = useLocation();
   const base = `/institution/${institution.id}`;
   const items = buildNav(base, catalog.status === 'ready' ? catalog.value : undefined);
   return (
@@ -63,7 +64,8 @@ export function AppLayout() {
           <div className={s.accountSlot}><AccountSwitcher /></div>
         </header>
         <div className={s.content}>
-          <Outlet />
+          {/* Ключ по адресу: при переходе экран появляется заново с короткой анимацией. */}
+          <div key={location.pathname} className="screen-in"><Outlet /></div>
         </div>
       </main>
       <BottomNavigation items={bottomNav(items)} />

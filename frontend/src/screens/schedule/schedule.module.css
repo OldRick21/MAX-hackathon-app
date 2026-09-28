@@ -17,8 +17,8 @@
   background: var(--surface); border: 1px solid var(--line); border-radius: 2.4rem;
   position: relative;
 }
-.card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 1.2rem 3.2rem rgba(109, 74, 255, .12); }
-.card.cancelled { background: #FAFAFC; border-style: dashed; }
+.card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-accent); }
+.card.cancelled { background: var(--surface-muted); border-style: dashed; }
 .times { display: grid; gap: .4rem; font-variant-numeric: tabular-nums; }
 .start { font-size: 2.8rem; font-weight: 700; line-height: 1.1; }
 .end { font-size: 2rem; color: var(--text-2); }

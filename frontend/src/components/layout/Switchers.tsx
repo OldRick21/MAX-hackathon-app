@@ -3,8 +3,9 @@ import type { Profile } from '../../api/types';
 import { PROFILE_LABEL, rememberProfile, useInstitution } from '../../state/institution';
 import { useSession } from '../../state/session';
 import { IconChevron } from '../icons/figma';
-import { Dropdown } from '../ui';
+import { Dropdown, type DropdownItem } from '../ui';
 import s from './layout.module.css';
+import { nextTheme, setTheme, THEME_LABEL, useTheme } from '../../state/theme';
 
 const cx = (...c: (string | false | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -58,7 +59,8 @@ export function AccountSwitcher() {
   const { institutions } = useSession();
   const { institution, profile, setProfile } = useInstitution();
   const navigate = useNavigate();
-  const items = institutions.flatMap(i => (i.status === 'active' ? i.profiles : []).map(p => ({
+  const theme = useTheme();
+  const items: DropdownItem[] = institutions.flatMap(i => (i.status === 'active' ? i.profiles : []).map(p => ({
     key: `${i.id}:${p}`,
     label: <span className={s.accountItem}><span>{shortInstitutionName(i.display_name)}</span><small>{PROFILE_LABEL[p]}</small></span>,
     checked: i.id === institution.id && p === profile,
@@ -68,7 +70,9 @@ export function AccountSwitcher() {
       navigate(`/institution/${i.id}`);
     },
   })));
-  items.push({ key: 'join', label: <span className={s.accountJoin}>+ Вступить в другой вуз</span>, checked: false, onSelect: () => navigate('/join') });
+  items.push({ key: 'join', label: <span className={s.accountJoin}>+ Вступить в другой вуз</span>, checked: false, divider: true, onSelect: () => navigate('/join') });
+  items.push({ key: 'theme', label: <span className={s.accountTheme}>Оформление: {THEME_LABEL[theme]}</span>, checked: false, keepOpen: true, divider: true,
+    onSelect: () => setTheme(nextTheme(theme)) });
   return (
     <Dropdown
       label="Вуз и профиль"

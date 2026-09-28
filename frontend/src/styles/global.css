@@ -21,6 +21,35 @@
   --warning: #B54708;
   --warning-soft: rgba(247, 144, 9, 0.14);
 
+  /* Производные цвета: всё, что раньше было зашито в модулях. Тёмная тема переопределяет их ниже. */
+  --accent-hover: #3D2CC9;      /* фон основной кнопки при наведении */
+  --on-accent: #FFFFFF;         /* текст на акцентном фоне */
+  --inverse-text: #FFFFFF;      /* текст на фоне цвета --text (выбранная вкладка) */
+  --success-text: #13744B;
+  --info-text: #0B5563;
+  --chip: #EEF0F5;
+  --placeholder: #98A2B3;
+  --skeleton-a: #ECEEF4;
+  --skeleton-b: #F4F5F9;
+  --surface-muted: #FAFAFC;     /* отменённое занятие */
+  --surface-hover: #FAFAFF;
+  --accent-tint: #F7F5FF;       /* выбранная зона загрузки/вариант */
+  --dashed: rgba(102, 112, 133, .6);
+  --glass: rgba(255, 255, 255, .5);
+  --glass-strong: rgba(255, 255, 255, .7);
+  --bg-glass: rgba(246, 247, 251, .88);
+  --glow: 109, 74, 255;         /* RGB акцентного свечения фона */
+  --glow-strength: 1;
+  --scrim: rgba(17, 24, 39, .45);
+  --toast-bg: #111827;
+  --toast-text: #FFFFFF;
+  --shadow-menu: 0 1.6rem 4rem rgba(17, 24, 39, .14);
+  --shadow-modal: 0 2rem 6rem rgba(17, 24, 39, .2);
+  --shadow-toast: 0 1rem 3rem rgba(17, 24, 39, .25);
+  --shadow-accent: 0 1.2rem 3.2rem rgba(109, 74, 255, .12);
+  --shadow-soft: 0 .8rem 2.4rem rgba(109, 74, 255, .10);
+  color-scheme: light;
+
   --font: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-accent: 'Unbounded', 'Manrope', system-ui, sans-serif;
 
@@ -47,6 +76,98 @@
   color-scheme: light;
 }
 
+/* Тёмная тема: по системе, если пользователь не выбрал светлую, или явно выбранная. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0E1016;
+    --surface: #171A23;
+    --text: #E9EBF2;
+    --text-2: #9BA3B5;
+    --line: #3B4152;
+    --line-soft: #262A36;
+    --accent: #8C70FF;
+    --accent-dark: #C3B4FF;
+    --accent-soft: rgba(140, 112, 255, .18);
+    --accent-2: #1C4650;
+    --success: #3CCB8C;
+    --success-soft: rgba(60, 203, 140, .16);
+    --error: #FF7A6E;
+    --error-soft: rgba(255, 122, 110, .15);
+    --warning: #FDB022;
+    --warning-soft: rgba(253, 176, 34, .15);
+    --accent-hover: #7657FF;
+    --on-accent: #FFFFFF;
+    --inverse-text: #0E1016;
+    --success-text: #7BE3B4;
+    --info-text: #BDEFF5;
+    --chip: #252A36;
+    --placeholder: #6B7385;
+    --skeleton-a: #1D212B;
+    --skeleton-b: #272C38;
+    --surface-muted: #13161E;
+    --surface-hover: #1C2030;
+    --accent-tint: rgba(140, 112, 255, .10);
+    --dashed: rgba(155, 163, 181, .45);
+    --glass: rgba(255, 255, 255, .06);
+    --glass-strong: rgba(23, 26, 35, .8);
+    --bg-glass: rgba(14, 16, 22, .85);
+    --glow-strength: .55;
+    --scrim: rgba(0, 0, 0, .6);
+    --toast-bg: #2A2F3D;
+    --toast-text: #F2F4F8;
+    --shadow-menu: 0 1.6rem 4rem rgba(0, 0, 0, .5);
+    --shadow-modal: 0 2rem 6rem rgba(0, 0, 0, .55);
+    --shadow-toast: 0 1rem 3rem rgba(0, 0, 0, .5);
+    --shadow-accent: 0 1.2rem 3.2rem rgba(0, 0, 0, .35);
+    --shadow-soft: 0 .8rem 2.4rem rgba(0, 0, 0, .3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #0E1016;
+  --surface: #171A23;
+  --text: #E9EBF2;
+  --text-2: #9BA3B5;
+  --line: #3B4152;
+  --line-soft: #262A36;
+  --accent: #8C70FF;
+  --accent-dark: #C3B4FF;
+  --accent-soft: rgba(140, 112, 255, .18);
+  --accent-2: #1C4650;
+  --success: #3CCB8C;
+  --success-soft: rgba(60, 203, 140, .16);
+  --error: #FF7A6E;
+  --error-soft: rgba(255, 122, 110, .15);
+  --warning: #FDB022;
+  --warning-soft: rgba(253, 176, 34, .15);
+  --accent-hover: #7657FF;
+  --on-accent: #FFFFFF;
+  --inverse-text: #0E1016;
+  --success-text: #7BE3B4;
+  --info-text: #BDEFF5;
+  --chip: #252A36;
+  --placeholder: #6B7385;
+  --skeleton-a: #1D212B;
+  --skeleton-b: #272C38;
+  --surface-muted: #13161E;
+  --surface-hover: #1C2030;
+  --accent-tint: rgba(140, 112, 255, .10);
+  --dashed: rgba(155, 163, 181, .45);
+  --glass: rgba(255, 255, 255, .06);
+  --glass-strong: rgba(23, 26, 35, .8);
+  --bg-glass: rgba(14, 16, 22, .85);
+  --glow-strength: .55;
+  --scrim: rgba(0, 0, 0, .6);
+  --toast-bg: #2A2F3D;
+  --toast-text: #F2F4F8;
+  --shadow-menu: 0 1.6rem 4rem rgba(0, 0, 0, .5);
+  --shadow-modal: 0 2rem 6rem rgba(0, 0, 0, .55);
+  --shadow-toast: 0 1rem 3rem rgba(0, 0, 0, .5);
+  --shadow-accent: 0 1.2rem 3.2rem rgba(0, 0, 0, .35);
+  --shadow-soft: 0 .8rem 2.4rem rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
 html { font-size: clamp(7px, calc(100vw / 144), 10px); -webkit-text-size-adjust: 100%; }
 @media (max-width: 767px) {
   html { font-size: 10px; }
@@ -68,7 +189,12 @@ body {
   font-size: 1.6rem;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--dur-slow) var(--ease), color var(--dur-slow) var(--ease);
 }
+
+/* Появление экрана: короткий подъём с проявлением, без смещения раскладки. */
+@keyframes screen-in { from { opacity: 0; transform: translateY(.8rem); } }
+.screen-in { animation: screen-in var(--dur-slow) var(--ease-out) both; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 img { max-width: 100%; display: block; }

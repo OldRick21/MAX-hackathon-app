@@ -1,5 +1,7 @@
 // Первым: запоминаем данные запуска MAX из адреса до любых переходов.
 import './api/launch';
+// Тема — до отрисовки, чтобы не мигал светлый фон.
+import './state/theme';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';

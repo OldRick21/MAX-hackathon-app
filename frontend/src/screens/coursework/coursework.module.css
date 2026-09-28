@@ -6,10 +6,10 @@
 .drop {
   display: grid; justify-items: center; gap: 1.2rem; text-align: center;
   padding: 4.8rem 3.2rem; border-radius: var(--r-card);
-  border: 2px dashed rgba(102, 112, 133, .6); background: var(--surface);
-  transition: border-color .15s, background-color .15s;
+  border: 2px dashed var(--dashed); background: var(--surface);
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
-.drop.over { border-color: var(--accent); background: #F7F5FF; }
+.drop.over { border-color: var(--accent); background: var(--accent-tint); }
 .dropIcon { width: 7.2rem; height: 7.2rem; border-radius: 2rem; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-dark); }
 .dropIcon svg { width: 3.6rem; height: 3.6rem; }
 .dropTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.6rem; line-height: 1.25; }
@@ -22,7 +22,7 @@
 .fileName { font-size: 2.2rem; font-weight: 600; overflow-wrap: anywhere; }
 .fileSize { font-size: 1.9rem; color: var(--text-2); }
 .progress { height: .8rem; border-radius: 99rem; background: var(--accent-soft); overflow: hidden; }
-.progress > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width .2s; }
+.progress > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width var(--dur) var(--ease); }
 .progressText { font-size: 1.9rem; color: var(--text-2); }
 
 /* CourseworkCard */
@@ -44,7 +44,7 @@
 
 .decision { display: grid; gap: 1rem; }
 .radio { display: flex; align-items: center; gap: 1.2rem; padding: 1.6rem 2rem; border-radius: 1.6rem; border: 1px solid var(--line); font-size: 2.1rem; cursor: pointer; }
-.radio:has(input:checked) { border-color: var(--accent); background: #F7F5FF; }
+.radio:has(input:checked) { border-color: var(--accent); background: var(--accent-tint); }
 .radio input { width: 2.2rem; height: 2.2rem; accent-color: var(--accent); }
 
 .skeletonCard { height: 18rem; border-radius: 2.4rem; }

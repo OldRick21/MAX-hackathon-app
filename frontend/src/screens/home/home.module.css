@@ -9,9 +9,9 @@
   display: flex; align-items: center; gap: 3.5rem; margin-top: 5.2rem;
   max-width: 69.3rem; min-height: 26.9rem; padding: 3.9rem 3.2rem;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
-  color: inherit; text-decoration: none; transition: box-shadow .15s;
+  color: inherit; text-decoration: none; transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
-a.profileCard:hover { box-shadow: 0 1.2rem 3.2rem rgba(109, 74, 255, .12); }
+a.profileCard:hover { box-shadow: var(--shadow-accent); transform: translateY(-.3rem); }
 .photo { border-radius: 3rem; }
 .profileText { min-width: 0; display: grid; }
 .name { font-family: var(--font-accent); font-weight: 500; font-size: 2.8rem; line-height: 1.25; overflow-wrap: anywhere; }

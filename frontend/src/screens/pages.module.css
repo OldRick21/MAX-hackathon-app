@@ -21,7 +21,7 @@
   border-radius: 99rem; padding: 1rem 2.2rem; font-size: 2rem; font-weight: 500; line-height: 1.2;
 }
 .tab:hover { border-color: var(--text); }
-.tab[aria-pressed='true'] { background: var(--text); border-color: var(--text); color: #fff; }
+.tab[aria-pressed='true'] { background: var(--text); border-color: var(--text); color: var(--inverse-text); }
 
 .back {
   display: inline-flex; align-items: center; gap: .8rem; margin-bottom: 2.4rem;

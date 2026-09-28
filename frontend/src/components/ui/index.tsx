@@ -201,6 +201,10 @@ export interface DropdownItem {
   onSelect: () => void;
   checked?: boolean;
   danger?: boolean;
+  /** Не закрывать меню после выбора (переключатели вроде оформления). */
+  keepOpen?: boolean;
+  /** Линия-разделитель перед пунктом. */
+  divider?: boolean;
 }
 
 export function Dropdown({ trigger, items, align = 'start', label }: {
@@ -241,8 +245,8 @@ export function Dropdown({ trigger, items, align = 'start', label }: {
               type="button"
               role={hasChecks ? 'menuitemradio' : 'menuitem'}
               aria-checked={hasChecks ? !!item.checked : undefined}
-              className={cx(s.menuItem, item.danger && s.dangerItem)}
-              onClick={() => { setOpen(false); item.onSelect(); }}
+              className={cx(s.menuItem, item.danger && s.dangerItem, item.divider && s.menuDivider)}
+              onClick={() => { if (!item.keepOpen) setOpen(false); item.onSelect(); }}
             >
               <span>{item.label}</span>
               {item.checked && <IconCheck className={s.menuCheck} />}
