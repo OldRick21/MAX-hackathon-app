@@ -217,7 +217,7 @@ function NewSubmission({ api, profiles, meId, onCreated }: { api: CourseworkApi;
           ))}
         </Select>
       ) : (
-        <Input label="Идентификатор преподавателя" hint="Сервис анкет не подключён — узнайте идентификатор у преподавателя"
+        <Input label="Идентификатор преподавателя" hint="Сервис «Люди» не подключён — узнайте идентификатор у преподавателя"
           value={teacher} onChange={e => setTeacher(e.target.value.trim())} disabled={uploading} />
       )}
       {uploading && (

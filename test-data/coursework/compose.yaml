@@ -1,0 +1,34 @@
+# Курсовые — отдельный сервис вуза. Поднимается независимо от платформы:
+#   cd test-data/coursework && cp .env.example .env && nano .env && docker compose up -d --build
+# С платформой общается только по HTTPS через CORE_URL и ключ из админки.
+name: coursework
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      SERVICE_DATA: /data
+    volumes:
+      - coursework-data:/data
+
+  # HTTPS-вход на DNS-имени, одобренном поддержкой платформы. Сертификат — из CERT_DIR.
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${COURSEWORK_PORT:-9443}:443"
+    environment:
+      COURSEWORK_HOST: ${COURSEWORK_HOST:?Set COURSEWORK_HOST in .env}
+      COURSEWORK_CERT: ${COURSEWORK_CERT:-coursework}
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${CERT_DIR:-/var/lib/max-miniapp/letsencrypt}:/etc/letsencrypt:ro
+
+volumes:
+  coursework-data:

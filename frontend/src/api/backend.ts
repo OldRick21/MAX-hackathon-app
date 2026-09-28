@@ -14,14 +14,6 @@ export interface ScheduleApi {
   updateEvent(id: string, input: EventInput, etag: string): Promise<ScheduleEvent>;
   deleteEvent(id: string, etag: string): Promise<void>;
   listGroups(signal?: AbortSignal): Promise<Group[]>;
-  // Управление группами — admin с groups.manage.
-  getGroup(id: string): Promise<Versioned<Group>>;
-  createGroup(name: string): Promise<Group>;
-  renameGroup(id: string, name: string, etag: string): Promise<Versioned<Group>>;
-  deleteGroup(id: string, etag: string): Promise<void>;
-  /** Состав группы — UUID студентов; своя версия, отдельная от имени группы. */
-  getStudents(id: string, signal?: AbortSignal): Promise<Versioned<string[]>>;
-  setStudents(id: string, userIds: string[], etag: string): Promise<Versioned<string[]>>;
 }
 
 export interface ProfilesApi {
@@ -68,6 +60,8 @@ export interface Backend {
   getInstitution(id: string, signal?: AbortSignal): Promise<InstitutionView>;
   getProfiles(institutionId: string, signal?: AbortSignal): Promise<Profile[]>;
   listServices(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<ServiceView[]>;
+  /** Учебные группы из ядра: студенту — своя, преподавателю и админу — все с составом (user_ids). */
+  listGroups(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<(Group & { user_ids?: string[] })[]>;
 
   schedule(service: ServiceView): ScheduleApi;
   profiles(service: ServiceView): ProfilesApi;

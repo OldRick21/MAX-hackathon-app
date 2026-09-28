@@ -89,26 +89,6 @@ services:
       backend:
         condition: service_healthy
 
-  # Локальный сервис курсовых: по архитектуре его запускает вуз на своём сервере.
-  # Здесь он собран для демо на том же сервере и запускается только явно:
-  #   docker compose --profile coursework up -d --build coursework
-  # Настройки (COURSEWORK_*, CORE_URL) выдаёт админка на шаге «Ключ доступа».
-  coursework:
-    build: ./test-data/coursework
-    profiles: ["coursework"]
-    restart: unless-stopped
-    init: true
-    environment:
-      CORE_URL: ${CORE_URL:-http://backend:8000}
-      SHELL_ORIGIN: ${SHELL_ORIGIN}
-      COURSEWORK_CLIENT_ID: ${COURSEWORK_CLIENT_ID:-}
-      COURSEWORK_CLIENT_SECRET: ${COURSEWORK_CLIENT_SECRET:-}
-      COURSEWORK_API_BASE_URL: ${COURSEWORK_API_BASE_URL:-}
-      COURSEWORK_CLIENT_BASE_URL: ${COURSEWORK_CLIENT_BASE_URL:-}
-      COURSEWORK_DATA: /data
-    volumes:
-      - coursework-data:/data
-
   web:
     depends_on:
       backend:
@@ -150,7 +130,6 @@ services:
       retries: 5
 
 volumes:
-  coursework-data:
   schedule-data:
   profile-data:
   core-data:

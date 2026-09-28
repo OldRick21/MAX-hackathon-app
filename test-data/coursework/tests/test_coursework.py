@@ -1,4 +1,4 @@
-"""Сервис курсовых против заглушки ядра: права, состояния, версии, файлы, idempotency, очистка.
+"""Курсовые (свой сервис на SDK) против заглушки ядра: права, состояния, версии, файлы, idempotency, очистка.
 
     cd test-data/coursework && python -m unittest discover -s tests -t . -v
 """
@@ -12,14 +12,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 _tmp = tempfile.TemporaryDirectory()
-os.environ.update(COURSEWORK_DATA=_tmp.name, COURSEWORK_CLIENT_ID='cid', COURSEWORK_CLIENT_SECRET='s' * 48,
-                  COURSEWORK_API_BASE_URL='https://cw.university.ru/api/v1',
-                  COURSEWORK_CLIENT_BASE_URL='https://cw.university.ru', SHELL_ORIGIN='https://shell.test')
+os.environ.update(SERVICE_DATA=_tmp.name, CORE_URL='https://core.test', SERVICE_CLIENT_ID='cid',
+                  SERVICE_CLIENT_SECRET='s' * 48, SERVICE_API_BASE_URL='https://cw.university.ru/api/v1',
+                  SERVICE_CLIENT_BASE_URL='https://cw.university.ru', SHELL_ORIGIN='https://shell.test')
 import jwt  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import main as m  # noqa: E402
-from app.core_client import Binding  # noqa: E402
+from app import main as m, sdk  # noqa: E402
 
 INST = str(uuid.uuid4())
 ST1, ST2, T1, T2, ADMIN, DUAL = (str(uuid.UUID(int=n)) for n in range(1, 7))
@@ -37,13 +36,13 @@ class Coursework(unittest.TestCase):
         self.actors = {}
         # Свой экземпляр на каждый тест: база и том общие на модуль.
         self.service = str(uuid.uuid4())
-        binding = Binding(INST, self.service, 'https://cw.university.ru/api/v1', 'https://cw.university.ru')
+        binding = sdk.Binding(INST, self.service)
         patches = [
             patch.object(m.core, 'binding', return_value=binding),
             patch.object(m.core, 'introspect', side_effect=self.introspect),
             patch.object(m.core, 'profiles', side_effect=lambda uid: PROFILES.get(uid, [])),
             # Онбординг проверяется отдельно; здесь поток не должен ходить в сеть.
-            patch.object(m, 'onboard', lambda: None),
+            patch.object(sdk, 'onboard', lambda *a: None),
         ]
         for p in patches:
             p.start()
@@ -205,7 +204,7 @@ class Coursework(unittest.TestCase):
         foreign = self.as_(ST1, 'student', service=str(uuid.uuid4()))
         self.assertEqual(self.c.get('/api/v1/coursework/submissions', headers=foreign).status_code, 404)
         self.assertEqual(self.c.get('/api/v1/coursework/submissions').status_code, 401)
-        with patch.object(m.core, 'introspect', side_effect=m.CoreUnavailable('offline')):
+        with patch.object(m.core, 'introspect', side_effect=sdk.CoreUnavailable('offline')):
             self.assertEqual(self.c.get('/api/v1/coursework/submissions', headers=self.as_(ST1, 'student')).status_code, 503)
 
     def test_cors_for_shell(self):
@@ -216,6 +215,27 @@ class Coursework(unittest.TestCase):
         evil = self.c.options('/api/v1/coursework/submissions', headers={
             'Origin': 'https://evil.test', 'Access-Control-Request-Method': 'GET'})
         self.assertNotEqual(evil.headers.get('access-control-allow-origin'), 'https://evil.test')
+
+
+    def test_names_and_teacher_directory(self):
+        t1, st = self.as_(T1, 'teacher'), self.as_(ST1, 'student')
+        self.assertIsNone(self.c.get('/api/v1/coursework/me', headers=t1).json()['display_name'])
+        self.assertEqual(self.c.get('/api/v1/coursework/teachers', headers=st).json()['items'], [])
+        self.c.put('/api/v1/coursework/me', headers=t1, json={'display_name': ' Иванова Анна '})
+        self.c.put('/api/v1/coursework/me', headers=st, json={'display_name': 'Петров Пётр'})
+        # В справочнике проверяющих только преподаватели.
+        self.assertEqual(self.c.get('/api/v1/coursework/teachers', headers=st).json()['items'],
+                         [{'user_id': T1, 'display_name': 'Иванова Анна'}])
+        self.upload(st)
+        listed = self.c.get('/api/v1/coursework/submissions', headers=t1).json()
+        self.assertEqual(listed['people'], {T1: 'Иванова Анна', ST1: 'Петров Пётр'})
+        self.assertEqual(self.c.put('/api/v1/coursework/me', headers=st, json={'display_name': '  '}).status_code, 422)
+
+    def test_client_page(self):
+        page = self.c.get('/coursework')
+        self.assertIn('frame-ancestors https://shell.test', page.headers['content-security-policy'])
+        self.assertNotIn('__BOOT__', page.text)
+        self.assertEqual(self.c.get('/assets/app.js').status_code, 200)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="service-boot" content="__BOOT__">
+  <title>Курсовые работы</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <main>
+    <h1>Курсовые работы</h1>
+    <p id="status" class="muted">Подключаемся…</p>
+    <div id="root"></div>
+  </main>
+  <dialog id="dialog"><form method="dialog" class="dialog"><h2 id="dialog-title"></h2><div id="dialog-body"></div>
+    <div class="actions"><button value="cancel" id="dialog-cancel">Отмена</button><button value="ok" class="primary" id="dialog-ok">OK</button></div></form></dialog>
+  <script src="/assets/sdk-client.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

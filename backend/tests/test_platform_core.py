@@ -26,7 +26,7 @@ class CatalogTest(unittest.TestCase):
         roles = {r["code"]: set(r["permissions"]) for r in admin["initial_roles"]}
         self.assertEqual(roles["owner"], set(catalog.ADMIN_PERMISSIONS))
         self.assertNotIn("roles.manage", roles["technical_admin"])
-        self.assertEqual(roles["membership_admin"], {"institution.read", "members.read", "members.manage"})
+        self.assertEqual(roles["membership_admin"], {"institution.read", "members.read", "members.manage", "groups.manage"})
         self.assertEqual(catalog.default_manifest("administration")["menus"][0]["entrypoint_path"], "/admin")
 
     def test_urls(self):

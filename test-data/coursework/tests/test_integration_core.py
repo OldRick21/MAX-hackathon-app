@@ -1,4 +1,4 @@
-"""Подключение локального сервиса курсовых через администрирование против живого ядра.
+"""Подключение курсовых как своего сервиса (custom.coursework) против живого ядра.
 
 Регистрация → ключ → сервис сам создаёт роль и публикует меню → включение → загрузка работы.
 
@@ -20,9 +20,9 @@ os.environ.update(
     JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='coursework-secret-' * 4, MAX_BOT_TOKEN='',
     ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1',
     CLOUD_BINDING_KEY='b' * 48, ADMINISTRATION_PROVISIONING_TOKEN='p' * 48, SERVICE_CONFIG_DIR='',
-    COURSEWORK_DATA=f'{_tmp.name}/coursework', COURSEWORK_CLIENT_ID='pending', COURSEWORK_CLIENT_SECRET='pending',
-    COURSEWORK_API_BASE_URL='https://coursework.university.ru/api/v1',
-    COURSEWORK_CLIENT_BASE_URL='https://coursework.university.ru', SHELL_ORIGIN='https://shell.test',
+    SERVICE_DATA=f'{_tmp.name}/coursework', CORE_URL='http://core.test', SERVICE_CLIENT_ID='pending',
+    SERVICE_CLIENT_SECRET='pending', SERVICE_API_BASE_URL='https://coursework.university.ru/api/v1',
+    SERVICE_CLIENT_BASE_URL='https://coursework.university.ru', SHELL_ORIGIN='https://shell.test',
 )
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -31,8 +31,7 @@ from database.create_tables import session_local  # noqa: E402
 from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
 from main import app as core_app  # noqa: E402
 
-from app import main as coursework  # noqa: E402
-from app.core_client import CoreClient  # noqa: E402
+from app import main as coursework, sdk  # noqa: E402
 
 PDF = b'%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\nstartxref\n9\n%%EOF\n'
 
@@ -102,7 +101,8 @@ class CourseworkAgainstCore(unittest.TestCase):
                    'X-Actor-Token': admin_core['Authorization'].removeprefix('Bearer ')}
         base = f'/api/v1/institution/{inst_id}/internal'
         created = self.core.post(f'{base}/services', headers={**private, 'Idempotency-Key': str(uuid.uuid4())},
-                                 json={'service_type': 'coursework', 'deployment': 'local',
+                                 json={'service_type': 'custom.coursework', 'deployment': 'local',
+                                       'titles': {'ru': 'Курсовые работы'}, 'supported_profiles': ['admin', 'teacher', 'student'],
                                        'api_base_url': 'https://coursework.university.ru/api/v1',
                                        'client_base_url': 'https://coursework.university.ru'})
         self.assertEqual(created.status_code, 201, created.text)
@@ -112,19 +112,22 @@ class CourseworkAgainstCore(unittest.TestCase):
         self.assertEqual(key.status_code, 201, key.text)
 
         # Вуз вписывает ключ в секреты сервиса; сервис сам создаёт роль и публикует меню.
-        coursework.core = CoreClient('http://core.test', key.json()['credential']['client_id'], key.json()['client_secret'],
-                                     'https://coursework.university.ru/api/v1', 'https://coursework.university.ru',
-                                     session=CoreTransport(self.core))
-        coursework.onboard()
-        self.assertEqual(coursework.onboarding['state'], 'ready')
+        settings = sdk.Settings('http://core.test', 'https://shell.test', key.json()['credential']['client_id'],
+                                key.json()['client_secret'], 'https://coursework.university.ru/api/v1',
+                                'https://coursework.university.ru')
+        # Маршруты уже связаны с клиентом ядра при импорте — перенастраиваем его, а не подменяем.
+        coursework.core.s = settings
+        coursework.core.http = CoreTransport(self.core)
+        coursework.core._token = coursework.core._binding = None
+        sdk.onboard(coursework.core, coursework.MANIFEST, coursework.ROLES, coursework.state)
+        self.assertEqual(coursework.state['onboarding'], 'ready')
         with session_local() as db:
             service = db.get(ServiceInstance, service_id)
             self.assertEqual([m['id'] for m in service.manifest['menus']], ['coursework', 'coursework_admin'])
         roles = self.core.get(f'{base}/services/{service_id}/roles', headers=private).json()['items']
         self.assertEqual([r['code'] for r in roles], ['coursework_manager'])
-        coursework.onboard()  # повторный запуск ничего не дублирует
-        blind = coursework.core._machine_request('PUT', f'/api/v1/internal/service/{service_id}/manifest',
-                                                 json=coursework.MANIFEST)
+        sdk.onboard(coursework.core, coursework.MANIFEST, coursework.ROLES, coursework.state)  # без дублей
+        blind = coursework.core.machine('PUT', f'/api/v1/internal/service/{service_id}/manifest', json=coursework.MANIFEST)
         self.assertEqual(blind.status_code, 428)  # CORE_API_SPEC §7: замена manifest только с If-Match
 
         # Пока сервис выключен, пользователи в него не попадают.

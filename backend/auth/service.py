@@ -301,4 +301,6 @@ class AuthService:
         return {'active': True, 'sub': claims['sub'], 'session_id': claims['sid'],
                 'parent_session_id': claims['parent_sid'], 'institution_id': claims['institution_id'],
                 'service_id': claims['service_id'], 'profile': claims['profile'], 'exp': claims['exp'],
-                'roles': roles, 'permissions': registry.permissions_for(db, claims['service_id'], roles)}
+                'roles': roles, 'permissions': registry.permissions_for(db, claims['service_id'], roles),
+                # Учебные группы пользователя в вузе: сервису не нужен отдельный запрос за своей группой.
+                'group_ids': registry.user_group_ids(db, claims['institution_id'], claims['sub'])}

@@ -23,6 +23,7 @@ ADMIN_PERMISSIONS = [
     "institution.update",
     "members.read",
     "members.manage",
+    "groups.manage",
     "services.read",
     "services.manage",
     "roles.manage",
@@ -47,7 +48,7 @@ ADMIN_SYSTEM_ROLES = [
         "code": "membership_admin",
         "titles": {"ru": "Администратор участников", "en": "Membership administrator"},
         "allowed_profiles": ["admin"],
-        "permissions": ["institution.read", "members.read", "members.manage"],
+        "permissions": ["institution.read", "members.read", "members.manage", "groups.manage"],
     },
 ]
 OWNER_ROLE = "owner"
@@ -73,7 +74,7 @@ SERVICE_TYPES: Dict[str, dict] = {
         "deployment": "cloud",
         "titles": {"ru": "Расписание", "en": "Schedule"},
         "supported_profiles": ["admin", "teacher", "student"],
-        "permission_codes": ["schedule.read_all", "schedule.write", "groups.manage"],
+        "permission_codes": ["schedule.read_all", "schedule.write"],
         "protected": False,
         "menus": [
             {"id": "schedule", "titles": {"ru": "Расписание", "en": "Schedule"}, "entrypoint_path": "/schedule",
@@ -83,14 +84,14 @@ SERVICE_TYPES: Dict[str, dict] = {
         ],
         "initial_roles": [
             {"code": "schedule_editor", "titles": {"ru": "Редактор расписания", "en": "Schedule editor"},
-             "allowed_profiles": ["admin"], "permissions": ["schedule.read_all", "schedule.write", "groups.manage"]},
+             "allowed_profiles": ["admin"], "permissions": ["schedule.read_all", "schedule.write"]},
         ],
         "system_roles": False,
     },
     "user-profile": {
         "code": "user-profile",
         "deployment": "cloud",
-        "titles": {"ru": "Анкеты пользователей", "en": "User profiles"},
+        "titles": {"ru": "Люди", "en": "People"},
         "supported_profiles": ["admin", "teacher", "student"],
         "permission_codes": ["profiles.manage"],
         "protected": False,

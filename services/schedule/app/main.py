@@ -75,17 +75,6 @@ def database():
 
 
 SCHEMA = '''
-CREATE TABLE IF NOT EXISTS groups (
-    institution_id TEXT NOT NULL, service_id TEXT NOT NULL, id TEXT NOT NULL,
-    name TEXT NOT NULL, name_key TEXT NOT NULL,
-    revision INTEGER NOT NULL DEFAULT 1, students_revision INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (institution_id, service_id, id),
-    UNIQUE (institution_id, service_id, name_key));
-CREATE TABLE IF NOT EXISTS group_students (
-    institution_id TEXT NOT NULL, service_id TEXT NOT NULL, group_id TEXT NOT NULL, user_id TEXT NOT NULL,
-    PRIMARY KEY (institution_id, service_id, user_id),
-    FOREIGN KEY (institution_id, service_id, group_id) REFERENCES groups (institution_id, service_id, id));
-CREATE INDEX IF NOT EXISTS group_students_by_group ON group_students (institution_id, service_id, group_id);
 CREATE TABLE IF NOT EXISTS events (
     institution_id TEXT NOT NULL, service_id TEXT NOT NULL, id TEXT NOT NULL,
     title TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL,
@@ -97,8 +86,7 @@ CREATE TABLE IF NOT EXISTS event_groups (
     institution_id TEXT NOT NULL, service_id TEXT NOT NULL, event_id TEXT NOT NULL, group_id TEXT NOT NULL,
     pos INTEGER NOT NULL,
     PRIMARY KEY (institution_id, service_id, event_id, group_id),
-    FOREIGN KEY (institution_id, service_id, event_id) REFERENCES events (institution_id, service_id, id) ON DELETE CASCADE,
-    FOREIGN KEY (institution_id, service_id, group_id) REFERENCES groups (institution_id, service_id, id));
+    FOREIGN KEY (institution_id, service_id, event_id) REFERENCES events (institution_id, service_id, id) ON DELETE CASCADE);
 CREATE INDEX IF NOT EXISTS event_groups_by_group ON event_groups (institution_id, service_id, group_id);
 CREATE TABLE IF NOT EXISTS event_teachers (
     institution_id TEXT NOT NULL, service_id TEXT NOT NULL, event_id TEXT NOT NULL, user_id TEXT NOT NULL,
@@ -118,6 +106,26 @@ def prepare():
     """Создаёт схему; вызывается при каждом старте и безопасна для существующего тома."""
     Path(DB).parent.mkdir(parents=True, exist_ok=True)
     with database() as db:
+        # Группы переехали в ядро. Старые таблицы groups/group_students остаются только для
+        # переноса (python -m app.export_groups); связь занятий с ними снимается.
+        fks = db.execute("PRAGMA foreign_key_list('event_groups')").fetchall()
+        if any(fk['table'] == 'groups' for fk in fks):
+            db.execute('PRAGMA foreign_keys=OFF')
+            db.executescript('''
+                BEGIN;
+                ALTER TABLE event_groups RENAME TO event_groups_old;
+                DROP INDEX IF EXISTS event_groups_by_group;
+                CREATE TABLE event_groups (
+                    institution_id TEXT NOT NULL, service_id TEXT NOT NULL, event_id TEXT NOT NULL,
+                    group_id TEXT NOT NULL, pos INTEGER NOT NULL,
+                    PRIMARY KEY (institution_id, service_id, event_id, group_id),
+                    FOREIGN KEY (institution_id, service_id, event_id)
+                        REFERENCES events (institution_id, service_id, id) ON DELETE CASCADE);
+                INSERT INTO event_groups SELECT institution_id, service_id, event_id, group_id, pos FROM event_groups_old;
+                DROP TABLE event_groups_old;
+                COMMIT;
+            ''')
+            db.execute('PRAGMA foreign_keys=ON')
         db.executescript(SCHEMA)
 
 
@@ -187,6 +195,7 @@ class Ctx:
     profile: str
     permissions: frozenset
     roles: tuple
+    group_ids: tuple = ()
 
     @property
     def tenant(self):
@@ -198,10 +207,6 @@ class Ctx:
     @property
     def reads_all(self):
         return self.admin_can('schedule.read_all')
-
-    @property
-    def manages_groups(self):
-        return self.admin_can('groups.manage')
 
     @property
     def writes_any(self):
@@ -234,7 +239,7 @@ def authenticate(request: Request) -> Ctx:
             or info.get('profile') not in ('student', 'teacher', 'admin')):
         raise Fail(401, 'UNAUTHENTICATED', 'Сессия завершена')
     return Ctx(binding, info['sub'], info['profile'], frozenset(info.get('permissions') or []),
-               tuple(info.get('roles') or []))
+               tuple(info.get('roles') or []), tuple(info.get('group_ids') or []))
 
 
 # --------------------------------------------------------------------------
@@ -332,28 +337,6 @@ def unique(values):
     return values
 
 
-class GroupInput(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    name: str = Field(min_length=1, max_length=100)
-
-    @field_validator('name')
-    @classmethod
-    def strip(cls, v):
-        if not v.strip():
-            raise ValueError('Укажите название группы')
-        return v.strip()
-
-
-class StudentsInput(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    user_ids: List[UUID] = Field(max_length=500)
-
-    @field_validator('user_ids')
-    @classmethod
-    def distinct(cls, v):
-        return unique(v)
-
-
 class EventInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     title: str = Field(min_length=1, max_length=200)
@@ -412,199 +395,37 @@ def service_view(locale: Optional[str] = Query(None, max_length=8), ctx: Ctx = D
 
 
 # --------------------------------------------------------------------------
-# Группы
+# Группы: сущность ядра. Сервис только читает их (machine API, scope groups:read);
+# ведёт группы администратор вуза в администрировании.
 # --------------------------------------------------------------------------
 
-def own_group(db, ctx: Ctx) -> Optional[str]:
-    row = db.execute('SELECT group_id FROM group_students WHERE institution_id=? AND service_id=? AND user_id=?',
-                     (*ctx.tenant, ctx.sub)).fetchone()
-    return row['group_id'] if row else None
+def reads_all_groups(ctx: Ctx) -> bool:
+    """Все группы нужны преподавателю (выбор в своих занятиях) и редактору расписания."""
+    return ctx.profile == 'teacher' or ctx.reads_all or ctx.writes_any
 
 
-def reads_groups(ctx: Ctx) -> bool:
-    """Все группы видят преподаватель (выбор групп в своих занятиях) и admin с правами расписания."""
-    return ctx.profile == 'teacher' or ctx.reads_all or ctx.manages_groups or ctx.writes_any
-
-
-def group_row(db, ctx: Ctx, group_id: str):
-    return db.execute('SELECT * FROM groups WHERE institution_id=? AND service_id=? AND id=?',
-                      (*ctx.tenant, group_id)).fetchone()
-
-
-def visible_group(db, ctx: Ctx, group_id: str):
-    row = group_row(db, ctx, group_id)
-    if not row:
-        raise not_found('Группа не найдена')
-    if reads_groups(ctx):
-        return row
-    if ctx.profile == 'student' and own_group(db, ctx) == group_id:
-        return row
-    if ctx.profile == 'admin':
-        raise forbidden('Нужна роль «Редактор расписания»')
-    raise not_found('Группа не найдена')
-
-
-def group_json(row):
-    return {'id': row['id'], 'name': row['name']}
-
-
-def group_response(ctx, row, status=200, extra=None):
-    return JSONResponse(group_json(row), status_code=status,
-                        headers={'ETag': etag('group', ctx, row['id'], row['revision']), **(extra or {})})
-
-
-def need_groups_manage(ctx: Ctx):
-    if not ctx.manages_groups:
-        raise forbidden('Нужна роль «Редактор расписания»')
-
-
-def name_conflict():
-    return Fail(409, 'GROUP_ALREADY_EXISTS', 'Группа с таким названием уже есть')
+def visible_groups(ctx: Ctx) -> list:
+    groups = core.groups(ctx.binding)
+    if reads_all_groups(ctx):
+        return groups
+    if ctx.profile == 'student':
+        return [g for g in groups if g['id'] in ctx.group_ids]
+    raise forbidden('Нужна роль «Редактор расписания»')
 
 
 @app.get('/api/v1/schedule/groups')
-def list_groups(limit: int = Query(50, ge=1, le=100), cursor: Optional[str] = Query(None, max_length=2048),
+def list_groups(limit: int = Query(100, ge=1, le=100), cursor: Optional[str] = Query(None, max_length=2048),
                 ctx: Ctx = Depends(authenticate)):
-    scope = ['groups', *ctx.tenant, ctx.sub, ctx.profile, limit]
-    after = read_cursor(cursor, scope)
-    with database() as db:
-        if reads_groups(ctx):
-            rows = db.execute('SELECT * FROM groups WHERE institution_id=? AND service_id=? AND id>? ORDER BY id LIMIT ?',
-                              (*ctx.tenant, after[0] if after else '', limit + 1)).fetchall()
-        elif ctx.profile == 'student':
-            mine = own_group(db, ctx)
-            row = group_row(db, ctx, mine) if mine and not after else None
-            rows = [row] if row else []
-        else:
-            raise forbidden('Нужна роль «Редактор расписания»')
-    next_cursor = make_cursor(scope, [rows[limit - 1]['id']]) if len(rows) > limit else None
-    return {'items': [group_json(r) for r in rows[:limit]], 'next_cursor': next_cursor}
-
-
-@app.post('/api/v1/schedule/groups', status_code=201)
-def create_group(body: GroupInput, idempotency: Optional[str] = Header(None, alias='Idempotency-Key'),
-                 ctx: Ctx = Depends(authenticate)):
-    need_groups_manage(ctx)
-    key, fp = idempotency_key(idempotency), fingerprint('group', body)
-    with database() as db:
-        db.execute('BEGIN IMMEDIATE')
-        previous = replay(db, ctx, key, fp)
-        if previous:
-            return previous
-        group_id = str(uuid.uuid4())
-        try:
-            db.execute('INSERT INTO groups (institution_id, service_id, id, name, name_key) VALUES (?,?,?,?,?)',
-                       (*ctx.tenant, group_id, body.name, body.name.casefold()))
-        except sqlite3.IntegrityError:
-            raise name_conflict()
-        row = group_row(db, ctx, group_id)
-        response = remember(db, ctx, key, fp, 201, group_json(row),
-                            {'ETag': etag('group', ctx, group_id, row['revision']),
-                             'Location': f'/api/v1/schedule/groups/{group_id}'})
-        db.commit()
-    return response
+    groups = visible_groups(ctx)
+    return {'items': [{'id': g['id'], 'name': g['name']} for g in groups[:limit]], 'next_cursor': None}
 
 
 @app.get('/api/v1/schedule/groups/{group_id}')
 def get_group(group_id: UUID, ctx: Ctx = Depends(authenticate)):
-    with database() as db:
-        return group_response(ctx, visible_group(db, ctx, str(group_id)))
-
-
-@app.patch('/api/v1/schedule/groups/{group_id}')
-def rename_group(group_id: UUID, body: GroupInput, if_match: Optional[str] = Header(None),
-                 ctx: Ctx = Depends(authenticate)):
-    need_groups_manage(ctx)
-    with database() as db:
-        db.execute('BEGIN IMMEDIATE')
-        row = group_row(db, ctx, str(group_id))
-        if not row:
-            raise not_found('Группа не найдена')
-        check_if_match(if_match, etag('group', ctx, row['id'], row['revision']))
-        try:
-            db.execute('UPDATE groups SET name=?, name_key=?, revision=revision+1 WHERE institution_id=? AND service_id=? AND id=?',
-                       (body.name, body.name.casefold(), *ctx.tenant, row['id']))
-        except sqlite3.IntegrityError:
-            raise name_conflict()
-        row = group_row(db, ctx, row['id'])
-        db.commit()
-    return group_response(ctx, row)
-
-
-@app.delete('/api/v1/schedule/groups/{group_id}', status_code=204)
-def delete_group(group_id: UUID, if_match: Optional[str] = Header(None), ctx: Ctx = Depends(authenticate)):
-    need_groups_manage(ctx)
-    with database() as db:
-        db.execute('BEGIN IMMEDIATE')
-        row = group_row(db, ctx, str(group_id))
-        if not row:
-            raise not_found('Группа не найдена')
-        check_if_match(if_match, etag('group', ctx, row['id'], row['revision']))
-        students = db.execute('SELECT 1 FROM group_students WHERE institution_id=? AND service_id=? AND group_id=? LIMIT 1',
-                              (*ctx.tenant, row['id'])).fetchone()
-        used = db.execute('SELECT 1 FROM event_groups WHERE institution_id=? AND service_id=? AND group_id=? LIMIT 1',
-                          (*ctx.tenant, row['id'])).fetchone()
-        if students or used:
-            raise Fail(409, 'GROUP_IN_USE', 'В группе есть студенты или занятия. Сначала уберите их')
-        db.execute('DELETE FROM groups WHERE institution_id=? AND service_id=? AND id=?', (*ctx.tenant, row['id']))
-        db.commit()
-    return Response(status_code=204)
-
-
-def students_of(db, ctx: Ctx, group_id: str) -> List[str]:
-    return [r['user_id'] for r in db.execute(
-        'SELECT user_id FROM group_students WHERE institution_id=? AND service_id=? AND group_id=? ORDER BY user_id',
-        (*ctx.tenant, group_id))]
-
-
-def students_response(db, ctx, row):
-    return JSONResponse({'group_id': row['id'], 'user_ids': students_of(db, ctx, row['id'])},
-                        headers={'ETag': etag('students', ctx, row['id'], row['students_revision'])})
-
-
-@app.get('/api/v1/schedule/groups/{group_id}/students')
-def get_students(group_id: UUID, ctx: Ctx = Depends(authenticate)):
-    # Состав читает и преподаватель (кого он учит), менять его может только groups.manage.
-    if not (ctx.manages_groups or ctx.profile == 'teacher'):
-        raise forbidden('Состав группы видят преподаватели и редакторы расписания')
-    with database() as db:
-        row = group_row(db, ctx, str(group_id))
-        if not row:
-            raise not_found('Группа не найдена')
-        return students_response(db, ctx, row)
-
-
-@app.put('/api/v1/schedule/groups/{group_id}/students')
-def replace_students(group_id: UUID, body: StudentsInput, if_match: Optional[str] = Header(None),
-                     ctx: Ctx = Depends(authenticate)):
-    need_groups_manage(ctx)
-    if not if_match:
-        raise Fail(428, 'PRECONDITION_REQUIRED', 'Сначала загрузите актуальный состав')
-    user_ids = [str(u) for u in body.user_ids]
-    # Проверка профилей — до локальной транзакции, чтобы не держать запись на время запросов к ядру.
-    bad = [i for i, uid in enumerate(user_ids) if 'student' not in core.profiles(ctx.binding, uid)]
-    if bad:
-        raise Fail(422, 'INVALID_REFERENCE', 'Добавлять в группу можно только участников с профилем «Студент»',
-                   [{'path': f'user_ids/{i}', 'message': f'{user_ids[i]} — не студент этого вуза'} for i in bad])
-    with database() as db:
-        db.execute('BEGIN IMMEDIATE')
-        row = group_row(db, ctx, str(group_id))
-        if not row:
-            raise not_found('Группа не найдена')
-        check_if_match(if_match, etag('students', ctx, row['id'], row['students_revision']))
-        taken = [] if not user_ids else db.execute(
-            f'SELECT user_id FROM group_students WHERE institution_id=? AND service_id=? AND group_id!=? '
-            f'AND user_id IN ({",".join("?" * len(user_ids))})', (*ctx.tenant, row['id'], *user_ids)).fetchall()
-        if taken:
-            raise Fail(409, 'STUDENT_ALREADY_GROUPED', 'Студент уже состоит в другой группе. Сначала уберите его оттуда',
-                       [{'path': 'user_ids', 'message': r['user_id']} for r in taken])
-        db.execute('DELETE FROM group_students WHERE institution_id=? AND service_id=? AND group_id=?', (*ctx.tenant, row['id']))
-        db.executemany('INSERT INTO group_students VALUES (?,?,?,?)', [(*ctx.tenant, row['id'], uid) for uid in user_ids])
-        db.execute('UPDATE groups SET students_revision=students_revision+1 WHERE institution_id=? AND service_id=? AND id=?',
-                   (*ctx.tenant, row['id']))
-        response = students_response(db, ctx, group_row(db, ctx, row['id']))
-        db.commit()
-    return response
+    found = next((g for g in visible_groups(ctx) if g['id'] == str(group_id)), None)
+    if not found:
+        raise not_found('Группа не найдена')
+    return {'id': found['id'], 'name': found['name']}
 
 
 # --------------------------------------------------------------------------
@@ -650,8 +471,7 @@ def sees_event(db, ctx: Ctx, event: dict) -> bool:
     if ctx.profile == 'teacher':
         return ctx.sub in event['teacher_ids']
     if ctx.profile == 'student':
-        mine = own_group(db, ctx)
-        return bool(mine) and mine in event['group_ids']
+        return any(g in event['group_ids'] for g in ctx.group_ids)
     return False
 
 
@@ -685,11 +505,10 @@ def checked_event(ctx: Ctx, body: EventInput) -> dict:
             'status': body.status}
 
 
-def check_groups_exist(db, ctx: Ctx, group_ids: List[str]):
-    marks = ','.join('?' * len(group_ids))
-    found = {r['id'] for r in db.execute(f'SELECT id FROM groups WHERE institution_id=? AND service_id=? AND id IN ({marks})',
-                                         (*ctx.tenant, *group_ids))}
-    missing = [i for i, g in enumerate(group_ids) if g not in found]
+def check_groups_exist(ctx: Ctx, group_ids: List[str]):
+    """Группы занятия должны существовать в вузе (ядро). Проверка — до транзакции записи."""
+    known = {g['id'] for g in core.groups(ctx.binding)}
+    missing = [i for i, g in enumerate(group_ids) if g not in known]
     if missing:
         raise Fail(422, 'INVALID_REFERENCE', 'Группа не найдена',
                    [{'path': f'group_ids/{i}', 'message': f'{group_ids[i]} — нет такой группы'} for i in missing])
@@ -727,11 +546,12 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
                 sql.append('AND ' + link.format(t='event_teachers', c='user_id'))
                 args.append(ctx.sub)
             else:
-                mine = own_group(db, ctx)
-                if not mine:
+                if not ctx.group_ids:
                     return {'items': [], 'next_cursor': None}
-                sql.append('AND ' + link.format(t='event_groups', c='group_id'))
-                args.append(mine)
+                marks = ','.join('?' * len(ctx.group_ids))
+                sql.append('AND EXISTS (SELECT 1 FROM event_groups x WHERE x.institution_id=e.institution_id '
+                           f'AND x.service_id=e.service_id AND x.event_id=e.id AND x.group_id IN ({marks}))')
+                args.extend(ctx.group_ids)
         if group_id:
             sql.append('AND ' + link.format(t='event_groups', c='group_id'))
             args.append(str(group_id))
@@ -757,12 +577,12 @@ def create_event(body: EventInput, idempotency: Optional[str] = Header(None, ali
     need_writer(ctx)
     key, fp = idempotency_key(idempotency), fingerprint('event', body)
     value = checked_event(ctx, body)
+    check_groups_exist(ctx, value['group_ids'])
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
         previous = replay(db, ctx, key, fp)
         if previous:
             return previous
-        check_groups_exist(db, ctx, value['group_ids'])
         event_id = str(uuid.uuid4())
         db.execute('INSERT INTO events (institution_id, service_id, id, title, starts_at, ends_at, location, description, status) '
                    'VALUES (?,?,?,?,?,?,?,?,?)', (*ctx.tenant, event_id, value['title'], value['starts_at'], value['ends_at'],
@@ -801,10 +621,10 @@ def replace_event(event_id: UUID, body: EventInput, if_match: Optional[str] = He
     if not if_match:
         raise Fail(428, 'PRECONDITION_REQUIRED', 'Сначала загрузите актуальную версию')
     value = checked_event(ctx, body)
+    check_groups_exist(ctx, value['group_ids'])
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
         row = editable_event(db, ctx, str(event_id), if_match)
-        check_groups_exist(db, ctx, value['group_ids'])
         db.execute('UPDATE events SET title=?, starts_at=?, ends_at=?, location=?, description=?, status=?, revision=revision+1 '
                    'WHERE institution_id=? AND service_id=? AND id=?',
                    (value['title'], value['starts_at'], value['ends_at'], value['location'], value['description'],

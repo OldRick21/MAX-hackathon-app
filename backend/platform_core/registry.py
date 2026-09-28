@@ -24,6 +24,8 @@ from database.tables import (
     ServiceInstance,
     ServiceRole,
     ServiceSession,
+    StudyGroup,
+    StudyGroupMember,
     generate_uuid,
     utc_now,
 )
@@ -140,6 +142,22 @@ def drop_assignments(db: Session, institution_id: str, user_id: str, profiles: O
 # --------------------------------------------------------------------------
 # Аудит
 # --------------------------------------------------------------------------
+
+def drop_group_membership(db: Session, institution_id: str, user_id: str) -> None:
+    """Участник без профиля student не может оставаться в учебной группе."""
+    row = db.get(StudyGroupMember, (institution_id, user_id))
+    if row:
+        group = db.get(StudyGroup, row.group_id)
+        if group:
+            group.members_revision += 1
+        db.delete(row)
+
+
+def user_group_ids(db: Session, institution_id: str, user_id: str) -> List[str]:
+    """Группы пользователя в вузе (в MVP — не больше одной)."""
+    return [m.group_id for m in db.query(StudyGroupMember).filter(StudyGroupMember.institution_id == institution_id,
+                                                                   StudyGroupMember.user_id == user_id)]
+
 
 def audit(db: Session, *, scope: str, action: str, actor_user_id: Optional[str], actor_kind: str,
           institution_id: Optional[str] = None, target_type: Optional[str] = None, target_id: Optional[str] = None,
@@ -329,6 +347,12 @@ def sync_cloud_instance(db: Session, service: ServiceInstance) -> None:
     service.manifest = catalog.default_manifest(code)
     service.supported_profiles = list(catalog.service_type(code)["supported_profiles"])
     create_initial_roles(db, service)
+    # Начальные роли задаёт платформа: права приводятся к каталогу (например, groups.manage
+    # ушло из расписания в администрирование вместе с группами).
+    for role in catalog.service_type(code)["initial_roles"]:
+        existing = db.get(ServiceRole, (service.id, role["code"]))
+        if existing and existing.permissions != role["permissions"]:
+            existing.permissions = list(role["permissions"])
 
 
 def provision_institution(db: Session, titles: dict, default_locale: str, status: str = InstitutionStatus.ACTIVE.value) -> Institution:

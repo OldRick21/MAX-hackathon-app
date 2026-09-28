@@ -99,6 +99,54 @@ def replace_profiles(user_id: str, payload: Any = Body(None), if_match: Optional
                   lambda: svc.replace_profiles(db, ctx, user_id, payload, if_match))
 
 
+@router_private.put("/members/{user_id}/group")
+def set_member_group(user_id: str, payload: Any = Body(None), ctx: ActorContext = Depends(private_actor),
+                     db: Session = Depends(get_db)):
+    return mutate(db, ctx, "member.group.set", user_id, lambda: svc.set_member_group(db, ctx, user_id, payload))
+
+
+# --- Учебные группы ---
+
+@router_private.get("/groups")
+def list_groups(limit: Optional[int] = Query(None), cursor: Optional[str] = Query(None, max_length=2048),
+                ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return respond(svc.list_groups(db, ctx, limit, cursor))
+
+
+@router_private.post("/groups")
+def create_group(payload: Any = Body(None), ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return mutate(db, ctx, "group.create", ctx.institution_id, lambda: svc.create_group(db, ctx, payload))
+
+
+@router_private.get("/groups/{group_id}")
+def get_group(group_id: str, ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return respond(svc.get_group(db, ctx, group_id))
+
+
+@router_private.patch("/groups/{group_id}")
+def rename_group(group_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
+                 ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return mutate(db, ctx, "group.rename", group_id, lambda: svc.rename_group(db, ctx, group_id, payload, if_match))
+
+
+@router_private.delete("/groups/{group_id}")
+def delete_group(group_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                 ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return mutate(db, ctx, "group.delete", group_id, lambda: svc.delete_group(db, ctx, group_id, if_match))
+
+
+@router_private.get("/groups/{group_id}/members")
+def get_group_members(group_id: str, ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return respond(svc.get_group_members(db, ctx, group_id))
+
+
+@router_private.put("/groups/{group_id}/members")
+def replace_group_members(group_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
+                          ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return mutate(db, ctx, "group.members.replace", group_id,
+                  lambda: svc.replace_group_members(db, ctx, group_id, payload, if_match))
+
+
 # --- Экземпляры ---
 
 @router_private.get("/services")

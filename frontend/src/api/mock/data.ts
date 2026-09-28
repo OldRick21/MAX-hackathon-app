@@ -165,7 +165,7 @@ const basic = (menus: string[]) => ({ roles: [], permissions: [], menus });
 
 export const serviceSeeds: Record<string, ServiceSeed[]> = {
   [INST_MEPHI]: [
-    svc('5e000000-0000-4000-8000-000000000101', 'user-profile', 'Анкеты пользователей', 'cloud', 'profiles.platform.example',
+    svc('5e000000-0000-4000-8000-000000000101', 'user-profile', 'Люди', 'cloud', 'profiles.platform.example',
       [m('home', 'Главная', '/home'), m('users', 'Пользователи', '/users', 10)],
       { student: basic(['home', 'users']), teacher: basic(['home', 'users']) }),
     svc('5e000000-0000-4000-8000-000000000102', 'schedule', 'Расписание', 'cloud', 'schedule.platform.example',
@@ -176,7 +176,7 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
       { student: basic(['coursework']), teacher: basic(['coursework']) }),
   ],
   [INST_MTUCI]: [
-    svc('5e000000-0000-4000-8000-000000000201', 'user-profile', 'Анкеты пользователей', 'cloud', 'profiles.platform.example',
+    svc('5e000000-0000-4000-8000-000000000201', 'user-profile', 'Люди', 'cloud', 'profiles.platform.example',
       [m('home', 'Главная', '/home'), m('users', 'Пользователи', '/users', 10)],
       { teacher: basic(['home', 'users']), admin: { roles: ['profile_editor'], permissions: ['profiles.manage'], menus: ['home', 'users'] } }),
     svc('5e000000-0000-4000-8000-000000000202', 'schedule', 'Расписание', 'cloud', 'schedule.platform.example',

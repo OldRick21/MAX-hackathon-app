@@ -10,6 +10,8 @@ from typing import Callable, Optional
 from sqlalchemy.orm import Session
 
 from database.tables import (
+    StudyGroup,
+    StudyGroupMember,
     AuditEvent,
     IdempotencyRecord,
     Institution,
@@ -58,6 +60,10 @@ def _base(ctx: ActorContext) -> str:
 
 def institution_view(inst: Institution) -> dict:
     return {"id": inst.id, "titles": inst.titles, "default_locale": inst.default_locale, "status": inst.status}
+
+
+def member_group_map(db: Session, institution_id: str) -> dict:
+    return {r.user_id: r.group_id for r in db.query(StudyGroupMember).filter(StudyGroupMember.institution_id == institution_id)}
 
 
 def member_view(m: Membership) -> dict:
@@ -199,18 +205,23 @@ def list_service_types(ctx: ActorContext) -> Result:
 def list_members(db: Session, ctx: ActorContext, limit, cursor) -> Result:
     ctx.require("members.read")
     query = db.query(Membership).filter(Membership.institution_id == ctx.institution_id)
-    return _page(ctx, "members", query, Membership.user_id, lambda m: m.user_id, member_view, limit, cursor)
+    groups = member_group_map(db, ctx.institution_id)
+    return _page(ctx, "members", query, Membership.user_id, lambda m: m.user_id,
+                 lambda m: {**member_view(m), "group_id": groups.get(m.user_id)}, limit, cursor)
 
 
 def get_member(db: Session, ctx: ActorContext, user_id: str) -> Result:
     ctx.require("members.read")
-    view = member_view(_member(db, ctx, user_id))
-    return Result(view, etag=compute_etag(view))
+    member = _member(db, ctx, user_id)
+    view = member_view(member)
+    # Версия участника — по профилям, без группы: группа меняется отдельной операцией.
+    group = db.get(StudyGroupMember, (ctx.institution_id, user_id))
+    return Result({**view, "group_id": group.group_id if group else None}, etag=compute_etag(view))
 
 
 def add_member(db: Session, ctx: ActorContext, payload) -> Result:
     ctx.require("members.manage")
-    body = _body(payload, {"user_id", "profiles"}, {"user_id", "profiles"})
+    body = _body(payload, {"user_id", "profiles", "group_id"}, {"user_id", "profiles"})
     user_id = body["user_id"]
     if not is_uuid(user_id):
         raise validation("user_id должен быть UUID", "user_id")
@@ -221,10 +232,20 @@ def add_member(db: Session, ctx: ActorContext, payload) -> Result:
                           "Пользователь не найден. Он должен хотя бы раз войти в приложение через MAX")
     if db.get(Membership, (ctx.institution_id, user_id)):
         raise DomainError(409, "MEMBERSHIP_ALREADY_EXISTS", "Пользователь уже состоит в этом вузе")
+    group = None
+    if body.get("group_id") is not None:
+        # Группу при добавлении может задать только тот, кто ведёт группы, и только студенту.
+        ctx.require("groups.manage")
+        if "student" not in profiles:
+            raise validation("Группа назначается только студенту", "group_id")
+        group = _group(db, ctx, body["group_id"])
     member = Membership(institution_id=ctx.institution_id, user_id=user_id, profiles=profiles, created_at=utc_now())
     db.add(member)
     db.flush()
-    ctx.audit(db, "member.add", "member", user_id, {"profiles": profiles})
+    if group:
+        db.add(StudyGroupMember(institution_id=ctx.institution_id, user_id=user_id, group_id=group.id))
+        group.members_revision += 1
+    ctx.audit(db, "member.add", "member", user_id, {"profiles": profiles, "group_id": group.id if group else None})
     db.commit()
     view = member_view(member)
     return Result(view, status=201, etag=compute_etag(view), location=f"{_base(ctx)}/members/{user_id}")
@@ -247,6 +268,8 @@ def replace_profiles(db: Session, ctx: ActorContext, user_id: str, payload, if_m
         # Снятие профиля отзывает его роли и сервисные сессии в той же транзакции.
         registry.drop_assignments(db, ctx.institution_id, user_id, removed)
         registry.revoke_service_sessions(db, institution_id=ctx.institution_id, user_id=user_id, profiles=removed)
+        if "student" in removed:
+            registry.drop_group_membership(db, ctx.institution_id, user_id)
     ctx.audit(db, "member.profiles.replace", "member", user_id,
               {"before": before["profiles"], "after": profiles})
     db.commit()
@@ -264,10 +287,180 @@ def remove_member(db: Session, ctx: ActorContext, user_id: str, if_match: Option
     registry.ensure_not_last_owner(db, ctx.institution_id, ctx.admin_service_id, user_id)
     registry.drop_assignments(db, ctx.institution_id, user_id)
     registry.revoke_service_sessions(db, institution_id=ctx.institution_id, user_id=user_id)
+    registry.drop_group_membership(db, ctx.institution_id, user_id)
     db.delete(member)
     ctx.audit(db, "member.remove", "member", user_id, {"profiles": before["profiles"]})
     db.commit()
     return Result(status=204)
+
+
+# --------------------------------------------------------------------------
+# Учебные группы: ведёт администратор вуза (groups.manage), читают участники и сервисы
+# --------------------------------------------------------------------------
+
+def group_view(g: StudyGroup) -> dict:
+    return {"id": g.id, "name": g.name}
+
+
+def _group(db: Session, ctx: ActorContext, group_id: str) -> StudyGroup:
+    group = db.get(StudyGroup, group_id) if is_uuid(group_id) else None
+    if not group or group.institution_id != ctx.institution_id:
+        raise not_found("Группа не найдена")
+    return group
+
+
+def _group_tag(g: StudyGroup) -> str:
+    return compute_etag({"group": g.id, "revision": g.revision})
+
+
+def _members_tag(g: StudyGroup) -> str:
+    return compute_etag({"group_members": g.id, "revision": g.members_revision})
+
+
+def _group_name(payload) -> tuple:
+    body = _body(payload, {"name"}, {"name"})
+    name = body["name"].strip() if isinstance(body["name"], str) else ""
+    if not name or len(name) > 100:
+        raise validation("Название группы — от 1 до 100 символов", "name")
+    return name, name.casefold()
+
+
+def _name_taken(db: Session, ctx: ActorContext, key: str, except_id: Optional[str] = None) -> None:
+    query = db.query(StudyGroup).filter(StudyGroup.institution_id == ctx.institution_id, StudyGroup.name_key == key)
+    if except_id:
+        query = query.filter(StudyGroup.id != except_id)
+    if query.first():
+        raise DomainError(409, "GROUP_ALREADY_EXISTS", "Группа с таким названием уже есть")
+
+
+def list_groups(db: Session, ctx: ActorContext, limit, cursor) -> Result:
+    ctx.require("members.read")
+    query = db.query(StudyGroup).filter(StudyGroup.institution_id == ctx.institution_id)
+    return _page(ctx, "groups", query, StudyGroup.id, lambda g: g.id, group_view, limit, cursor)
+
+
+def get_group(db: Session, ctx: ActorContext, group_id: str) -> Result:
+    ctx.require("members.read")
+    group = _group(db, ctx, group_id)
+    return Result(group_view(group), etag=_group_tag(group))
+
+
+def create_group(db: Session, ctx: ActorContext, payload) -> Result:
+    ctx.require("groups.manage")
+    name, key = _group_name(payload)
+    registry.lock_institution(db, ctx.institution_id)
+    _name_taken(db, ctx, key)
+    group = StudyGroup(id=generate_uuid(), institution_id=ctx.institution_id, name=name, name_key=key)
+    db.add(group)
+    db.flush()
+    ctx.audit(db, "group.create", "group", group.id, {"name": name})
+    db.commit()
+    return Result(group_view(group), status=201, etag=_group_tag(group), location=f"{_base(ctx)}/groups/{group.id}")
+
+
+def rename_group(db: Session, ctx: ActorContext, group_id: str, payload, if_match: Optional[str]) -> Result:
+    ctx.require("groups.manage")
+    name, key = _group_name(payload)
+    registry.lock_institution(db, ctx.institution_id)
+    group = _group(db, ctx, group_id)
+    require_if_match(if_match, _group_tag(group))
+    _name_taken(db, ctx, key, group.id)
+    before = group.name
+    group.name, group.name_key, group.revision = name, key, group.revision + 1
+    ctx.audit(db, "group.rename", "group", group.id, {"before": before, "after": name})
+    db.commit()
+    return Result(group_view(group), etag=_group_tag(group))
+
+
+def delete_group(db: Session, ctx: ActorContext, group_id: str, if_match: Optional[str]) -> Result:
+    """Удаляется только пустая группа. Ссылки сервисов (например, занятия) ядро не видит:
+    сервис покажет такую группу как удалённую."""
+    ctx.require("groups.manage")
+    registry.lock_institution(db, ctx.institution_id)
+    group = _group(db, ctx, group_id)
+    require_if_match(if_match, _group_tag(group))
+    if db.query(StudyGroupMember).filter(StudyGroupMember.group_id == group.id).first():
+        raise DomainError(409, "GROUP_IN_USE", "В группе есть студенты. Сначала уберите их")
+    ctx.audit(db, "group.delete", "group", group.id, {"name": group.name})
+    db.delete(group)
+    db.commit()
+    return Result(status=204)
+
+
+def group_members(db: Session, group: StudyGroup) -> list:
+    return sorted(m.user_id for m in db.query(StudyGroupMember).filter(StudyGroupMember.group_id == group.id))
+
+
+def get_group_members(db: Session, ctx: ActorContext, group_id: str) -> Result:
+    ctx.require("members.read")
+    group = _group(db, ctx, group_id)
+    return Result({"group_id": group.id, "user_ids": group_members(db, group)}, etag=_members_tag(group))
+
+
+def set_member_group(db: Session, ctx: ActorContext, user_id: str, payload) -> Result:
+    """Назначить студенту группу или снять её (group_id=null) одним действием.
+
+    Перевод атомарный: старая и новая группы меняются в одной транзакции, без промежутка
+    «без группы», как было бы при двух заменах состава.
+    """
+    ctx.require("groups.manage")
+    body = _body(payload, {"group_id"}, {"group_id"})
+    registry.lock_institution(db, ctx.institution_id)
+    member = _member(db, ctx, user_id)
+    target = _group(db, ctx, body["group_id"]) if body["group_id"] is not None else None
+    if target and "student" not in (member.profiles or []):
+        raise DomainError(422, "INVALID_REFERENCE", "Группа назначается только студенту",
+                          [{"path": "group_id", "message": "У участника нет профиля «Студент»"}])
+    current = db.get(StudyGroupMember, (ctx.institution_id, user_id))
+    before = current.group_id if current else None
+    if before != (target.id if target else None):
+        if current:
+            old = db.get(StudyGroup, current.group_id)
+            if old:
+                old.members_revision += 1
+            db.delete(current)
+            db.flush()
+        if target:
+            db.add(StudyGroupMember(institution_id=ctx.institution_id, user_id=user_id, group_id=target.id))
+            target.members_revision += 1
+        ctx.audit(db, "member.group.set", "member", user_id, {"before": before, "after": target.id if target else None})
+        db.commit()
+    return Result({"user_id": user_id, "group": group_view(target) if target else None})
+
+
+def replace_group_members(db: Session, ctx: ActorContext, group_id: str, payload, if_match: Optional[str]) -> Result:
+    """Атомарная замена состава: до 500 студентов вуза, каждый — максимум в одной группе."""
+    ctx.require("groups.manage")
+    body = _body(payload, {"user_ids"}, {"user_ids"})
+    user_ids = body["user_ids"]
+    if not isinstance(user_ids, list) or len(user_ids) > 500 or not all(is_uuid(u) for u in user_ids) \
+            or len(set(user_ids)) != len(user_ids):
+        raise validation("user_ids — до 500 разных UUID", "user_ids")
+    registry.lock_institution(db, ctx.institution_id)
+    group = _group(db, ctx, group_id)
+    require_if_match(if_match, _members_tag(group))
+    not_students = []
+    for i, uid in enumerate(user_ids):
+        member = db.get(Membership, (ctx.institution_id, uid))
+        if not member or "student" not in (member.profiles or []):
+            not_students.append({"path": f"user_ids[{i}]", "message": f"{uid} — не студент этого вуза"})
+    if not_students:
+        raise DomainError(422, "INVALID_REFERENCE", "В группу можно добавить только студентов вуза", not_students)
+    taken = db.query(StudyGroupMember).filter(StudyGroupMember.institution_id == ctx.institution_id,
+                                              StudyGroupMember.user_id.in_(user_ids),
+                                              StudyGroupMember.group_id != group.id).all() if user_ids else []
+    if taken:
+        raise DomainError(409, "STUDENT_ALREADY_GROUPED", "Студент уже состоит в другой группе. Сначала уберите его оттуда",
+                          [{"path": "user_ids", "message": t.user_id} for t in taken])
+    before = group_members(db, group)
+    db.query(StudyGroupMember).filter(StudyGroupMember.group_id == group.id).delete(synchronize_session=False)
+    for uid in user_ids:
+        db.add(StudyGroupMember(institution_id=ctx.institution_id, user_id=uid, group_id=group.id))
+    group.members_revision += 1
+    ctx.audit(db, "group.members.replace", "group", group.id,
+              {"added": sorted(set(user_ids) - set(before)), "removed": sorted(set(before) - set(user_ids))})
+    db.commit()
+    return Result({"group_id": group.id, "user_ids": sorted(user_ids)}, etag=_members_tag(group))
 
 
 # --------------------------------------------------------------------------

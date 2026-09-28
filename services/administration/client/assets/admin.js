@@ -9,7 +9,7 @@
   const PROFILES = { student: 'Студент', teacher: 'Преподаватель', admin: 'Администратор' };
   const PERMISSION_NAMES = {
     'institution.read': 'Просмотр настроек вуза', 'institution.update': 'Изменение настроек вуза',
-    'members.read': 'Просмотр участников', 'members.manage': 'Управление участниками',
+    'members.read': 'Просмотр участников', 'members.manage': 'Управление участниками', 'groups.manage': 'Управление группами',
     'services.read': 'Просмотр сервисов', 'services.manage': 'Управление сервисами',
     'roles.manage': 'Назначение ролей', 'credentials.manage': 'Ключи локальных сервисов',
     'schedule.read_all': 'Чтение всего расписания', 'schedule.write': 'Изменение занятий',
@@ -18,7 +18,7 @@
   };
   const ACTIONS = {
     'institution.update': 'Изменены настройки вуза', 'institution.provision': 'Вуз подключён платформой',
-    'institution.status': 'Изменён статус вуза', 'service.manifest.publish': 'Сервис опубликовал меню', 'institution.local_hosts': 'Изменены одобренные хосты',
+    'institution.status': 'Изменён статус вуза', 'group.create': 'Создана группа', 'group.rename': 'Группа переименована', 'group.delete': 'Группа удалена', 'group.members.replace': 'Изменён состав группы', 'member.group.set': 'Изменена группа студента', 'service.manifest.publish': 'Сервис опубликовал меню', 'institution.local_hosts': 'Изменены одобренные хосты',
     'owner.initial_assign': 'Назначен первый владелец', 'member.add': 'Добавлен участник',
     'member.remove': 'Удалён участник', 'member.profiles.replace': 'Изменены профили участника',
     'service.install': 'Установлен сервис', 'service.update': 'Изменён сервис', 'service.uninstall': 'Удалён сервис',
@@ -221,6 +221,7 @@
   const TABS = [
     { id: 'institution', label: 'Вуз', allowed: () => can('institution.read'), render: renderInstitution },
     { id: 'members', label: 'Участники', allowed: () => can('members.read'), render: renderMembers },
+    { id: 'groups', label: 'Группы', allowed: () => can('members.read'), render: renderGroups },
     { id: 'services', label: 'Сервисы', allowed: () => can('services.read'), render: renderServices },
     { id: 'roles', label: 'Роли', allowed: () => can('services.read') || can('roles.manage'), render: renderRoles },
     { id: 'audit', label: 'Журнал', allowed: () => can('institution.read'), render: renderAudit },
@@ -298,24 +299,39 @@
   // ------------------------------------------------------------------
   // Участники
   // ------------------------------------------------------------------
+  // Поле выбора группы студента: назначение сразу сохраняется в ядре одним действием.
+  function groupPicker(groups, current, onPick, disabled = false) {
+    const select = h('select', { disabled, onchange: () => onPick(select.value || null) },
+      h('option', { value: '' }, 'Без группы'), groups.map(g => h('option', { value: g.id }, g.name)));
+    select.value = current || '';
+    return select;
+  }
+
   async function renderMembers(view) {
-    const members = await listAll('/members');
+    const [members, groups] = await Promise.all([listAll('/members'), listAll('/groups')]);
+    const groupName = Object.fromEntries(groups.map(g => [g.id, g.name]));
     const manage = can('members.manage');
+    const manageGroups = can('groups.manage');
     const profileOptions = Object.entries(PROFILES);
     const parts = [];
     if (manage) {
       const idInput = h('input', { placeholder: 'UUID пользователя', pattern: UUID.source, autocomplete: 'off' });
       const profiles = checkboxGroup('new-profiles', profileOptions, ['student']);
+      let newGroup = null;
+      const groupField = manageGroups && groups.length
+        ? field('Группа (для студента)', groupPicker(groups, null, v => { newGroup = v; }), 'Можно назначить и позже.') : null;
       const form = h('section', { class: 'card' }, h('h2', {}, 'Добавить участника'),
         h('p', { class: 'muted' }, 'Пользователь должен хотя бы раз открыть приложение: его ID показан на главном экране.'),
-        field('ID пользователя', idInput), profiles,
+        field('ID пользователя', idInput), profiles, groupField,
         h('p', { class: 'hint' }, 'Профиль «Администратор» не даёт прав сам по себе: права выдаются ролями.'),
         h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
           const userId = idInput.value.trim().toLowerCase();
           if (!UUID.test(userId)) throw new ApiError('Введите UUID пользователя.');
           const selected = checked(form, 'new-profiles');
           if (!selected.length) throw new ApiError('Выберите хотя бы один профиль.');
-          await api('/members', { method: 'POST', body: { user_id: userId, profiles: selected } });
+          const body = { user_id: userId, profiles: selected };
+          if (newGroup && selected.includes('student')) body.group_id = newGroup;
+          await api('/members', { method: 'POST', body });
           toast('Участник добавлен.');
         }, reload) }, 'Добавить')));
       parts.push(form);
@@ -327,6 +343,14 @@
       row.append(h('div', { class: 'row-main' },
         h('code', { title: m.user_id }, m.user_id), me ? h('span', { class: 'badge' }, 'вы') : null,
         h('small', { class: 'muted' }, ` с ${fmtDate(m.created_at)}`)), profiles);
+      if (m.profiles.includes('student')) {
+        row.append(manageGroups
+          ? field('Группа', groupPicker(groups, m.group_id, v => guarded(async () => {
+              await api(`/members/${m.user_id}/group`, { method: 'PUT', body: { group_id: v } });
+              toast(v ? `Студент в группе «${groupName[v]}».` : 'Студент убран из группы.');
+            }, reload)))
+          : h('small', { class: 'muted' }, `Группа: ${groupName[m.group_id] || 'не назначена'}`));
+      }
       if (manage) {
         row.append(h('div', { class: 'actions' },
           h('button', { class: 'quiet', onclick: () => guarded(async () => {
@@ -361,42 +385,40 @@
     const installed = new Set(services.map(s => s.service_type));
 
     if (manage) {
-      // Облачные сервисы платформы подключаются одной кнопкой; любой свой сервис вуза —
-      // по шагам из CORE_API_SPEC.md §7: адрес на одобренном хосте → ключ → сервис сам
-      // публикует меню и роли → включение.
-      const CUSTOM = 'custom';
+      // Сервисы платформы подключаются одной кнопкой (без выбора и адресов).
       const cloud = ['schedule', 'user-profile'].filter(c => !installed.has(c));
-      const select = h('select', {},
-        cloud.map(c => h('option', { value: c }, `${title(types[c].titles)} — сервис платформы`)),
-        h('option', { value: CUSTOM }, 'Свой сервис — работает на сервере вуза'));
-      const name = h('input', { placeholder: 'Например, Библиотека' });
-      const code = h('input', { placeholder: 'library', autocomplete: 'off', spellcheck: false });
+      if (cloud.length) {
+        parts.push(h('section', { class: 'card' }, h('h2', {}, 'Сервисы платформы'),
+          h('p', { class: 'muted' }, 'Работают на платформе, подключаются сразу и включены.'),
+          ...cloud.map(c => h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('strong', {}, title(types[c].titles)),
+            h('button', { class: 'primary', onclick: () => guarded(async () => {
+              await api('/services', { method: 'POST', body: { service_type: c, deployment: 'cloud' }, idempotencyKey: crypto.randomUUID() });
+              toast('Сервис подключён и включён.');
+            }, reload) }, 'Подключить'))))));
+      }
+      // Свой сервис вуза — по шагам CORE_API_SPEC.md §7.
+      const name = h('input', { placeholder: 'Например, Курсовые работы' });
+      const code = h('input', { placeholder: 'coursework', autocomplete: 'off', spellcheck: false });
       const profiles = checkboxGroup('custom-profiles', Object.entries(PROFILES), ['student', 'teacher', 'admin']);
-      const api_ = h('input', { placeholder: 'https://library.university.ru/api/v1' });
-      const client = h('input', { placeholder: 'https://library.university.ru' });
-      const customFields = h('div', {}, h('p', { class: 'hint' },
-        'Свой сервис работает на сервере вуза и открывается внутри приложения. Его адрес должен быть на хосте, ' +
-        'который одобрила поддержка платформы. После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
+      const api_ = h('input', { placeholder: 'https://coursework.university.ru/api/v1' });
+      const client = h('input', { placeholder: 'https://coursework.university.ru' });
+      let key = crypto.randomUUID();
+      parts.push(h('section', { class: 'card' }, h('h2', {}, 'Подключить свой сервис'),
+        h('p', { class: 'hint' }, 'Сервис работает на сервере вуза и открывается внутри приложения. Его адрес должен быть на хосте, ' +
+          'который одобрила поддержка платформы. После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
         field('Название', name), field('Код', code, 'Латиница, цифры и -. Права сервиса будут вида <код>.<право>.'),
         h('p', {}, 'Кому доступен сервис:'), profiles,
-        field('Адрес API', api_), field('Адрес клиента (origin)', client));
-      const sync = () => { customFields.hidden = select.value !== CUSTOM; };
-      select.addEventListener('change', sync); sync();
-      let key = crypto.randomUUID();
-      parts.push(h('section', { class: 'card' }, h('h2', {}, 'Подключить сервис'), field('Сервис', select), customFields,
+        field('Адрес API', api_), field('Адрес клиента (origin)', client),
         h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
-          const custom = select.value === CUSTOM;
-          const body = custom ? {
+          if (!name.value.trim()) throw new ApiError('Укажите название сервиса.');
+          await api('/services', { method: 'POST', idempotencyKey: key, body: {
             service_type: `custom.${code.value.trim().toLowerCase()}`, deployment: 'local',
             titles: { ru: name.value.trim() }, supported_profiles: checked(profiles, 'custom-profiles'),
             api_base_url: api_.value.trim(), client_base_url: client.value.trim(),
-          } : { service_type: select.value, deployment: 'cloud' };
-          if (custom && !name.value.trim()) throw new ApiError('Укажите название сервиса.');
-          await api('/services', { method: 'POST', body, idempotencyKey: key });
+          } });
           key = crypto.randomUUID();
-          toast(custom ? 'Сервис зарегистрирован. Дальше — шаги в его карточке: ключ, запуск на сервере вуза, включение.'
-            : 'Сервис подключён и включён.');
-        }, reload) }, 'Подключить'))));
+          toast('Сервис зарегистрирован. Дальше — шаги в его карточке: ключ, запуск на сервере вуза, включение.');
+        }, reload) }, 'Зарегистрировать'))));
     }
 
     for (const s of services) {
@@ -531,6 +553,81 @@
       }, reload) }, 'Выдать ключ'));
     }
     return box;
+  }
+
+  // ------------------------------------------------------------------
+  // Учебные группы (сущность ядра: их читают все сервисы вуза)
+  // ------------------------------------------------------------------
+  async function renderGroups(view) {
+    const [groups, members] = await Promise.all([listAll('/groups'), listAll('/members')]);
+    const manage = can('groups.manage');
+    const students = members.filter(m => m.profiles.includes('student'));
+    const parts = [];
+    if (manage) {
+      const name = h('input', { placeholder: 'Например, ИВТ-21', maxLength: 100 });
+      parts.push(h('section', { class: 'card' }, h('h2', {}, 'Новая группа'), field('Название', name),
+        h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
+          if (!name.value.trim()) throw new ApiError('Укажите название группы.');
+          await api('/groups', { method: 'POST', body: { name: name.value.trim() } });
+          toast('Группа создана.');
+        }, reload) }, 'Создать'))));
+    }
+
+    const ungrouped = students.filter(m => !m.group_id);
+    if (ungrouped.length) {
+      const box = h('section', { class: 'card' }, h('h2', {}, `Студенты без группы (${ungrouped.length})`),
+        h('p', { class: 'muted' }, 'Пока студенту не назначена группа, его расписание пустое.'));
+      for (const m of ungrouped) {
+        box.append(h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('code', { title: m.user_id }, m.user_id)),
+          manage && groups.length ? groupPicker(groups, null, v => guarded(async () => {
+            await api(`/members/${m.user_id}/group`, { method: 'PUT', body: { group_id: v } });
+            toast('Группа назначена.');
+          }, reload)) : null));
+      }
+      parts.push(box);
+    }
+
+    const list = h('section', { class: 'card' }, h('h2', {}, `Группы (${groups.length})`));
+    for (const g of groups) {
+      const inGroup = students.filter(m => m.group_id === g.id);
+      const row = h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('strong', {}, g.name),
+        h('span', { class: 'badge' }, `студентов: ${inGroup.length}`)),
+        inGroup.length ? h('small', { class: 'muted' }, inGroup.map(m => short(m.user_id)).join(', ')) : null);
+      if (manage) {
+        row.append(h('div', { class: 'actions' },
+          h('button', { class: 'quiet', onclick: () => guarded(() => editRoster(g, students)) }, 'Состав'),
+          h('button', { class: 'quiet', onclick: () => guarded(async () => {
+            const input = h('input', { value: g.name, maxLength: 100 });
+            if (!await confirmDialog('Переименовать группу', field('Название', input), 'Сохранить')) return;
+            const { etag } = await api(`/groups/${g.id}`);
+            await api(`/groups/${g.id}`, { method: 'PATCH', body: { name: input.value.trim() }, etag });
+            toast('Группа переименована.');
+          }, reload) }, 'Переименовать'),
+          h('button', { class: 'danger', onclick: () => guarded(async () => {
+            if (!await confirmDialog('Удалить группу?', h('p', {}, 'Удалить можно только пустую группу. Занятия, где она указана, покажут её как удалённую.'), 'Удалить')) return;
+            const { etag } = await api(`/groups/${g.id}`);
+            await api(`/groups/${g.id}`, { method: 'DELETE', etag });
+            toast('Группа удалена.');
+          }, reload) }, 'Удалить')));
+      }
+      list.append(row);
+    }
+    if (!groups.length) list.append(h('p', { class: 'muted' }, 'Групп пока нет.'));
+    parts.push(list);
+    view.replaceChildren(...parts);
+  }
+
+  async function editRoster(group, students) {
+    const { data, etag } = await api(`/groups/${group.id}/members`);
+    // Студенты из других групп не предлагаются: студент состоит максимум в одной группе.
+    const options = students.filter(m => !m.group_id || m.group_id === group.id).map(m => [m.user_id, m.user_id]);
+    const box = checkboxGroup('roster', options, data.user_ids);
+    if (!await confirmDialog(`Состав группы «${group.name}»`, [box,
+      h('p', { class: 'hint' }, 'Студентов из других групп переводите полем «Группа» на вкладке «Участники».')], 'Сохранить')) return;
+    await guarded(async () => {
+      await api(`/groups/${group.id}/members`, { method: 'PUT', body: { user_ids: checked(box, 'roster') }, etag });
+      toast('Состав обновлён.');
+    }, reload);
   }
 
   // ------------------------------------------------------------------

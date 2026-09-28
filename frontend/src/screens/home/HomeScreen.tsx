@@ -1,17 +1,13 @@
 import { Link } from 'react-router-dom';
 import type { ScheduleEvent } from '../../api/types';
-import { Avatar, Badge, Button, EmptyState, ErrorState, Skeleton, toast } from '../../components/ui';
-import { IconCalendarEmpty } from '../../components/icons/ui';
+import { Avatar, Button, Skeleton, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useProfilesApi, useScheduleApi } from '../../hooks/useServices';
 import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useSession } from '../../state/session';
-import { findMeetingLink } from '../../utils/links';
-import { addDays, dayKey, formatDayTitle, formatRange, now, startOfDay } from '../../utils/time';
-import { humanMessage } from '../../api/http';
+import { addDays, dayKey, now, startOfDay } from '../../utils/time';
 import s from './home.module.css';
 
-const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
 /** Группа студента: общая для всех его занятий (у студента максимум одна группа — spec расписания). */
 function studentGroupId(events: ScheduleEvent[]): string | null {
@@ -45,7 +41,6 @@ export function HomeScreen() {
   const { maxUser, user } = useSession();
   const { institution, profile, catalog } = useInstitution();
   const profiles = useProfilesApi();
-  const scheduleApi = useScheduleApi();
   const base = `/institution/${institution.id}`;
 
   const me = useAsync(async signal => (profiles ? (await profiles.api.getMe(signal)).data : null), [profiles]);
@@ -99,62 +94,6 @@ export function HomeScreen() {
         </p>
       )}
 
-      {(!catalogReady || scheduleApi) && (
-        <section className={s.dayCard} aria-label="Расписание на день">
-          <TodaySchedule state={schedule} base={base} />
-        </section>
-      )}
     </div>
-  );
-}
-
-function TodaySchedule({ state, base }: { state: ReturnType<typeof useHomeSchedule>; base: string }) {
-  if (state.status === 'error') {
-    return <ErrorState title="Не удалось загрузить расписание" text={humanMessage(state.error)} onRetry={state.reload} />;
-  }
-  if (state.status === 'loading' || !state.data) {
-    return (
-      <div aria-busy="true" aria-label="Загрузка расписания">
-        <Skeleton width="55%" height="2.8rem" />
-        <div className={s.lessons}>
-          {[0, 1, 2].map(i => (
-            <div key={i} className={s.skeletonRow}><Skeleton height="2.4rem" /><Skeleton height="2.4rem" /><Skeleton height="2.4rem" /></div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-  const { day, isToday, events } = state.data;
-  if (!day) {
-    return (
-      <EmptyState icon={<IconCalendarEmpty />} title="Сегодня занятий нет" text="На ближайшую неделю занятия тоже не запланированы.">
-        <Link to={`${base}/schedule`} className={s.more}>Открыть расписание</Link>
-      </EmptyState>
-    );
-  }
-  const t = now().getTime();
-  return (
-    <>
-      <h2 className={s.dayTitle}>{formatDayTitle(day)}</h2>
-      {!isToday && <p className={s.dayCaption}>Сегодня занятий нет — ближайший учебный день</p>}
-      <ul className={s.lessons}>
-        {events.map(e => {
-          const link = findMeetingLink(e.description, e.location);
-          const cancelled = e.status === 'cancelled';
-          const current = !cancelled && Date.parse(e.starts_at) <= t && t < Date.parse(e.ends_at);
-          return (
-            <li key={e.id} className={cx(s.lesson, cancelled && s.cancelled, current && s.now)}>
-              <span className={s.time}>{formatRange(e.starts_at, e.ends_at)}</span>
-              <span className={s.subject}>
-                {e.title}
-                {cancelled && <span className={s.tag}><Badge tone="error">Отменено</Badge></span>}
-                {current && <span className={s.tag}><Badge tone="accent" dot>Идёт сейчас</Badge></span>}
-              </span>
-              <span className={cx(s.room, !e.location && link && s.online)}>{e.location || (link ? 'Онлайн' : '—')}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </>
   );
 }

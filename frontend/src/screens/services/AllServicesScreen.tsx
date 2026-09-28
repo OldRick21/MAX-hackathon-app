@@ -17,7 +17,7 @@ interface Entry {
 }
 
 const NATIVE: Record<string, { section: string; name: string; desc: string; Icon: Entry['Icon'] }> = {
-  // Один сервис — одна карточка: оба меню сервиса анкет ведут в «Люди», профиль открывается внутри.
+  // Один сервис — одна карточка: оба меню сервиса «Люди» ведут в «Люди», профиль открывается внутри.
   home: { section: 'users', name: 'Люди', desc: 'Ваш профиль и участники вуза', Icon: IconUsers },
   users: { section: 'users', name: 'Люди', desc: 'Ваш профиль и участники вуза', Icon: IconUsers },
   schedule: { section: 'schedule', name: 'Расписание', desc: 'Занятия на неделю', Icon: IconSchedule },

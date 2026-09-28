@@ -10,6 +10,7 @@
     python manage.py assign-owner INSTITUTION_UUID USER_UUID
     python manage.py install-people INSTITUTION_UUID
     python manage.py install-schedule INSTITUTION_UUID
+    python manage.py import-groups < groups.json
     python manage.py list-institutions
     python manage.py ensure-invariants
 
@@ -77,7 +78,7 @@ CLOUD_INSTALLS = {
     "user-profile": ("Сервис «Люди»", "Роль «Редактор анкет» (profile_editor) назначает владелец вуза в админке."),
     "schedule": ("Сервис расписания",
                  "Преподаватели задают свои занятия без отдельной роли. Роль «Редактор расписания» "
-                 "(schedule_editor: группы и всё расписание) назначает владелец вуза в админке."),
+                 "(schedule_editor: всё расписание) назначает владелец вуза в админке. Группы — в «Администрирование» → «Группы»."),
 }
 
 
@@ -137,6 +138,46 @@ def install_schedule(institution_id: str) -> None:
     install_cloud(institution_id, "schedule")
 
 
+def import_groups(stream) -> None:
+    """Перенос учебных групп из сервиса расписания в ядро с сохранением UUID.
+
+    Вход — JSON из `python -m app.export_groups` в контейнере schedule:
+    {"groups": [{"id", "institution_id", "name", "user_ids": [...]}]}. Повторный запуск
+    безопасен: существующие группы и уже распределённые студенты пропускаются.
+    """
+    import json
+    from database.tables import Membership, StudyGroup, StudyGroupMember
+    data = json.load(stream)
+    created = added = skipped = 0
+    with session_local() as db:
+        for item in data.get("groups", []):
+            gid, inst, name = _uuid(item["id"]), _uuid(item["institution_id"]), str(item["name"]).strip()[:100]
+            if not db.get(Institution, inst):
+                print(f"Пропуск {name}: вуз {inst} не найден")
+                skipped += 1
+                continue
+            group = db.get(StudyGroup, gid)
+            if not group:
+                if db.query(StudyGroup).filter_by(institution_id=inst, name_key=name.casefold()).first():
+                    print(f"Пропуск {name}: в вузе уже есть группа с таким названием")
+                    skipped += 1
+                    continue
+                group = StudyGroup(id=gid, institution_id=inst, name=name, name_key=name.casefold())
+                db.add(group)
+                db.flush()
+                created += 1
+            for uid in item.get("user_ids", []):
+                member = db.get(Membership, (inst, uid))
+                if not member or "student" not in (member.profiles or []) or db.get(StudyGroupMember, (inst, uid)):
+                    skipped += 1
+                    continue
+                db.add(StudyGroupMember(institution_id=inst, user_id=uid, group_id=gid))
+                added += 1
+            group.members_revision += 1
+        db.commit()
+    print(f"Группы перенесены: создано {created}, студентов добавлено {added}, пропущено {skipped}.")
+
+
 def list_institutions() -> None:
     with session_local() as db:
         for inst in db.query(Institution).order_by(Institution.created_at).all():
@@ -155,6 +196,7 @@ def main(argv=None) -> None:
     owner.add_argument("user_id")
     sub.add_parser("install-people").add_argument("institution_id")
     sub.add_parser("install-schedule").add_argument("institution_id")
+    sub.add_parser("import-groups", help="JSON групп из расписания на stdin")
     sub.add_parser("list-institutions")
     sub.add_parser("ensure-invariants")
     sub.add_parser("export-services")
@@ -171,6 +213,8 @@ def main(argv=None) -> None:
         install_people(_uuid(args.institution_id))
     elif args.command == "install-schedule":
         install_schedule(_uuid(args.institution_id))
+    elif args.command == "import-groups":
+        import_groups(sys.stdin)
     elif args.command == "list-institutions":
         list_institutions()
     elif args.command == "export-services":

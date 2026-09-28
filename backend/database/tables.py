@@ -76,6 +76,37 @@ class Membership(table_class):
     institution = relationship("Institution", back_populates="members")
     user = relationship("User", back_populates="memberships")
 
+
+class StudyGroup(table_class):
+    """Учебная группа вуза — сущность платформы, как членство и профиль.
+
+    Ведёт администратор вуза (groups.manage); сервисы читают группы через machine API
+    (scope groups:read) и introspection (group_ids). Ссылки на группы в данных сервисов
+    хранятся как UUID без FK на ядро.
+    """
+    __tablename__ = "study_groups"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    institution_id = Column(String(36), ForeignKey("institutions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    # trim + casefold: «ИВТ-21» и « ивт-21 » — одна группа
+    name_key = Column(String(100), nullable=False)
+    revision = Column(Integer, nullable=False, default=1)
+    members_revision = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (UniqueConstraint("institution_id", "name_key", name="uq_study_group_name"),)
+
+
+class StudyGroupMember(table_class):
+    """Студент в группе. PK (вуз, пользователь): в MVP студент состоит максимум в одной группе вуза."""
+    __tablename__ = "study_group_members"
+
+    institution_id = Column(String(36), ForeignKey("institutions.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
 class ServiceInstance(table_class):
     """Экземпляр сервиса в рамках ВУЗа (компонент AdminService в OpenAPI)."""
     __tablename__ = "services"

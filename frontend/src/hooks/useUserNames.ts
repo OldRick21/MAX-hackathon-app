@@ -30,6 +30,6 @@ export function useUserNames(api: ProfilesApi | null, scope: string, ids: string
       .then(pairs => { if (alive) setNames(prev => ({ ...prev, ...Object.fromEntries(pairs) })); });
     return () => { alive = false; };
   }, [api, scope, key]);
-  // Без сервиса анкет имён не будет — сразу считаем их неизвестными.
+  // Без сервиса «Люди» имён не будет — сразу считаем их неизвестными.
   return useMemo(() => api ? names : Object.fromEntries(key.split(',').map(id => [id, ''])), [api, names, key]);
 }

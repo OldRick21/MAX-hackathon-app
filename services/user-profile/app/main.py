@@ -193,7 +193,7 @@ def service_view(locale:str|None=Query(None,max_length=8),ctx=Depends(authentica
             name,used=text(item.get('titles') or {},locale)
             menus.append({'id':item['id'],'display_name':name,'locale':used,
                           'entrypoint_path':item['entrypoint_path'],'order':item.get('order',0)})
-    name,used=text(manifest.get('titles') or {'ru':'Анкеты пользователей'},locale)
+    name,used=text(manifest.get('titles') or {'ru':'Люди'},locale)
     return {'id':binding.service_id,'institution_id':binding.institution_id,'service_type':'user-profile',
             'deployment':'cloud','display_name':name,'locale':used,'api_base_url':binding.api_base_url,
             'client_base_url':binding.client_base_url,'profile':info['profile'],

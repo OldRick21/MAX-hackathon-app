@@ -1,0 +1,22 @@
+:root { --bg: #f4f3ff; --card: #fff; --text: #202438; --muted: #62677b; --line: #e0dfed; --accent: #6554d9; --danger: #c43d4b; --ok: #1f8a53;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --bg: #15161f; --card: #1f2130; --text: #eceef7; --muted: #a0a4b8; --line: #33364a; --accent: #8b7cf0; --danger: #ef6b77; --ok: #4cc488; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+main { max-width: 920px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { margin: 0 0 8px; font-size: 24px; } h2 { margin: 0 0 10px; font-size: 18px; }
+.muted { color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 0; }
+.row { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 6px; } .row:first-of-type { border-top: 0; }
+.row-main { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.badge { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--muted); }
+.badge.ok { color: var(--ok); border-color: var(--ok); } .badge.warn { color: var(--danger); border-color: var(--danger); }
+.field { display: grid; gap: 4px; margin: 10px 0; } .field > span { font-size: 14px; font-weight: 600; }
+input, select, textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; width: 100%; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+button { font: inherit; border-radius: 10px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button.danger { color: var(--danger); border-color: var(--danger); }
+button:disabled { opacity: .5; cursor: default; }
+.error { color: var(--danger); }
+dialog { border: 0; border-radius: 16px; padding: 0; width: min(520px, 94vw); background: var(--card); color: var(--text); }
+dialog::backdrop { background: rgb(0 0 0 / .4); } .dialog { padding: 18px; }

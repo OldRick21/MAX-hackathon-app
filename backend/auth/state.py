@@ -34,7 +34,7 @@ def core_state(db, claims):
 
 def machine_scopes(service):
     scopes = ['manifest:write', 'roles:read', 'roles:write', 'assignments:read',
-              'assignments:write', 'profiles:read', 'tokens:introspect']
+              'assignments:write', 'profiles:read', 'groups:read', 'tokens:introspect']
     if service.service_type == 'administration':
         scopes = [s for s in scopes if s not in ('roles:write', 'assignments:write')] + ['institution:manage']
     return scopes

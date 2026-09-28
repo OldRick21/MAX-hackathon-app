@@ -2,7 +2,7 @@ from typing import List
 from platform_core import catalog, registry
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from database.tables import Membership, ServiceInstance, ServiceRole, RoleAssignment
+from database.tables import Membership, ServiceInstance, ServiceRole, RoleAssignment, StudyGroup, StudyGroupMember
 
 
 class ServiceRegistry:
@@ -67,8 +67,26 @@ class ServiceRegistry:
         return {
             "user_id": user_id,
             "institution_id": service.institution_id,
-            "profiles": membership.profiles or []
+            "profiles": membership.profiles or [],
+            "groups": registry.user_group_ids(db, service.institution_id, user_id),
         }
+
+    @staticmethod
+    def list_service_groups(service_id: str, machine_claims: dict, db: Session):
+        """Учебные группы вуза экземпляра: для выбора групп в интерфейсе сервиса."""
+        ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        groups = db.query(StudyGroup).filter(StudyGroup.institution_id == machine_claims["institution_id"]) \
+            .order_by(StudyGroup.name_key).all()
+        return {"items": [{"id": g.id, "name": g.name} for g in groups], "next_cursor": None}
+
+    @staticmethod
+    def get_service_group_members(service_id: str, group_id: str, machine_claims: dict, db: Session):
+        ServiceRegistry._verify_service_ownership(service_id, machine_claims)
+        group = db.get(StudyGroup, group_id)
+        if not group or group.institution_id != machine_claims["institution_id"]:
+            raise HTTPException(status_code=404, detail="Group not found")
+        members = db.query(StudyGroupMember).filter(StudyGroupMember.group_id == group.id).all()
+        return {"group_id": group.id, "name": group.name, "user_ids": sorted(m.user_id for m in members)}
 
 
     @staticmethod

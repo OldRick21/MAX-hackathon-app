@@ -1,9 +1,8 @@
 import { PlatformLinks } from '../../platform/PlatformScreen';
-import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import logo from '../../assets/logo-buildings.png';
 import { useInstitution } from '../../state/institution';
-import { IconBell, Wordmark } from '../icons/figma';
+import { Wordmark } from '../icons/figma';
 import { bottomNav, buildNav, type NavItem } from './navigation';
 import { ProfileSwitcher, UniversitySwitcher } from './Switchers';
 import s from './layout.module.css';
@@ -46,34 +45,6 @@ function BottomNavigation({ items }: { items: NavItem[] }) {
   );
 }
 
-/** Уведомления: API уведомлений в контрактах нет, поэтому показываем пустое состояние. */
-function NotificationsButton() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
-  }, [open]);
-  return (
-    <div className={s.bell} ref={ref}>
-      <button type="button" className={s.bellButton} aria-label="Уведомления" aria-expanded={open} onClick={() => setOpen(o => !o)}>
-        <IconBell />
-      </button>
-      {open && (
-        <div className={s.popover} role="dialog" aria-label="Уведомления">
-          <p className={s.popoverTitle}>Уведомлений нет</p>
-          <p className={s.popoverText}>Здесь появятся новости от вуза и изменения в расписании.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function AppLayout() {
   const { institution, catalog } = useInstitution();
   const base = `/institution/${institution.id}`;
@@ -91,7 +62,6 @@ export function AppLayout() {
             <UniversitySwitcher />
             <ProfileSwitcher />
           </div>
-          <NotificationsButton />
         </header>
         <div className={s.content}>
           <PlatformLinks />

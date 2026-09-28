@@ -57,6 +57,27 @@ def get_service_user_profiles(
     return ServiceRegistry.get_service_user_profiles(service_id, user_id, machine_claims, db)
 
 
+@router.get("/api/v1/internal/service/{service_id}/groups")
+def list_institution_groups(
+    service_id: str,
+    machine_claims = Depends(RequireMachineScope("groups:read")),
+    db: Session = Depends(get_db)
+):
+    """Учебные группы вуза своего экземпляра."""
+    return ServiceRegistry.list_service_groups(service_id, machine_claims, db)
+
+
+@router.get("/api/v1/internal/service/{service_id}/groups/{group_id}/members")
+def get_institution_group_members(
+    service_id: str,
+    group_id: str,
+    machine_claims = Depends(RequireMachineScope("groups:read")),
+    db: Session = Depends(get_db)
+):
+    """Состав учебной группы вуза своего экземпляра."""
+    return ServiceRegistry.get_service_group_members(service_id, group_id, machine_claims, db)
+
+
 @router.get("/api/v1/internal/service/{service_id}/roles")
 def list_own_roles(
     service_id: str,

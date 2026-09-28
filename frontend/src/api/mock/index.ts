@@ -66,15 +66,7 @@ export function createMockBackend(): Backend {
       }
       if (input && !input.teacher_ids.includes(D.ME)) throw new ApiError('Проверьте заполненные поля.', 422);
     };
-    const requireGroups = () => {
-      if (s.profile !== 'admin' || !has(s, 'groups.manage')) throw new ApiError('Нет доступа к этому действию.', 403);
-    };
     const groupList = () => (D.groups[inst] ??= []);
-    const findGroup = (id: string) => {
-      const g = groupList().find(x => x.id === id);
-      if (!g) throw new ApiError('Не удалось найти данные. Возможно, их удалили.', 404);
-      return g;
-    };
     const validate = (input: ScheduleEvent | Omit<ScheduleEvent, 'id'>) => {
       if (!(Date.parse(input.starts_at) < Date.parse(input.ends_at))) {
         throw new ApiError('Время окончания должно быть позже времени начала.', 422, 'INVALID_TIME_RANGE');
@@ -116,43 +108,6 @@ export function createMockBackend(): Backend {
         if (s.profile === 'teacher' || (s.profile === 'admin' && has(s, 'schedule.read_all'))) return clone(groupList());
         const g = myGroup();
         return g ? [clone(g)] : [];
-      },
-      async getGroup(id) { await wait(150); return { data: clone(findGroup(id)), etag: etagOf(`group:${id}`) }; },
-      async createGroup(name) {
-        await wait(); requireGroups();
-        if (groupList().some(g => g.name.trim().toLowerCase() === name.trim().toLowerCase())) {
-          throw new ApiError('Группа с таким названием уже есть.', 409, 'GROUP_ALREADY_EXISTS');
-        }
-        const g = { id: crypto.randomUUID(), name: name.trim() };
-        groupList().push(g);
-        return clone(g);
-      },
-      async renameGroup(id, name, etag) {
-        await wait(); requireGroups(); checkEtag(`group:${id}`, etag);
-        findGroup(id).name = name.trim();
-        bump(`group:${id}`);
-        return { data: clone(findGroup(id)), etag: etagOf(`group:${id}`) };
-      },
-      async deleteGroup(id, etag) {
-        await wait(); requireGroups(); checkEtag(`group:${id}`, etag);
-        if (D.groupStudents[id]?.length || events[inst].some(e => e.group_ids.includes(id))) {
-          throw new ApiError('В группе есть студенты или занятия.', 409, 'GROUP_IN_USE');
-        }
-        D.groups[inst] = groupList().filter(g => g.id !== id);
-      },
-      async getStudents(id) {
-        await wait(150);
-        if (s.profile !== 'teacher') requireGroups();
-        findGroup(id);
-        return { data: clone(D.groupStudents[id] ?? []), etag: etagOf(`students:${id}`) };
-      },
-      async setStudents(id, userIds, etag) {
-        await wait(); requireGroups(); findGroup(id); checkEtag(`students:${id}`, etag);
-        const taken = userIds.some(u => groupList().some(g => g.id !== id && D.groupStudents[g.id]?.includes(u)));
-        if (taken) throw new ApiError('Студент уже состоит в другой группе.', 409, 'STUDENT_ALREADY_GROUPED');
-        D.groupStudents[id] = [...userIds];
-        bump(`students:${id}`);
-        return { data: clone(userIds), etag: etagOf(`students:${id}`) };
       },
     };
   };
@@ -303,6 +258,12 @@ export function createMockBackend(): Backend {
         return [{ ...clone(rest), institution_id: id, profile, roles: a.roles, permissions: a.permissions,
           menus: seed.menus.filter(m => a.menus.includes(m.id)) }];
       });
+    },
+    async listGroups(id, profile) {
+      await wait(150);
+      const all = D.groups[id] ?? [];
+      if (profile === 'student') return clone(all.filter(g => D.groupStudents[g.id]?.includes(D.ME)));
+      return clone(all.map(g => ({ ...g, user_ids: D.groupStudents[g.id] ?? [] })));
     },
     schedule,
     profiles,

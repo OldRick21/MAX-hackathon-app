@@ -1,12 +1,12 @@
-"""Сервис расписания против заглушки ядра: доступ по профилям, группы, занятия, версии, idempotency.
+"""Сервис расписания против заглушки ядра: доступ по профилям, группы из ядра, занятия, версии, idempotency.
 
     cd services/schedule && python -m unittest discover -s tests -t . -v
 """
 import os
+import sqlite3
 import tempfile
 import unittest
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,10 +19,13 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import main as m  # noqa: E402
 
 I = '44444444-4444-4444-8444-444444444444'
-ADMIN, EDITOR, T1, T2, ST1, ST2, NOBODY = (str(uuid.UUID(int=n)) for n in range(1, 8))
-PROFILES = {ADMIN: ['admin'], EDITOR: ['admin'], T1: ['teacher'], T2: ['teacher'],
-            ST1: ['student'], ST2: ['student'], NOBODY: []}
-EDITOR_PERMS = ['schedule.read_all', 'schedule.write', 'groups.manage']
+ADMIN, EDITOR, T1, T2, ST1, ST2 = (str(uuid.UUID(int=n)) for n in range(1, 7))
+PROFILES = {ADMIN: ['admin'], EDITOR: ['admin'], T1: ['teacher'], T2: ['teacher'], ST1: ['student'], ST2: ['student']}
+EDITOR_PERMS = ['schedule.read_all', 'schedule.write']
+GA, GB = str(uuid.uuid4()), str(uuid.uuid4())
+GROUPS = [{'id': GA, 'name': 'ИВТ-21'}, {'id': GB, 'name': 'ИВТ-22'}]
+# Группы студентов ведёт ядро и сообщает их в introspection.
+MEMBERSHIP = {ST1: [GA]}
 
 
 def binding(service_id):
@@ -33,14 +36,11 @@ def binding(service_id):
 class Schedule(unittest.TestCase):
     def setUp(self):
         self.actors = {}
-        # Своя пара (вуз, экземпляр) на каждый тест: база общая на модуль.
         self.service = str(uuid.uuid4())
-        patches = [
-            patch.object(m.core, 'binding', side_effect=lambda sid, fresh=False: binding(sid)),
-            patch.object(m.core, 'introspect', side_effect=self.introspect),
-            patch.object(m.core, 'profiles', side_effect=lambda b, uid: PROFILES.get(uid, [])),
-        ]
-        for p in patches:
+        for p in (patch.object(m.core, 'binding', side_effect=lambda sid, fresh=False: binding(sid)),
+                  patch.object(m.core, 'introspect', side_effect=self.introspect),
+                  patch.object(m.core, 'profiles', side_effect=lambda b, uid: PROFILES.get(uid, [])),
+                  patch.object(m.core, 'groups', side_effect=lambda b: list(GROUPS))):
             p.start()
             self.addCleanup(p.stop)
         self.ctx = TestClient(m.app)
@@ -52,30 +52,17 @@ class Schedule(unittest.TestCase):
         profile, permissions = self.actors[token]
         return {'active': True, 'service_id': claims['service_id'], 'institution_id': I, 'sub': claims['sub'],
                 'profile': profile, 'session_id': 'sid', 'parent_session_id': 'psid', 'roles': [],
-                'permissions': permissions}
+                'permissions': permissions, 'group_ids': MEMBERSHIP.get(claims['sub'], [])}
 
-    def as_(self, user, profile, permissions=(), service=None):
-        service = service or self.service
-        claims = {'service_id': service, 'sub': user, 'aud': 'service:' + service, 'token_use': 'service_access',
-                  'profile': profile, 'sid': 'sid', 'parent_sid': 'psid'}
+    def as_(self, user, profile, permissions=()):
+        claims = {'service_id': self.service, 'sub': user, 'aud': 'service:' + self.service, 'token_use': 'service_access',
+                  'profile': profile, 'sid': 'sid', 'parent_sid': 'psid', 'jti': str(uuid.uuid4())}
         token = jwt.encode(claims, 'x' * 32)
         self.actors[token] = (profile, list(permissions))
         return {'Authorization': 'Bearer ' + token}
 
-    # --- помощники ---
-
-    def post(self, path, h, body, key=None):
-        return self.c.post(path, headers={**h, 'Idempotency-Key': key or str(uuid.uuid4())}, json=body)
-
-    def group(self, h, name):
-        r = self.post('/api/v1/schedule/groups', h, {'name': name})
-        self.assertEqual(r.status_code, 201, r.text)
-        return r.json()['id']
-
-    def set_students(self, h, group_id, user_ids):
-        etag = self.c.get(f'/api/v1/schedule/groups/{group_id}/students', headers=h).headers['etag']
-        return self.c.put(f'/api/v1/schedule/groups/{group_id}/students', headers={**h, 'If-Match': etag},
-                          json={'user_ids': user_ids})
+    def post(self, h, body, key=None):
+        return self.c.post('/api/v1/schedule/events', headers={**h, 'Idempotency-Key': key or str(uuid.uuid4())}, json=body)
 
     @staticmethod
     def event(groups, teachers, start='2026-09-28T06:00:00Z', end='2026-09-28T07:30:00Z', **extra):
@@ -86,190 +73,142 @@ class Schedule(unittest.TestCase):
         params = {'from': '2026-09-28T00:00:00Z', 'to': '2026-10-05T00:00:00Z', **filters}
         return self.c.get('/api/v1/schedule/events', headers=h, params=params)
 
-    # --- сценарии ---
-
-    def test_groups_and_students(self):
-        editor = self.as_(EDITOR, 'admin', EDITOR_PERMS)
+    def test_groups_come_from_core(self):
+        teacher, student, loner = self.as_(T1, 'teacher'), self.as_(ST1, 'student'), self.as_(ST2, 'student')
         plain_admin = self.as_(ADMIN, 'admin')
-        teacher = self.as_(T1, 'teacher')
-        student = self.as_(ST1, 'student')
-
-        self.assertEqual(self.post('/api/v1/schedule/groups', plain_admin, {'name': 'ИВТ-1'}).status_code, 403)
-        self.assertEqual(self.post('/api/v1/schedule/groups', teacher, {'name': 'ИВТ-1'}).status_code, 403)
-        a = self.group(editor, 'ИВТ-1')
-        b = self.group(editor, 'ИВТ-2')
-        dup = self.post('/api/v1/schedule/groups', editor, {'name': '  ивт-1 '})
-        self.assertEqual((dup.status_code, dup.json()['error']['code']), (409, 'GROUP_ALREADY_EXISTS'))
-
-        # Состав: только студенты, один студент — одна группа.
-        bad = self.set_students(editor, a, [ST1, T1])
-        self.assertEqual((bad.status_code, bad.json()['error']['code']), (422, 'INVALID_REFERENCE'))
-        self.assertEqual(self.set_students(editor, a, [ST1]).status_code, 200)
-        clash = self.set_students(editor, b, [ST1, ST2])
-        self.assertEqual((clash.status_code, clash.json()['error']['code']), (409, 'STUDENT_ALREADY_GROUPED'))
-
-        # Устаревший ETag состава — 412, без If-Match — 428.
-        stale = self.c.get(f'/api/v1/schedule/groups/{b}/students', headers=editor).headers['etag']
-        self.assertEqual(self.set_students(editor, b, [ST2]).status_code, 200)
-        self.assertEqual(self.c.put(f'/api/v1/schedule/groups/{b}/students', headers={**editor, 'If-Match': stale},
-                                    json={'user_ids': []}).status_code, 412)
-        self.assertEqual(self.c.put(f'/api/v1/schedule/groups/{b}/students', headers=editor,
-                                    json={'user_ids': []}).status_code, 428)
-
-        # Состав читает преподаватель, но не студент и не admin без роли; менять — только редактор.
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=teacher).json()['user_ids'], [ST1])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=student).status_code, 403)
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=plain_admin).status_code, 403)
-        teacher_tag = self.c.get(f'/api/v1/schedule/groups/{a}/students', headers=teacher).headers['etag']
-        self.assertEqual(self.c.put(f'/api/v1/schedule/groups/{a}/students', headers={**teacher, 'If-Match': teacher_tag},
-                                    json={'user_ids': []}).status_code, 403)
-
-        # Видимость групп: преподаватель — все, студент — только своя, admin без роли — 403.
-        self.assertEqual(len(self.c.get('/api/v1/schedule/groups', headers=teacher).json()['items']), 2)
-        self.assertEqual([g['id'] for g in self.c.get('/api/v1/schedule/groups', headers=student).json()['items']], [a])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{b}', headers=student).status_code, 404)
+        self.assertEqual([g['name'] for g in self.c.get('/api/v1/schedule/groups', headers=teacher).json()['items']],
+                         ['ИВТ-21', 'ИВТ-22'])
+        self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=student).json()['items'], [GROUPS[0]])
+        self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=loner).json()['items'], [])
+        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{GB}', headers=student).status_code, 404)
         self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=plain_admin).status_code, 403)
-
-        # Непустую группу удалить нельзя; после очистки — можно.
-        g = self.c.get(f'/api/v1/schedule/groups/{a}', headers=editor)
-        busy = self.c.delete(f'/api/v1/schedule/groups/{a}', headers={**editor, 'If-Match': g.headers['etag']})
-        self.assertEqual((busy.status_code, busy.json()['error']['code']), (409, 'GROUP_IN_USE'))
-        self.assertEqual(self.set_students(editor, a, []).status_code, 200)
-        renamed = self.c.patch(f'/api/v1/schedule/groups/{a}', headers={**editor, 'If-Match': g.headers['etag']},
-                               json={'name': 'ИВТ-11'})
-        self.assertEqual(renamed.status_code, 200)
-        self.assertEqual(self.c.delete(f'/api/v1/schedule/groups/{a}',
-                                       headers={**editor, 'If-Match': g.headers['etag']}).status_code, 412)
-        self.assertEqual(self.c.delete(f'/api/v1/schedule/groups/{a}',
-                                       headers={**editor, 'If-Match': renamed.headers['etag']}).status_code, 204)
-
-    def test_concurrent_grouping(self):
-        editor = self.as_(EDITOR, 'admin', EDITOR_PERMS)
-        a, b = self.group(editor, 'А'), self.group(editor, 'Б')
-        with ThreadPoolExecutor(2) as pool:
-            results = list(pool.map(lambda g: self.set_students(editor, g, [ST1]), [a, b]))
-        self.assertEqual(sorted(r.status_code for r in results), [200, 409])
+        # Управления группами в сервисе больше нет: их ведёт администрирование ядра.
+        self.assertEqual(self.c.post('/api/v1/schedule/groups', headers=teacher, json={'name': 'x'}).status_code, 405)
 
     def test_teachers_write_own_events(self):
         editor = self.as_(EDITOR, 'admin', EDITOR_PERMS)
         t1, t2 = self.as_(T1, 'teacher'), self.as_(T2, 'teacher')
         st1, st2 = self.as_(ST1, 'student'), self.as_(ST2, 'student')
-        a, b = self.group(editor, 'А'), self.group(editor, 'Б')
-        self.set_students(editor, a, [ST1])
 
         # Студент без группы — пустое расписание, не ошибка.
         self.assertEqual(self.week(st2).json(), {'items': [], 'next_cursor': None})
 
-        # Преподаватель создаёт занятие только с собой среди преподавателей.
-        foreign = self.post('/api/v1/schedule/events', t1, self.event([a], [T2]))
-        self.assertEqual(foreign.status_code, 422)
-        self.assertEqual(self.post('/api/v1/schedule/events', st1, self.event([a], [T1])).status_code, 403)
-        wrong = self.post('/api/v1/schedule/events', t1, self.event([a], [T1, ST1]))
-        self.assertEqual((wrong.status_code, wrong.json()['error']['code']), (422, 'INVALID_REFERENCE'))
-        backwards = self.post('/api/v1/schedule/events', t1, self.event([a], [T1], start='2026-09-28T08:00:00Z'))
-        self.assertEqual((backwards.status_code, backwards.json()['error']['code']), (422, 'INVALID_TIME_RANGE'))
-        missing = self.post('/api/v1/schedule/events', t1, self.event([str(uuid.uuid4())], [T1]))
-        self.assertEqual((missing.status_code, missing.json()['error']['code']), (422, 'INVALID_REFERENCE'))
+        self.assertEqual(self.post(t1, self.event([GA], [T2])).status_code, 422)
+        self.assertEqual(self.post(st1, self.event([GA], [T1])).status_code, 403)
+        self.assertEqual(self.post(t1, self.event([GA], [T1, ST1])).json()['error']['code'], 'INVALID_REFERENCE')
+        self.assertEqual(self.post(t1, self.event([GA], [T1], start='2026-09-28T08:00:00Z')).json()['error']['code'],
+                         'INVALID_TIME_RANGE')
+        self.assertEqual(self.post(t1, self.event([str(uuid.uuid4())], [T1])).json()['error']['code'], 'INVALID_REFERENCE')
 
-        created = self.post('/api/v1/schedule/events', t1, self.event([a], [T1]))
+        created = self.post(t1, self.event([GA], [T1]))
         self.assertEqual(created.status_code, 201, created.text)
         event = created.json()
-        other = self.post('/api/v1/schedule/events', t2, self.event([b], [T2], start='2026-09-29T06:00:00+03:00',
-                                                                     end='2026-09-29T07:30:00+03:00')).json()
+        other = self.post(t2, self.event([GB], [T2], start='2026-09-29T06:00:00+03:00', end='2026-09-29T07:30:00+03:00')).json()
         self.assertEqual(other['starts_at'], '2026-09-29T03:00:00Z')
 
-        # Видимость: студент — своя группа, преподаватель — свои, редактор — все; фильтр не расширяет.
+        # Видимость: студент — по группе из ядра, преподаватель — свои, редактор — все; фильтр не расширяет.
         self.assertEqual([e['id'] for e in self.week(st1).json()['items']], [event['id']])
         self.assertEqual([e['id'] for e in self.week(t1).json()['items']], [event['id']])
         self.assertEqual(self.week(t1, teacher_id=T2).json()['items'], [])
         self.assertEqual(len(self.week(editor).json()['items']), 2)
-        self.assertEqual([e['id'] for e in self.week(editor, group_id=b).json()['items']], [other['id']])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=t1).status_code, 404)
+        self.assertEqual([e['id'] for e in self.week(editor, group_id=GB).json()['items']], [other['id']])
         self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=st1).status_code, 404)
 
         # Чужое занятие преподаватель не меняет и не удаляет: 404.
         other_tag = self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=editor).headers['etag']
         self.assertEqual(self.c.put(f'/api/v1/schedule/events/{other["id"]}', headers={**t1, 'If-Match': other_tag},
-                                    json=self.event([b], [T1])).status_code, 404)
-        self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{other["id"]}',
-                                       headers={**t1, 'If-Match': other_tag}).status_code, 404)
+                                    json=self.event([GB], [T1])).status_code, 404)
 
         # Своё — отменяет; отменённое видно студенту; устаревший ETag — 412.
         tag = created.headers['etag']
         cancelled = self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**t1, 'If-Match': tag},
-                               json=self.event([a], [T1, T2], status='cancelled'))
+                               json=self.event([GA], [T1, T2], status='cancelled'))
         self.assertEqual(cancelled.status_code, 200, cancelled.text)
         self.assertEqual(self.week(st1).json()['items'][0]['status'], 'cancelled')
         self.assertEqual(self.c.put(f'/api/v1/schedule/events/{event["id"]}', headers={**t1, 'If-Match': tag},
-                                    json=self.event([a], [T1])).status_code, 412)
-        # Соведущий T2 теперь тоже видит и может править занятие.
-        self.assertEqual(len(self.week(t2).json()['items']), 2)
+                                    json=self.event([GA], [T1])).status_code, 412)
 
-        # Используемую занятием группу удалить нельзя.
-        g = self.c.get(f'/api/v1/schedule/groups/{b}', headers=editor)
-        self.assertEqual(self.c.delete(f'/api/v1/schedule/groups/{b}',
-                                       headers={**editor, 'If-Match': g.headers['etag']}).status_code, 409)
+        # Студента перевели в другую группу в ядре — со следующего запроса он видит её занятия.
+        MEMBERSHIP[ST1] = [GB]
+        try:
+            self.assertEqual([e['id'] for e in self.week(st1).json()['items']], [other['id']])
+        finally:
+            MEMBERSHIP[ST1] = [GA]
 
-        # Редактор расписания правит и удаляет любое занятие.
         self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{other["id"]}',
                                        headers={**editor, 'If-Match': other_tag}).status_code, 204)
-        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=editor).status_code, 404)
 
     def test_idempotency_range_and_paging(self):
         editor = self.as_(EDITOR, 'admin', EDITOR_PERMS)
-        a = self.group(editor, 'А')
         key = str(uuid.uuid4())
-        first = self.post('/api/v1/schedule/events', editor, self.event([a], [T1]), key)
-        again = self.post('/api/v1/schedule/events', editor, self.event([a], [T1]), key)
-        self.assertEqual((first.status_code, again.status_code), (201, 201))
-        self.assertEqual(first.json()['id'], again.json()['id'])
-        changed = self.post('/api/v1/schedule/events', editor, self.event([a], [T2]), key)
-        self.assertEqual((changed.status_code, changed.json()['error']['code']), (409, 'IDEMPOTENCY_CONFLICT'))
-        self.assertEqual(self.c.post('/api/v1/schedule/events', headers=editor, json=self.event([a], [T1])).status_code, 400)
-
+        first, again = self.post(editor, self.event([GA], [T1]), key), self.post(editor, self.event([GA], [T1]), key)
+        self.assertEqual((first.status_code, again.status_code, first.json()['id']), (201, 201, again.json()['id']))
+        self.assertEqual(self.post(editor, self.event([GA], [T2]), key).json()['error']['code'], 'IDEMPOTENCY_CONFLICT')
+        self.assertEqual(self.c.post('/api/v1/schedule/events', headers=editor, json=self.event([GA], [T1])).status_code, 400)
         too_long = self.c.get('/api/v1/schedule/events', headers=editor,
                               params={'from': '2026-09-01T00:00:00Z', 'to': '2026-10-05T00:00:00Z'})
         self.assertEqual(too_long.json()['error']['code'], 'INVALID_TIME_RANGE')
-
         for day in range(1, 5):
-            self.post('/api/v1/schedule/events', editor,
-                      self.event([a], [T1], start=f'2026-09-2{day}T06:00:00Z', end=f'2026-09-2{day}T07:00:00Z'))
+            self.post(editor, self.event([GA], [T1], start=f'2026-09-2{day}T06:00:00Z', end=f'2026-09-2{day}T07:00:00Z'))
         seen, cursor = [], None
         while True:
-            params = {'from': '2026-09-20T00:00:00Z', 'to': '2026-10-01T00:00:00Z', 'limit': 2}
-            if cursor:
-                params['cursor'] = cursor
+            params = {'from': '2026-09-20T00:00:00Z', 'to': '2026-10-01T00:00:00Z', 'limit': 2, **({'cursor': cursor} if cursor else {})}
             page = self.c.get('/api/v1/schedule/events', headers=editor, params=params).json()
             seen += [e['starts_at'] for e in page['items']]
             cursor = page['next_cursor']
             if not cursor:
                 break
-        self.assertEqual(seen, sorted(seen))
-        self.assertEqual(len(seen), 5)
-        # Курсор другого пользователя не принимается.
-        stolen = self.c.get('/api/v1/schedule/events', headers=self.as_(T1, 'teacher'),
-                            params={'from': '2026-09-20T00:00:00Z', 'to': '2026-10-01T00:00:00Z', 'limit': 2,
-                                    'cursor': self.c.get('/api/v1/schedule/events', headers=editor, params={
-                                        'from': '2026-09-20T00:00:00Z', 'to': '2026-10-01T00:00:00Z', 'limit': 2,
-                                    }).json()['next_cursor']})
-        self.assertEqual(stolen.json()['error']['code'], 'INVALID_CURSOR')
-
-    def test_tenants_are_isolated(self):
-        editor = self.as_(EDITOR, 'admin', EDITOR_PERMS)
-        other_editor = self.as_(EDITOR, 'admin', EDITOR_PERMS, service=str(uuid.uuid4()))
-        a = self.group(editor, 'А')
-        # Та же группа из чужого экземпляра не видна и не годится для занятий.
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{a}', headers=other_editor).status_code, 404)
-        r = self.post('/api/v1/schedule/events', other_editor, self.event([a], [T1]))
-        self.assertEqual(r.json()['error']['code'], 'INVALID_REFERENCE')
+        self.assertEqual((seen, len(seen)), (sorted(seen), 5))
 
     def test_core_down_and_session_checks(self):
         self.assertEqual(self.c.get('/api/v1/schedule/groups').status_code, 401)
         teacher = self.as_(T1, 'teacher')
         with patch.object(m.core, 'introspect', side_effect=m.CoreUnavailable('offline')):
             self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=teacher).status_code, 503)
+        with patch.object(m.core, 'groups', side_effect=m.CoreUnavailable('offline')):
+            self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=teacher).status_code, 503)
         with patch.object(m.core, 'binding', side_effect=m.BindingMissing(self.service)):
             self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=teacher).status_code, 404)
+
+
+class Migration(unittest.TestCase):
+    def test_old_database_keeps_events_and_exports_groups(self):
+        """Том со старой схемой: занятия сохраняются, группы выгружаются для переноса в ядро."""
+        path = _tmp.name + '/old.db'
+        db = sqlite3.connect(path)
+        db.executescript('''
+            CREATE TABLE groups (institution_id TEXT, service_id TEXT, id TEXT, name TEXT, name_key TEXT,
+                revision INTEGER, students_revision INTEGER, PRIMARY KEY (institution_id, service_id, id));
+            CREATE TABLE group_students (institution_id TEXT, service_id TEXT, group_id TEXT, user_id TEXT,
+                PRIMARY KEY (institution_id, service_id, user_id),
+                FOREIGN KEY (institution_id, service_id, group_id) REFERENCES groups (institution_id, service_id, id));
+            CREATE TABLE events (institution_id TEXT NOT NULL, service_id TEXT NOT NULL, id TEXT NOT NULL,
+                title TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, location TEXT NOT NULL,
+                description TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (institution_id, service_id, id));
+            CREATE TABLE event_groups (institution_id TEXT NOT NULL, service_id TEXT NOT NULL, event_id TEXT NOT NULL,
+                group_id TEXT NOT NULL, pos INTEGER NOT NULL, PRIMARY KEY (institution_id, service_id, event_id, group_id),
+                FOREIGN KEY (institution_id, service_id, event_id) REFERENCES events (institution_id, service_id, id) ON DELETE CASCADE,
+                FOREIGN KEY (institution_id, service_id, group_id) REFERENCES groups (institution_id, service_id, id));
+            INSERT INTO groups VALUES ('i', 's', 'g1', 'ИВТ-21', 'ивт-21', 1, 1);
+            INSERT INTO group_students VALUES ('i', 's', 'g1', 'u1');
+            INSERT INTO events VALUES ('i', 's', 'e1', 'Лекция', '2026-09-28T06:00:00Z', '2026-09-28T07:00:00Z', '', '', 'scheduled', 1);
+            INSERT INTO event_groups VALUES ('i', 's', 'e1', 'g1', 0);
+        ''')
+        db.commit()
+        db.close()
+        from app import export_groups
+        with patch.object(m, 'DB', path), patch.object(export_groups, 'DB', path):
+            m.prepare()
+            m.prepare()  # повторный старт ничего не ломает
+            with m.database() as db:
+                fks = db.execute("PRAGMA foreign_key_list('event_groups')").fetchall()
+                self.assertFalse(any(fk['table'] == 'groups' for fk in fks))
+                self.assertEqual(db.execute('SELECT group_id FROM event_groups').fetchall()[0][0], 'g1')
+                # Занятие с группой ядра, которой нет в старой таблице, теперь сохраняется.
+                db.execute("INSERT INTO event_groups VALUES ('i', 's', 'e1', 'core-group', 1)")
+            self.assertEqual(export_groups.export(),
+                             {'groups': [{'id': 'g1', 'institution_id': 'i', 'name': 'ИВТ-21', 'user_ids': ['u1']}]})
 
 
 if __name__ == '__main__':

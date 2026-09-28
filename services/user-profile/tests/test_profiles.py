@@ -20,7 +20,7 @@ SID='55555555-5555-4555-8555-555555555555'
 PSID='66666666-6666-4666-8666-666666666666'
 
 BINDING=SimpleNamespace(service_id=S,institution_id=I,api_base_url='https://p.example/api/v1',client_base_url='https://p.example')
-MANIFEST={'titles':{'ru':'Анкеты пользователей','en':'User profiles'},'menus':[
+MANIFEST={'titles':{'ru':'Люди','en':'People'},'menus':[
     {'id':'users','titles':{'ru':'Пользователи','en':'Users'},'entrypoint_path':'/users','profiles':['admin','teacher','student'],'required_permissions':[],'order':10},
     {'id':'home','titles':{'ru':'Главная'},'entrypoint_path':'/home','profiles':['admin','teacher','student'],'required_permissions':[],'order':0},
     {'id':'staff','titles':{'ru':'Кадры'},'entrypoint_path':'/staff','profiles':['admin'],'required_permissions':['profiles.manage'],'order':20},
@@ -119,12 +119,12 @@ class Profiles(unittest.TestCase):
             self.assertEqual(c.get('/api/v1/service').status_code,401)
             view=c.get('/api/v1/service',headers=h).json()
             self.assertEqual((view['id'],view['institution_id'],view['service_type'],view['deployment']),(S,I,'user-profile','cloud'))
-            self.assertEqual((view['display_name'],view['locale'],view['profile']),('Анкеты пользователей','ru','teacher'))
+            self.assertEqual((view['display_name'],view['locale'],view['profile']),('Люди','ru','teacher'))
             self.assertEqual(view['api_base_url'],BINDING.api_base_url)
             # Сортировка (order,id); меню с required_permissions скрыто без права.
             self.assertEqual([x['id'] for x in view['menus']],['home','users'])
             en=c.get('/api/v1/service?locale=en',headers=h).json()
-            self.assertEqual(en['display_name'],'User profiles')
+            self.assertEqual(en['display_name'],'People')
             self.assertEqual([(x['id'],x['display_name'],x['locale']) for x in en['menus']],
                              [('home','Главная','ru'),('users','Users','en')])
             state.update(info('admin',['profiles.manage']))

@@ -90,7 +90,8 @@ class SecurityManager:
                 if any(not re.fullmatch(pattern, v) for v in values):
                     raise jwt.InvalidTokenError("Invalid permission code")
                 if name == 'scopes' and not set(values) <= {'manifest:write', 'roles:read', 'roles:write',
-                        'assignments:read', 'assignments:write', 'profiles:read', 'tokens:introspect', 'institution:manage'}:
+                        'assignments:read', 'assignments:write', 'profiles:read', 'groups:read', 'tokens:introspect',
+                        'institution:manage'}:
                     raise jwt.InvalidTokenError('Unknown scope')
 
     def decode(self, token, token_use, service_id=None):

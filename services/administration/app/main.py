@@ -198,6 +198,14 @@ OPERATIONS = [
     ("GET", "/members/{user_id}", "members.read", False, False, False),
     ("DELETE", "/members/{user_id}", "members.manage", True, False, False),
     ("PUT", "/members/{user_id}/profiles", "members.manage", True, False, True),
+    ("PUT", "/members/{user_id}/group", "groups.manage", False, False, True),
+    ("GET", "/groups", "members.read", False, False, False),
+    ("POST", "/groups", "groups.manage", False, False, True),
+    ("GET", "/groups/{group_id}", "members.read", False, False, False),
+    ("PATCH", "/groups/{group_id}", "groups.manage", True, False, True),
+    ("DELETE", "/groups/{group_id}", "groups.manage", True, False, False),
+    ("GET", "/groups/{group_id}/members", "members.read", False, False, False),
+    ("PUT", "/groups/{group_id}/members", "groups.manage", True, False, True),
     ("GET", "/services", "services.read", False, False, False),
     ("POST", "/services", "services.manage", False, True, True),
     ("GET", "/services/{service_id}", "services.read", False, False, False),
@@ -217,7 +225,7 @@ OPERATIONS = [
 ]
 
 PARAM_RULES = {
-    "user_id": UUID_RE, "service_id": UUID_RE, "credential_id": UUID_RE, "role_code": CODE_RE,
+    "user_id": UUID_RE, "service_id": UUID_RE, "credential_id": UUID_RE, "group_id": UUID_RE, "role_code": CODE_RE,
     "profile": re.compile(r"^(admin|teacher|student)$"),
 }
 

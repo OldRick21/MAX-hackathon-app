@@ -116,10 +116,6 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(view.json()['api_base_url'], 'https://shell.test/schedule/api/v1')
         self.assertEqual([m['id'] for m in view.json()['menus']], ['schedule'])
 
-        # Владелец без роли «Редактор расписания» группы не создаёт; роль назначается через администрирование.
-        key = {'Idempotency-Key': str(uuid.uuid4())}
-        self.assertEqual(self.svc.post('/api/v1/schedule/groups', headers={**admin_h, **key},
-                                       json={'name': 'ИВТ-21'}).status_code, 403)
         # Ядро не показывает admin пункт расписания без schedule.read_all, иначе shell открыл бы раздел с 403.
         def catalog():
             items = self.core.get(f'/api/v1/institution/{inst_id}/service', params={'profile': 'admin'},
@@ -128,26 +124,23 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual((catalog()['menus'], catalog()['permissions']), ([], []))
         roles_path = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{owner_id}/profiles/admin/roles'
         machine, actor = self.admin_headers(inst_id, admin_service_id, owner_core)
-        etag = self.core.get(roles_path, headers={**machine, **actor}).headers['ETag']
-        granted = self.core.put(roles_path, headers={**machine, **actor, 'If-Match': etag},
-                                json={'roles': ['schedule_editor']})
+        private = {**machine, **actor}
+        etag = self.core.get(roles_path, headers=private).headers['ETag']
+        granted = self.core.put(roles_path, headers={**private, 'If-Match': etag}, json={'roles': ['schedule_editor']})
         self.assertEqual(granted.status_code, 200, granted.text)
-
-        # После выдачи роли shell видит меню и права — от них зависят кнопки «Группы» и «Добавить занятие».
         self.assertEqual([m['id'] for m in catalog()['menus']], ['schedule_admin'])
-        self.assertEqual(catalog()['permissions'], ['groups.manage', 'schedule.read_all', 'schedule.write'])
-        self.assertEqual(catalog()['roles'], ['schedule_editor'])
-        group = self.svc.post('/api/v1/schedule/groups', headers={**admin_h, **key}, json={'name': 'ИВТ-21'})
+        self.assertEqual(catalog()['permissions'], ['schedule.read_all', 'schedule.write'])
+
+        # Группы ведёт администрирование ядра; расписание их только читает.
+        base = f'/api/v1/institution/{inst_id}/internal/groups'
+        group = self.core.post(base, headers=private, json={'name': 'ИВТ-21'})
         self.assertEqual(group.status_code, 201, group.text)
         group_id = group.json()['id']
-
-        # Состав проверяется по профилям ядра: преподаватель в группу не попадает, студент — да.
-        students = f'/api/v1/schedule/groups/{group_id}/students'
-        tag = self.svc.get(students, headers=admin_h).headers['etag']
-        wrong = self.svc.put(students, headers={**admin_h, 'If-Match': tag}, json={'user_ids': [teacher_id]})
-        self.assertEqual(wrong.json()['error']['code'], 'INVALID_REFERENCE')
-        self.assertEqual(self.svc.put(students, headers={**admin_h, 'If-Match': tag},
-                                      json={'user_ids': [student_id]}).status_code, 200)
+        tag = self.core.get(f'{base}/{group_id}/members', headers=private).headers['ETag']
+        self.assertEqual(self.core.put(f'{base}/{group_id}/members', headers={**private, 'If-Match': tag},
+                                       json={'user_ids': [student_id]}).status_code, 200)
+        self.assertEqual(self.svc.get('/api/v1/schedule/groups', headers=student_h).json()['items'],
+                         [{'id': group_id, 'name': 'ИВТ-21'}])
 
         # Преподаватель сам ставит занятие; студент группы его видит.
         event = {'title': 'Базы данных', 'starts_at': '2026-09-28T06:00:00Z', 'ends_at': '2026-09-28T07:30:00Z',

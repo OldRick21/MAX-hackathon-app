@@ -122,7 +122,7 @@ class AdministrationFlow(unittest.TestCase):
         r = self.c.put(roles_path, headers={**owner_h, "If-Match": self.etag(roles_path, owner_h)},
                        json={"roles": ["membership_admin"]})
         self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(sorted(r.json()["permissions"]), ["institution.read", "members.manage", "members.read"])
+        self.assertEqual(sorted(r.json()["permissions"]), ["groups.manage", "institution.read", "members.manage", "members.read"])
         self.assertEqual(self.c.get(f"{base}/members", headers=other_h).status_code, 200)
         self.assertEqual(self.c.get(roles_path, headers=other_h).status_code, 403)
         owner_member = f"{base}/members/{owner_id}"
