@@ -104,7 +104,7 @@
   .mobileLogo { display: flex; align-items: flex-end; gap: .6rem; color: var(--text); text-decoration: none; }
   .mobileLogo img { width: 4.2rem; height: 3.44rem; }
   .mobileLogo svg { width: 7rem; height: 2.67rem; }
-  .switchers { order: 3; width: 100%; flex-wrap: nowrap; gap: .8rem; overflow-x: auto; scrollbar-width: none; }
+  .switchers { order: 3; width: 100%; flex-wrap: wrap; gap: .8rem; overflow: visible; }
   .switchers::-webkit-scrollbar { display: none; }
   .bellButton { width: 4.4rem; height: 4.4rem; border-radius: 1.2rem; }
   .bellButton svg { width: 2.8rem; height: 2.6rem; }

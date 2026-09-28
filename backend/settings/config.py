@@ -1,6 +1,7 @@
 from auth.config import AuthSettings
 
 class Settings(AuthSettings):
+    USER_PROFILE_PROVISIONING_TOKEN: str = ""
     SERVICE_CONFIG_DIR: str = ""
     DATABASE_URL: str
     # --- Облачные сервисы платформы (CLOUD_RUNTIME_SPEC.md) ---

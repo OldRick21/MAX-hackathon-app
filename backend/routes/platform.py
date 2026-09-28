@@ -152,14 +152,20 @@ def get_binding(service_id: str, authorization: Optional[str] = Header(None), db
     подписанного service access, а не из пользовательского ввода.
     """
     scheme, token = split_bearer(authorization)
-    if scheme != "bearer" or not constant_time_token_match(token, settings.ADMINISTRATION_PROVISIONING_TOKEN):
+    service_type = None
+    if scheme == "bearer":
+        if constant_time_token_match(token, settings.ADMINISTRATION_PROVISIONING_TOKEN):
+            service_type = "administration"
+        elif constant_time_token_match(token, settings.USER_PROFILE_PROVISIONING_TOKEN):
+            service_type = "user-profile"
+    if service_type is None:
         raise DomainError(404, "RESOURCE_NOT_FOUND", "Ресурс не найден")
     if not is_uuid(service_id):
         raise DomainError(404, "RESOURCE_NOT_FOUND", "Binding не найден")
     binding = db.get(CloudBinding, service_id)
     service = db.get(ServiceInstance, service_id)
-    if not binding or not binding.active or not service or binding.service_type != "administration" \
-            or service.service_type != "administration":
+    if not binding or not binding.active or not service or binding.service_type != service_type \
+            or service.service_type != service_type:
         raise DomainError(404, "RESOURCE_NOT_FOUND", "Binding не найден")
     credential = db.get(ServiceCredential, binding.credential_id)
     if not credential or credential.revoked_at is not None or not settings.CLOUD_BINDING_KEY:

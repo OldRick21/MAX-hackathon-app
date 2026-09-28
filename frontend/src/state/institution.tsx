@@ -73,9 +73,12 @@ export function InstitutionProvider({ institutionId, children, fallback }: {
   }, [backend, institutionId, profile, ready, blocked, catalogAttempt]);
 
   const setProfile = useCallback((p: Profile) => {
+    if (!ready?.profiles.includes(p)) return;
     try { sessionStorage.setItem(storeKey(institutionId), p); } catch { /* приватный режим */ }
+    backend.releaseServices();
+    setCatalog({ status: 'loading' });
     setProfileState(p);
-  }, [institutionId]);
+  }, [institutionId, ready, backend]);
 
   const catalogFor = useCallback((p: Profile) => backend.listServices(institutionId, p), [backend, institutionId]);
 

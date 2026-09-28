@@ -8,6 +8,7 @@
     python manage.py grant-platform-role USER_UUID
     python manage.py revoke-platform-role USER_UUID
     python manage.py assign-owner INSTITUTION_UUID USER_UUID
+    python manage.py install-people INSTITUTION_UUID
     python manage.py list-institutions
     python manage.py ensure-invariants
 
@@ -18,7 +19,7 @@ import sys
 from uuid import UUID
 
 from database.create_tables import create_tables, session_local
-from database.tables import Institution, PlatformRole, PlatformStaff, User
+from database.tables import Institution, PlatformRole, PlatformStaff, ServiceInstance, User
 from platform_core import registry
 
 
@@ -71,6 +72,59 @@ def assign_owner(institution_id: str, user_id: str) -> None:
     print("Владелец назначен: профиль admin и роль owner в сервисе администрирования.")
 
 
+def install_people(institution_id: str) -> None:
+    """Ставит облачный сервис «Люди» вузу и приводит его настройки к текущим адресам.
+
+    Владелец вуза может сделать то же в админке. Команда нужна, когда сервис
+    подключают до появления владельца или когда после переезда platform-адресов
+    нужно починить существующий экземпляр. Повторный запуск безопасен.
+    """
+    from platform_core import catalog
+    from platform_core.errors import DomainError
+    from settings.config import settings
+
+    with session_local() as db:
+        try:
+            registry.lock_institution(db, institution_id)
+        except DomainError:
+            raise SystemExit("Вуз не найден; изменений нет.")
+        service = db.query(ServiceInstance).filter_by(
+            institution_id=institution_id, service_type="user-profile").first()
+        created = service is None
+        if created:
+            # create_cloud_instance уже добавила роли и binding; flush делает их
+            # видимыми для повторных ensure_* ниже, иначе появится второй binding.
+            service = registry.create_cloud_instance(db, institution_id, "user-profile")
+            db.flush()
+        elif service.deployment != "cloud":
+            raise SystemExit("Существующий экземпляр не облачный; изменений нет.")
+        # Адреса, манифест и профили задаёт платформа, а не администратор вуза.
+        service.api_base_url = settings.USER_PROFILE_API_BASE_URL
+        service.client_base_url = settings.USER_PROFILE_CLIENT_BASE_URL
+        service.manifest = catalog.default_manifest("user-profile")
+        service.supported_profiles = list(catalog.service_type("user-profile")["supported_profiles"])
+        service.enabled = True
+        registry.create_initial_roles(db, service)
+        binding = registry.ensure_cloud_binding(db, service)
+        registry.audit(db, scope="institution", action="service.install" if created else "service.update",
+                       actor_user_id=None, actor_kind="operator", institution_id=institution_id,
+                       target_type="service", target_id=service.id,
+                       details={"service_type": "user-profile", "deployment": "cloud",
+                                "api_base_url": service.api_base_url, "client_base_url": service.client_base_url})
+        db.commit()
+        service_id = service.id
+    print(f"Сервис «Люди» {'установлен' if created else 'обновлён'}: {service_id}")
+    if binding is None:
+        print("CLOUD_BINDING_KEY не задан: процесс сервиса вернёт 503, пока binding не выдан.")
+    # Настройки выгружаются, чтобы services/connected не ждал перезапуска backend.
+    from platform_core.service_files import export_services
+    try:
+        export_services(session_local)
+    except OSError as error:
+        print(f"Не удалось выгрузить настройки ({error}); запустите manage.py export-services.")
+    print("Роль «Редактор анкет» (profile_editor) назначает владелец вуза в админке.")
+
+
 def list_institutions() -> None:
     with session_local() as db:
         for inst in db.query(Institution).order_by(Institution.created_at).all():
@@ -87,6 +141,8 @@ def main(argv=None) -> None:
     owner = sub.add_parser("assign-owner")
     owner.add_argument("institution_id")
     owner.add_argument("user_id")
+    install = sub.add_parser("install-people")
+    install.add_argument("institution_id")
     sub.add_parser("list-institutions")
     sub.add_parser("ensure-invariants")
     sub.add_parser("export-services")
@@ -99,6 +155,8 @@ def main(argv=None) -> None:
         revoke(_uuid(args.user_id))
     elif args.command == "assign-owner":
         assign_owner(_uuid(args.institution_id), _uuid(args.user_id))
+    elif args.command == "install-people":
+        install_people(_uuid(args.institution_id))
     elif args.command == "list-institutions":
         list_institutions()
     elif args.command == "export-services":

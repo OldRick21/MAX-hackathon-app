@@ -24,6 +24,10 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("Set MAX_BOT_TOKEN and a random CURSOR_SECRET_KEY of at least 32 characters")
         if len(settings.CLOUD_BINDING_KEY) < 32 or len(settings.ADMINISTRATION_PROVISIONING_TOKEN) < 32:
             raise RuntimeError("Set CLOUD_BINDING_KEY and ADMINISTRATION_PROVISIONING_TOKEN (32+ random characters)")
+        # Токен user-profile необязателен: сервис ставится отдельным вузам. Но короткий токен — молчаливая
+        # поломка (binding не выдаётся, сам сервис не стартует), поэтому проверяется, если задан.
+        if settings.USER_PROFILE_PROVISIONING_TOKEN and len(settings.USER_PROFILE_PROVISIONING_TOKEN) < 32:
+            raise RuntimeError("USER_PROFILE_PROVISIONING_TOKEN must be empty or 32+ random characters")
     from auth.security import security
     security.keys.initialize()
     create_tables()

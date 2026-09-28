@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from settings.config import settings
@@ -12,6 +14,8 @@ from database.tables import (
     ServiceCredential,
 )
 
+log = logging.getLogger(__name__)
+
 engine = create_engine(settings.DATABASE_URL)
 
 @event.listens_for(engine, "connect")
@@ -20,6 +24,12 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         return
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
+    # Контейнер перезапускают в любой момент: WAL журналирует так, что прерванная
+    # запись откатывается при следующем открытии файла, а busy_timeout ждёт чужую
+    # запись вместо ошибки "database is locked" и ответа 503. synchronous остаётся
+    # штатным (FULL): терять последние коммиты сессий и вузов при сбое питания нельзя.
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=10000")
     cursor.close()
 
 session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -98,7 +108,12 @@ def create_tables():
     finally:
         db.close()
     from platform_core.service_files import export_services
-    export_services(session_local)
+    try:
+        export_services(session_local)
+    except Exception:
+        # Файлы — восстановимая проекция БД. Недоступный каталог не должен
+        # оставлять контейнер в цикле перезапуска: ядро поднимается и без них.
+        log.exception('Service settings export failed; rebuild with manage.py export-services')
 
 def get_db():
     db = session_local()

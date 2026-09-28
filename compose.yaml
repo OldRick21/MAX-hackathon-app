@@ -10,6 +10,9 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: sqlite:////data/core-jwt.db
+      USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN:?Set USER_PROFILE_PROVISIONING_TOKEN in .env}
+      USER_PROFILE_API_BASE_URL: ${SHELL_ORIGIN}/people/api/v1
+      USER_PROFILE_CLIENT_BASE_URL: ${SHELL_ORIGIN}
       SERVICE_CONFIG_DIR: /srv/services/connected
       CURSOR_SECRET_KEY: ${CURSOR_SECRET_KEY:?Set CURSOR_SECRET_KEY in .env}
       JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env}
@@ -54,11 +57,27 @@ services:
     restart: unless-stopped
     init: true
 
+  user-profile:
+    build: ./services/user-profile
+    restart: unless-stopped
+    init: true
+    environment:
+      CORE_INTERNAL_URL: http://backend:8000
+      USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN}
+      PROFILE_DB: /data/profiles.db
+    volumes:
+      - profile-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+
   web:
     depends_on:
       backend:
         condition: service_healthy
       administration:
+        condition: service_healthy
+      user-profile:
         condition: service_healthy
     build: ./frontend
     restart: unless-stopped
@@ -93,5 +112,6 @@ services:
       retries: 5
 
 volumes:
+  profile-data:
   core-data:
   redis-data:

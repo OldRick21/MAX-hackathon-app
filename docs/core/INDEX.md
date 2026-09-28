@@ -7,4 +7,4 @@
 - [CORE_API_SPEC.md](CORE_API_SPEC.md) — техническая спецификация.
 - [CORE_API_TODO_REPORT.md](CORE_API_TODO_REPORT.md) — решения по TODO.
 
-[Исходный манифест](../SPEC_MANIFEST.md) · [Документация сервисов и SDK](../services/README.md).
+[Исходный манифест](../SPEC_MANIFEST.md) · [Документация сервисов и SDK](../services/INDEX.md).

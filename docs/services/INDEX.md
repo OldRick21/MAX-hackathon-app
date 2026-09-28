@@ -4,13 +4,13 @@
 
 ## Комплекты
 
-| Часть | OpenAPI | Список эндпоинтов | Спецификация | Операций |
-| --- | --- | --- | --- | --- |
-| Общее / SDK | [OPENAPI.yaml](sdk/OPENAPI.yaml) | [ENDPOINTS.txt](sdk/ENDPOINTS.txt) | [SPEC.md](sdk/SPEC.md) | 3 |
-| Администрирование | [OPENAPI.yaml](administration/OPENAPI.yaml) | [ENDPOINTS.txt](administration/ENDPOINTS.txt) | [SPEC.md](administration/SPEC.md) | 20 |
-| Расписание | [OPENAPI.yaml](schedule/OPENAPI.yaml) | [ENDPOINTS.txt](schedule/ENDPOINTS.txt) | [SPEC.md](schedule/SPEC.md) | 13 |
-| Анкеты пользователей | [OPENAPI.yaml](user-profile/OPENAPI.yaml) | [ENDPOINTS.txt](user-profile/ENDPOINTS.txt) | [SPEC.md](user-profile/SPEC.md) | 7 |
-| Локальные курсовые | [OPENAPI.yaml](coursework/OPENAPI.yaml) | [ENDPOINTS.txt](coursework/ENDPOINTS.txt) | [SPEC.md](coursework/SPEC.md) | 8 |
+| Часть | OpenAPI | Список эндпоинтов | Спецификация | Операций | Реализация |
+| --- | --- | --- | --- | --- | --- |
+| Общее / SDK | [OPENAPI.yaml](sdk/OPENAPI.yaml) | [ENDPOINTS.txt](sdk/ENDPOINTS.txt) | [SPEC.md](sdk/SPEC.md) | 3 | — |
+| Администрирование | [OPENAPI.yaml](administration/OPENAPI.yaml) | [ENDPOINTS.txt](administration/ENDPOINTS.txt) | [SPEC.md](administration/SPEC.md) | 20 | [IMPLEMENTATION.md](administration/IMPLEMENTATION.md) |
+| Расписание | [OPENAPI.yaml](schedule/OPENAPI.yaml) | [ENDPOINTS.txt](schedule/ENDPOINTS.txt) | [SPEC.md](schedule/SPEC.md) | 13 | нет |
+| Анкеты пользователей | [OPENAPI.yaml](user-profile/OPENAPI.yaml) | [ENDPOINTS.txt](user-profile/ENDPOINTS.txt) | [SPEC.md](user-profile/SPEC.md) | 7 | [IMPLEMENTATION.md](user-profile/IMPLEMENTATION.md) |
+| Локальные курсовые | [OPENAPI.yaml](coursework/OPENAPI.yaml) | [ENDPOINTS.txt](coursework/ENDPOINTS.txt) | [SPEC.md](coursework/SPEC.md) | 8 | нет |
 
 Полный API каждого сервиса = **три общие операции SDK + собственный контракт сервиса**. Числа включают HTML/asset endpoints. В сумме это исходная 51 операция без потерь и дубликатов между комплектами. В administration 19 операций фасада ядра и один HTML entrypoint.
 
@@ -21,6 +21,8 @@
 1. [SDK/SPEC.md](sdk/SPEC.md) — общие проверки, контекст экземпляра, клиент ядра, HTTP и iframe. В первой таблице явно разделены обязанности библиотеки и сервиса.
 2. Спецификация нужного сервиса — его права, меню, данные, транзакции и критерии приёмки.
 3. [CLOUD_RUNTIME_SPEC.md](CLOUD_RUNTIME_SPEC.md) — один процесс на тип, доставка bindings и создание/отключение экземпляров. Это работа платформы; универсальный SDK только потребляет доверенные настройки.
+
+Столбец «Реализация» ведёт на разбор написанного кода: что сделано, где реализация отходит от контракта и как это проверяется. Контракты описывают целевое поведение и меняются отдельно от кода.
 
 Ядро остаётся источником пользователей, членств, профилей, ролей и сессий. Сервисы владеют своими учебными данными; administration — фасад без второго реестра. Сервисы не вызывают друг друга в MVP: schedule/coursework могут работать без установленного user-profile.
 

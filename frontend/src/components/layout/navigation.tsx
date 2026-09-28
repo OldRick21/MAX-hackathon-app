@@ -18,7 +18,9 @@ export interface NavItem {
 export function buildNav(base: string, services: ServiceView[] | undefined): NavItem[] {
   const items: NavItem[] = [{ key: 'home', to: base, label: 'Главная', short: 'Главная', Icon: IconHome, end: true }];
   if (findService(services, 'schedule')) items.push({ key: 'schedule', to: `${base}/schedule`, label: 'Расписание', short: 'Расписание', Icon: IconSchedule });
-  if (findService(services, 'users')) items.push({ key: 'users', to: `${base}/users`, label: 'Пользователи', short: 'Люди', Icon: IconUsers });
+  // Экран профиля закрыт тем же гейтом, что и список, поэтому условие здесь — тоже 'users'.
+  if (findService(services, 'users')) items.push({ key: 'profile', to: `${base}/users/me`, label: 'Мой профиль', short: 'Профиль', Icon: IconUsers });
+  if (findService(services, 'users')) items.push({ key: 'users', to: `${base}/users`, label: 'Пользователи', short: 'Люди', Icon: IconUsers, end: true });
   if (findService(services, 'coursework')) items.push({ key: 'coursework', to: `${base}/coursework`, label: 'Курсовые работы', short: 'Работы', Icon: IconCoursework });
   const admin = frameMenus(services).find(x => x.service.service_type === 'administration');
   if (admin) {
