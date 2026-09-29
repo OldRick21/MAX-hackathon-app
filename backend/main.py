@@ -23,6 +23,12 @@ async def lifespan(app: FastAPI):
     if not settings.ALLOW_DEV_LOGIN:
         if not settings.MAX_BOT_TOKEN.strip() or len(settings.CURSOR_SECRET_KEY) < 32:
             raise RuntimeError("Set MAX_BOT_TOKEN and a random CURSOR_SECRET_KEY of at least 32 characters")
+        # Облачные сервисы: ключ вывода секретов и токены раннеров (каждый 32+ случайных символа).
+        weak = [name for name, value in (("CLOUD_BINDING_KEY", settings.CLOUD_BINDING_KEY),
+                                         *((f"{t.upper().replace('-', '_')}_PROVISIONING_TOKEN", v)
+                                           for t, v in settings.provisioning_tokens().items())) if len(value) < 32]
+        if weak:
+            raise RuntimeError("Set 32+ random characters: " + ", ".join(weak))
     from auth.security import security
     security.keys.initialize()
     create_tables()

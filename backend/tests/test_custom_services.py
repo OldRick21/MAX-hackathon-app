@@ -14,6 +14,7 @@ os.environ.update(
     JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='custom-secret-' * 4, MAX_BOT_TOKEN='',
     ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1',
     CLOUD_BINDING_KEY='b' * 48, ADMINISTRATION_PROVISIONING_TOKEN='p' * 48, SERVICE_CONFIG_DIR='',
+    SCHEDULE_PROVISIONING_TOKEN='s' * 48, USER_PROFILE_PROVISIONING_TOKEN='u' * 48,
 )
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -170,50 +171,53 @@ class CustomServices(unittest.TestCase):
             registry.ensure_platform_invariants(db)
             db.commit()
             migrated = db.get(ServiceInstance, legacy.id)
-            # Тот же UUID и тип контракта, но теперь это контейнер вуза (local); облачный ключ отозван.
-            self.assertEqual((migrated.service_type, migrated.deployment), ('schedule', 'local'))
-            self.assertFalse(db.get(CloudBinding, legacy.id).active)
+            # Тот же UUID, облачное размещение; ключ binding перевыпущен, прежний отозван.
+            self.assertEqual((migrated.service_type, migrated.deployment), ('schedule', 'cloud'))
+            self.assertTrue(db.get(CloudBinding, legacy.id).active)
+            self.assertNotEqual(db.get(CloudBinding, legacy.id).credential_id, cred.id)
             self.assertIsNotNone(db.get(ServiceCredential, cred.id).revoked_at)
 
-    def test_connect_service_for_the_script(self):
-        from database.tables import InstitutionLocalHost, ServiceCredential
+    def test_cloud_install_and_runner_provisioning(self):
         from platform_core import registry
         from services import platform_ops
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Автоподключение'}, 'ru').id
+            inst = registry.provision_institution(db, {'ru': 'Облако'}, 'ru').id
             db.commit()
-            first = platform_ops.connect_service(db, inst, 'schedule', 'schedule-x.1-2-3-4.sslip.io', 9445)
+            service, created = platform_ops.install_cloud_service(db, inst, 'schedule')
+            again, created_again = platform_ops.install_cloud_service(db, inst, 'schedule')
             db.commit()
-            env = first['env']
-            self.assertEqual(env['SERVICE_API_BASE_URL'], 'https://schedule-x.1-2-3-4.sslip.io:9445/api/v1')
-            self.assertEqual(env['CORE_URL'], 'https://core.test')
-            service = db.get(ServiceInstance, first['service_id'])
-            self.assertEqual((service.service_type, service.enabled), ('schedule', False))
-            self.assertIsNotNone(db.get(InstitutionLocalHost, (inst, 'schedule-x.1-2-3-4.sslip.io')))
-            # Ключ рабочий: ядро меняет его на machine token этого сервиса.
-            token = self.c.post('/api/v1/internal/auth/token', auth=(env['SERVICE_CLIENT_ID'], env['SERVICE_CLIENT_SECRET']),
-                                json={'grant_type': 'client_credentials'}).json()
-            self.assertEqual((token['service_id'], token['institution_id']), (service.id, inst))
-            # Меню ещё нет — не включается; после публикации — включается.
-            self.assertFalse(platform_ops.enable_service(db, inst, 'schedule'))
-            service.manifest = {'titles': {'ru': 'Расписание'}, 'menus': [
-                {'id': 'schedule', 'titles': {'ru': 'Расписание'}, 'entrypoint_path': '/', 'profiles': ['student'],
-                 'required_permissions': [], 'order': 0}]}
-            self.assertTrue(platform_ops.enable_service(db, inst, 'schedule'))
-            db.commit()
-            # Повторный запуск: тот же сервис, старый ключ отозван.
-            again = platform_ops.connect_service(db, inst, 'schedule', 'schedule-x.1-2-3-4.sslip.io', 9445)
-            db.commit()
-            self.assertEqual(again['service_id'], service.id)
-            old = db.query(ServiceCredential).filter_by(client_id=env['SERVICE_CLIENT_ID']).one()
-            self.assertIsNotNone(old.revoked_at)
-            self.assertTrue(db.get(ServiceInstance, service.id).enabled)  # адреса те же — не выключается
-            # Администрирование: адреса защищённого экземпляра и ключ.
-            admin = platform_ops.connect_service(db, inst, 'administration', 'admin-x.1-2-3-4.sslip.io', 9444)
-            db.commit()
-            self.assertEqual(db.get(ServiceInstance, admin['service_id']).client_base_url, 'https://admin-x.1-2-3-4.sslip.io:9444')
-            self.assertTrue(platform_ops.enable_service(db, inst, 'administration'))
+            sid = service.id
+            self.assertEqual((created, created_again, again.id), (True, False, sid))
+            self.assertEqual((service.deployment, service.enabled), ('cloud', True))
+        # Раннер типа видит свои экземпляры с ключами; чужой токен — нет.
+        listed = self.c.get('/api/v1/internal/provisioning/instances', headers={'Authorization': 'Bearer ' + 's' * 48})
+        self.assertEqual(listed.status_code, 200, listed.text)
+        mine = next(i for i in listed.json()['items'] if i['service_id'] == sid)
+        self.assertEqual(mine['api_base_url'], f'https://shell.platform.example/schedule/{sid}/api/v1')
+        token = self.c.post('/api/v1/internal/auth/token', auth=(mine['client_id'], mine['client_secret']),
+                            json={'grant_type': 'client_credentials'}).json()
+        self.assertEqual((token['service_id'], token['institution_id']), (sid, inst))
+        admin_list = self.c.get('/api/v1/internal/provisioning/instances', headers={'Authorization': 'Bearer ' + 'p' * 48}).json()
+        self.assertNotIn(sid, [i['service_id'] for i in admin_list['items']])
+        self.assertTrue(all(i['service_type'] == 'administration' for i in admin_list['items']))
+        self.assertEqual(self.c.get('/api/v1/internal/provisioning/instances', headers={'Authorization': 'Bearer nope'}).status_code, 404)
 
+    def test_local_hosting_moves_to_cloud(self):
+        from database.tables import CloudBinding, ServiceCredential
+        from platform_core import registry
+        with session_local() as db:
+            inst = registry.provision_institution(db, {'ru': 'Был контейнер'}, 'ru').id
+            old = registry.create_local_instance(db, inst, 'user-profile', 'https://people.university.ru/api/v1',
+                                                 'https://people.university.ru', None, ['admin', 'student'])
+            cred, _ = registry.issue_credential(db, old)
+            old_id, cred_id = old.id, cred.id
+            db.commit()
+            registry.ensure_platform_invariants(db)
+            db.commit()
+            moved = db.get(ServiceInstance, old_id)
+            self.assertEqual((moved.deployment, moved.api_base_url), ('cloud', f'https://shell.platform.example/people/{old_id}/api/v1'))
+            self.assertIsNotNone(db.get(ServiceCredential, cred_id).revoked_at)  # ключ контейнера вуза отозван
+            self.assertTrue(db.get(CloudBinding, old_id).active)
     def test_intermediate_custom_types_become_contract_types(self):
         from platform_core import registry
         with session_local() as db:

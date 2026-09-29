@@ -57,7 +57,7 @@ LEGACY_OWNER_ROLE = "admin_owner"
 SERVICE_TYPES: Dict[str, dict] = {
     "administration": {
         "code": "administration",
-        "deployment": "local",
+        "deployment": "cloud",
         "titles": {"ru": "Администрирование", "en": "Administration"},
         "supported_profiles": ["admin"],
         "permission_codes": list(ADMIN_PERMISSIONS),
@@ -71,17 +71,20 @@ SERVICE_TYPES: Dict[str, dict] = {
     },
 }
 
-# Сервисы вуза с типами из контракта: свой контейнер вуза, ключ из карточки, меню и роли
-# публикует сам сервис. Ядро знает только словарь их прав (docs/services/<тип>/SPEC.md §1).
-for _code, _titles, _perms in (
-    ("schedule", {"ru": "Расписание", "en": "Schedule"}, ["schedule.read_all", "schedule.write", "groups.manage"]),
-    ("user-profile", {"ru": "Люди", "en": "People"}, ["profiles.manage"]),
-    ("coursework", {"ru": "Курсовые работы", "en": "Coursework"}, ["coursework.manage"]),
+# Сервисы вуза с типами из контракта. schedule и user-profile — облачные: платформа запускает
+# для каждого вуза свой процесс в раннере типа; coursework — локальный (сервер вуза). Меню и роли
+# публикует сам сервис; ядро знает только словарь их прав (docs/services/<тип>/SPEC.md §1).
+for _code, _deployment, _titles, _perms in (
+    ("schedule", "cloud", {"ru": "Расписание", "en": "Schedule"}, ["schedule.read_all", "schedule.write", "groups.manage"]),
+    ("user-profile", "cloud", {"ru": "Люди", "en": "People"}, ["profiles.manage"]),
+    ("coursework", "local", {"ru": "Курсовые работы", "en": "Coursework"}, ["coursework.manage"]),
 ):
-    SERVICE_TYPES[_code] = {"code": _code, "deployment": "local", "titles": _titles,
+    SERVICE_TYPES[_code] = {"code": _code, "deployment": _deployment, "titles": _titles,
                             "supported_profiles": ["admin", "teacher", "student"], "permission_codes": _perms,
                             "protected": False, "menus": [], "initial_roles": [], "system_roles": False}
 INSTITUTION_TYPES = ("schedule", "user-profile", "coursework")
+CLOUD_TYPES = ("administration", "schedule", "user-profile")
+CLOUD_INSTALLABLE = ("schedule", "user-profile")
 
 # Любые другие сервисы вуза ядру заранее не известны: вуз регистрирует их как свои сервисы
 # (custom.<код>). Каждый работает в своём

@@ -7,6 +7,7 @@
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, Header, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from database.create_tables import get_db
@@ -162,3 +163,38 @@ def assign_initial_owner(institution_id: str, payload: Any = Body(None),
 def platform_audit(limit: Optional[int] = Query(None), cursor: Optional[str] = Query(None, max_length=2048),
                    staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
     return respond(svc.list_platform_audit(db, staff, limit, cursor))
+
+
+# --- Раннеры облачных сервисов (только внутренняя сеть: публичный Nginx закрывает /api/v1/internal/…) ---
+
+@router_platform.get("/api/v1/internal/provisioning/instances")
+def cloud_instances(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    """Облачные экземпляры типа раннера с ключами (CLOUD_RUNTIME_SPEC §2).
+
+    Токен раннера определяет тип: чужие типы этим токеном не видны. Секрет выводится из
+    CLOUD_BINDING_KEY и не хранится в БД.
+    """
+    from database.tables import CloudBinding, ServiceCredential, ServiceInstance
+    from platform_core.concurrency import constant_time_token_match, derive_binding_secret, split_bearer
+    from settings.config import settings
+    scheme, token = split_bearer(authorization)
+    service_type = next((t for t, expected in settings.provisioning_tokens().items()
+                         if scheme == "bearer" and expected and constant_time_token_match(token, expected)), None)
+    if service_type is None:
+        raise DomainError(404, "RESOURCE_NOT_FOUND", "Ресурс не найден")
+    if not settings.CLOUD_BINDING_KEY:
+        raise DomainError(503, "SERVICE_UNAVAILABLE", "CLOUD_BINDING_KEY не задан")
+    items = []
+    rows = db.query(CloudBinding, ServiceInstance).join(ServiceInstance, ServiceInstance.id == CloudBinding.service_id) \
+        .filter(CloudBinding.service_type == service_type, CloudBinding.active.is_(True),
+                ServiceInstance.deployment == "cloud").all()
+    for binding, service in rows:
+        credential = db.get(ServiceCredential, binding.credential_id)
+        if not credential or credential.revoked_at is not None:
+            continue
+        items.append({"service_id": service.id, "institution_id": service.institution_id, "service_type": service_type,
+                      "enabled": service.enabled, "api_base_url": service.api_base_url,
+                      "client_base_url": service.client_base_url, "client_id": binding.client_id,
+                      "client_secret": derive_binding_secret(settings.CLOUD_BINDING_KEY, credential.id),
+                      "revision": binding.revision})
+    return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})

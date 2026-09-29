@@ -152,18 +152,13 @@ class OperatorPanel(unittest.TestCase):
         tag = op.get(f'/api/institutions/{inst}').headers['ETag']
         self.assertEqual(op.patch(f'/api/institutions/{inst}/status', headers={**W, 'If-Match': tag},
                                   json={'status': 'suspended'}).json()['status'], 'suspended')
-        # Администрирование — контейнер вуза: ключ и адреса задаёт оператор.
-        admin_id = next(x['id'] for x in op.get(f'{base}/services').json()['items'] if x['service_type'] == 'administration')
-        key = op.post(f'{base}/services/{admin_id}/credentials', headers=W)
-        self.assertEqual(key.status_code, 201, key.text)
-        self.assertEqual(len(key.json()['client_secret']), 43)
-        etag = op.get(f'{base}/services/{admin_id}').headers['ETag']
-        moved = op.patch(f'{base}/services/{admin_id}', headers={**W, 'If-Match': etag},
-                         json={'api_base_url': 'https://admin.university.ru/api/v1', 'client_base_url': 'https://admin.university.ru'})
-        self.assertEqual(moved.status_code, 200, moved.text)
-        self.assertEqual(moved.json()['api_base_url'], 'https://admin.university.ru/api/v1')
-        etag = op.get(f'{base}/services/{admin_id}').headers['ETag']
-        self.assertEqual(op.patch(f'{base}/services/{admin_id}', headers={**W, 'If-Match': etag}, json={'enabled': False})
+        # Администрирование облачное: адреса и ключ задаёт платформа, вручную не меняются.
+        admin = next(x for x in op.get(f'{base}/services').json()['items'] if x['service_type'] == 'administration')
+        self.assertEqual((admin['deployment'], admin['api_base_url']),
+                         ('cloud', f"https://admin.platform.example/{admin['id']}/api/v1"))
+        self.assertEqual(op.post(f"{base}/services/{admin['id']}/credentials", headers=W).status_code, 403)
+        etag = op.get(f"{base}/services/{admin['id']}").headers['ETag']
+        self.assertEqual(op.patch(f"{base}/services/{admin['id']}", headers={**W, 'If-Match': etag}, json={'enabled': False})
                          .json()['error']['code'], 'PROTECTED_RESOURCE')
         self.assertEqual(op.get(f'{base}/nonsense').status_code, 404)
 
@@ -195,7 +190,7 @@ class OperatorPanel(unittest.TestCase):
         self.assertEqual(targets[next(k for k in targets if k.endswith('Расписание'))], 'https://schedule.check.ru/api/v1/health')
         self.assertIn('Ядро', targets)
         self.assertNotIn('https://people.check.ru/api/v1/health', targets.values())  # выключенный не проверяется
-        self.assertTrue(any(v.endswith('/api/v1/health') and 'administration' in v for v in targets.values()))
+        self.assertTrue(any(v.startswith('https://admin.platform.example/') and v.endswith('/api/v1/health') for v in targets.values()))
 
 if __name__ == '__main__':
     unittest.main()

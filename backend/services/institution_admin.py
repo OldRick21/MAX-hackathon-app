@@ -519,7 +519,12 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
     deployment = payload.get("deployment")
     service_type = payload.get("service_type")
     approved = registry.approved_hosts(db, ctx.institution_id)
-    if deployment == "local" and service_type in catalog.INSTITUTION_TYPES:
+    if deployment == "cloud":
+        # Облачный сервис одной кнопкой: адреса и ключ задаёт платформа, процесс вуза запускает раннер.
+        _body(payload, {"service_type", "deployment"}, {"service_type", "deployment"})
+        if service_type not in catalog.CLOUD_INSTALLABLE:
+            raise validation("Облачно устанавливаются schedule и user-profile", "service_type")
+    elif deployment == "local" and service_type == "coursework":
         # Тип контракта: название и профили — из каталога, меню и роли публикует сам сервис.
         _body(payload, {"service_type", "deployment", "api_base_url", "client_base_url"},
               {"service_type", "deployment", "api_base_url", "client_base_url"})
@@ -539,14 +544,17 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
         api_url = catalog.check_api_url(payload["api_base_url"], approved)
         client_url = catalog.check_origin(payload["client_base_url"], approved)
     else:
-        raise validation("deployment local и service_type: schedule, user-profile, coursework или custom.<код>", "service_type")
+        raise validation("cloud: schedule, user-profile; local: coursework или custom.<код>", "service_type")
 
     if db.query(ServiceInstance).filter(ServiceInstance.institution_id == ctx.institution_id,
                                         ServiceInstance.service_type == service_type).first():
         raise DomainError(409, "SERVICE_ALREADY_EXISTS", "Сервис с таким кодом уже подключён в вузе")
 
-    service = registry.create_local_instance(db, ctx.institution_id, service_type, api_url, client_url,
-                                             titles, profiles)
+    if deployment == "cloud":
+        service = registry.create_cloud_instance(db, ctx.institution_id, service_type)
+    else:
+        service = registry.create_local_instance(db, ctx.institution_id, service_type, api_url, client_url,
+                                                 titles, profiles)
     view = service_view(service)
     db.add(IdempotencyRecord(actor_user_id=ctx.actor_id, institution_id=ctx.institution_id, method="POST",
                              path=path, key=key, request_hash=digest, resource_id=service.id,
@@ -569,20 +577,9 @@ def patch_service(db: Session, ctx: ActorContext, service_id: str, payload, if_m
     require_if_match(if_match, compute_etag(before))
     url_change = "api_base_url" in body or "client_base_url" in body
     if service.protected:
-        # Администрирование нельзя выключить; адреса его контейнера меняет только оператор платформы.
-        if not getattr(ctx, "operator", False) or "enabled" in body:
-            raise protected("Сервис администрирования нельзя отключить или перенастроить")
-        changes = {}
-        if "api_base_url" in body:
-            changes["api_base_url"] = catalog.check_api_url(body["api_base_url"], None)
-        if "client_base_url" in body:
-            changes["client_base_url"] = catalog.check_origin(body["client_base_url"], None)
-        for key, value in changes.items():
-            setattr(service, key, value)
-        after = service_view(service)
-        ctx.audit(db, "service.update", "service", service.id, {"before": {k: before[k] for k in changes}, "after": changes})
-        db.commit()
-        return Result(after, etag=compute_etag(after))
+        raise protected("Сервис администрирования нельзя отключить или перенастроить")
+    if url_change and service.deployment == "cloud":
+        raise validation("Адреса облачного сервиса задаёт платформа", "api_base_url")
 
     changes = {}
     if url_change:
@@ -643,8 +640,8 @@ def replace_manifest(db: Session, ctx: ActorContext, service_id: str, payload, i
     service = _service(db, ctx, service_id)
     before = service_view(service)
     require_if_match(if_match, compute_etag(before))
-    if service.protected:
-        raise protected("Manifest администрирования задаёт платформа")
+    if service.deployment != "local":
+        raise protected("Меню облачного сервиса публикует сам сервис")
     manifest = catalog.check_manifest(payload, service.service_type, service.supported_profiles or [])
     if service.enabled and not manifest["menus"]:
         raise DomainError(409, "MANIFEST_REQUIRED", "У включённого сервиса должен остаться хотя бы один пункт меню")
@@ -807,9 +804,9 @@ def replace_assignments(db: Session, ctx: ActorContext, service_id: str, user_id
 # --------------------------------------------------------------------------
 
 def _local_only(service: ServiceInstance, ctx: ActorContext) -> None:
-    # Ключ процесса администрирования выдаёт оператор платформы, а не администратор вуза.
-    if service.protected and not getattr(ctx, "operator", False):
-        raise protected("Ключ администрирования выдаёт оператор платформы", status=403)
+    # Ключи облачных сервисов (в т. ч. администрирования) выдаёт платформа раннеру автоматически.
+    if service.deployment != "local":
+        raise protected("Ключ облачного сервиса выдаёт платформа автоматически", status=403)
 
 
 def list_credentials(db: Session, ctx: ActorContext, service_id: str, limit, cursor) -> Result:

@@ -135,3 +135,16 @@ def split_bearer(header: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         return None, None
     scheme, _, token = header.partition(" ")
     return scheme.lower(), token.strip()
+
+
+def derive_binding_secret(binding_key: str, credential_id: str) -> str:
+    """Секрет ключа облачного экземпляра: HMAC(CLOUD_BINDING_KEY, credential_id).
+
+    Ядро хранит только хеш; секрет воспроизводим лишь при знании CLOUD_BINDING_KEY, поэтому
+    раннер получает его от ядра по своему токену типа. Смена ключа + перезапуск ядра — ротация.
+    """
+    if not binding_key or len(binding_key) < 32:
+        raise ValueError("CLOUD_BINDING_KEY must be at least 32 characters")
+    digest = hmac.new(binding_key.encode("utf-8"), b"cloud-binding:v1:" + credential_id.encode("ascii"),
+                      hashlib.sha256).digest()
+    return _b64(digest)
