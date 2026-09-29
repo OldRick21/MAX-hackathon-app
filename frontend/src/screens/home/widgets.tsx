@@ -118,13 +118,18 @@ function ProfileBody({ data }: { data: Extract<WidgetData, { kind: 'profile' }> 
   );
 }
 
+// Больше пяти занятий виджет не показывает: иначе он растягивает весь ряд главной. Полный день — по клику.
+const EVENTS_SHOWN = 5;
+
 function EventsBody({ data }: { data: Extract<WidgetData, { kind: 'events' }> }) {
   if (!data.items.length) return <p className={s.caption}>{data.empty_text || 'На ближайшую неделю занятий нет'}</p>;
   const t = now().getTime();
+  const shown = data.items.slice(0, EVENTS_SHOWN);
+  const more = (data.more ?? 0) + data.items.length - shown.length;
   return (
     <>
     <ul className={s.lessons}>
-      {data.items.map((e, i) => {
+      {shown.map((e, i) => {
         const current = e.status !== 'cancelled' && Date.parse(e.starts_at) <= t && t < Date.parse(e.ends_at);
         return (
           <li key={i} className={cx(s.lesson, e.status === 'cancelled' && s.cancelled, current && s.now)}>
@@ -135,7 +140,7 @@ function EventsBody({ data }: { data: Extract<WidgetData, { kind: 'events' }> })
         );
       })}
     </ul>
-    {data.more ? <p className={s.caption}>Ещё {data.more}</p> : null}
+    {more ? <p className={s.caption}>Ещё {more}</p> : null}
     </>
   );
 }

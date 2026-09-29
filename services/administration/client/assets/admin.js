@@ -47,6 +47,9 @@
   }
   const fmtDate = (v) => v ? new Date(v).toLocaleString('ru-RU') : '—';
   const short = (id) => id ? `${id.slice(0, 8)}…` : '—';
+  // Участник — по имени из заявки; без анкеты — коротким ID. Списки людей — по алфавиту.
+  const who = (m) => m.full_name || `Без анкеты · ${short(m.user_id)}`;
+  const byName = (a, b) => who(a).localeCompare(who(b), 'ru');
   const title = (titles) => (titles && (titles.ru || titles.en)) || '';
 
   // ------------------------------------------------------------------
@@ -397,7 +400,7 @@
             toast('Профили обновлены. Роли снятых профилей отозваны.');
           }, reload) }, 'Сохранить профили'),
           h('button', { class: 'danger', onclick: () => guarded(async () => {
-            if (!await confirmDialog('Удалить участника?', h('p', {}, `Пользователь ${short(m.user_id)} потеряет доступ ко всем сервисам вуза, его роли будут сняты.`), 'Удалить')) return;
+            if (!await confirmDialog('Удалить участника?', h('p', {}, `${who(m)} потеряет доступ ко всем сервисам вуза, его роли будут сняты.`), 'Удалить')) return;
             const { etag } = await api(`/members/${m.user_id}`);
             await api(`/members/${m.user_id}`, { method: 'DELETE', etag });
             toast('Участник удалён.');
@@ -699,7 +702,7 @@
       const box = h('section', { class: 'card' }, h('h2', {}, `Студенты без группы (${ungrouped.length})`),
         h('p', { class: 'muted' }, 'Пока студенту не назначена группа, его расписание пустое.'));
       for (const m of ungrouped) {
-        box.append(h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('code', { title: m.user_id }, m.user_id)),
+        box.append(h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('span', { title: m.user_id }, who(m))),
           manage && groups.length ? groupPicker(groups, null, v => guarded(async () => {
             await api(`/members/${m.user_id}/group`, { method: 'PUT', body: { group_id: v } });
             toast('Группа назначена.');
@@ -713,7 +716,7 @@
       const inGroup = students.filter(m => m.group_id === g.id);
       const row = h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('strong', {}, g.name),
         h('span', { class: 'badge' }, `студентов: ${inGroup.length}`)),
-        inGroup.length ? h('small', { class: 'muted' }, inGroup.map(m => short(m.user_id)).join(', ')) : null);
+        inGroup.length ? h('small', { class: 'muted' }, [...inGroup].sort(byName).map(who).join(', ')) : null);
       if (manage) {
         row.append(h('div', { class: 'actions' },
           h('button', { class: 'quiet', onclick: () => guarded(() => editRoster(g, students)) }, 'Состав'),
@@ -741,7 +744,7 @@
   async function editRoster(group, students) {
     const { data, etag } = await api(`/groups/${group.id}/members`);
     // Студенты из других групп не предлагаются: студент состоит максимум в одной группе.
-    const options = students.filter(m => !m.group_id || m.group_id === group.id).map(m => [m.user_id, m.user_id]);
+    const options = students.filter(m => !m.group_id || m.group_id === group.id).sort(byName).map(m => [m.user_id, who(m)]);
     const box = checkboxGroup('roster', options, data.user_ids);
     if (!await confirmDialog(`Состав группы «${group.name}»`, [box,
       h('p', { class: 'hint' }, 'Студентов из других групп переводите полем «Группа» на вкладке «Участники».')], 'Сохранить')) return;
@@ -797,11 +800,11 @@
     // Назначения
     if (can('roles.manage') && can('members.read')) {
       const members = await listAll('/members');
-      const eligible = members.filter(m => m.profiles.some(p => service.supported_profiles.includes(p)));
+      const eligible = members.filter(m => m.profiles.some(p => service.supported_profiles.includes(p))).sort(byName);
       const box = h('section', { class: 'card' }, h('h2', {}, 'Назначение ролей'));
       if (isAdminService && !isOwner()) box.append(h('p', { class: 'hint' }, 'Только владелец может менять роли администрирования; вам доступен просмотр.'));
       const memberSelect = h('select', {}, h('option', { value: '' }, 'Выберите участника'),
-        eligible.map(m => h('option', { value: m.user_id }, `${m.user_id}${m.user_id === session.userId ? ' (вы)' : ''}`)));
+        eligible.map(m => h('option', { value: m.user_id, title: m.user_id }, `${who(m)}${m.user_id === session.userId ? ' (вы)' : ''}`)));
       const profileSelect = h('select', { disabled: true });
       const target = h('div', {});
       memberSelect.addEventListener('change', () => {
@@ -869,6 +872,9 @@
   // Журнал
   // ------------------------------------------------------------------
   async function renderAudit(view) {
+    // Кто и над кем действовал — по имени, если это участник вуза.
+    const names = can('members.read') ? Object.fromEntries((await listAll('/members')).map(m => [m.user_id, who(m)])) : {};
+    const person = (id) => names[id] || short(id);
     const list = h('div', {});
     let cursor = null;
     const more = h('button', { class: 'quiet', onclick: () => guarded(load) }, 'Показать ещё');
@@ -879,7 +885,7 @@
         list.append(h('div', { class: `row ${e.outcome === 'denied' ? 'denied' : ''}` },
           h('div', { class: 'row-main' }, h('strong', {}, ACTIONS[e.action] || e.action),
             e.outcome === 'denied' ? h('span', { class: 'badge' }, `отклонено: ${e.error_code}`) : null),
-          h('small', { class: 'muted' }, `${fmtDate(e.created_at)} · ${e.actor_kind === 'platform_support' ? 'поддержка платформы' : e.actor_kind === 'operator' ? 'оператор' : e.actor_kind === 'system' ? 'сервис' : 'администратор'} ${short(e.actor_user_id)}${e.target_id ? ' · объект ' + e.target_id : ''}`),
+          h('small', { class: 'muted' }, `${fmtDate(e.created_at)} · ${e.actor_kind === 'platform_support' ? 'поддержка платформы' : e.actor_kind === 'operator' ? 'оператор' : e.actor_kind === 'system' ? 'сервис' : 'администратор'} ${person(e.actor_user_id)}${e.target_id ? ' · объект ' + (names[e.target_id] || e.target_id) : ''}`),
           Object.keys(e.details || {}).length ? h('details', {}, h('summary', {}, 'Подробности'), h('pre', {}, JSON.stringify(e.details, null, 2))) : null));
       }
       cursor = data.next_cursor; more.hidden = !cursor;
