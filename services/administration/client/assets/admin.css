@@ -17,7 +17,11 @@ h3 { margin: 14px 0 6px; font-size: 15px; }
 .muted { color: var(--muted); }
 .hint { background: var(--warn-bg); border-radius: 10px; padding: 8px 12px; font-size: 14px; }
 .status { min-height: 1.5em; color: var(--muted); }
-.notice { background: var(--warn-bg); border: 1px solid var(--danger); border-radius: 12px; padding: 10px 14px; margin: 10px 0; }
+.notice { background: var(--warn-bg); border: 1px solid var(--danger); border-radius: 12px; padding: 10px 14px; margin: 10px 0;
+  position: sticky; top: 8px; z-index: 5; } /* ошибка видна, даже если страница прокручена вниз */
+.result { margin: 8px 0 0; min-height: 1.4em; color: var(--muted); }
+.result.ok { color: var(--ok, #13744B); }
+.result.error { color: var(--danger); }
 .notice small { display: block; color: var(--muted); }
 /* Разделы: сетка плиток без прокрутки — на широком окне одна строка, на узком переносятся. */
 .tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; margin: 14px 0; }

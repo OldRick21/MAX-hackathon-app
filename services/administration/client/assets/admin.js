@@ -855,7 +855,8 @@
         if (m) loadAssignment();
       });
       profileSelect.addEventListener('change', () => loadAssignment());
-      async function loadAssignment() {
+      // Итог сохранения показывается у самой кнопки: общая строка статуса наверху страницы уезжает за экран.
+      async function loadAssignment(saved = null) {
         await guarded(async () => {
           const path = `/services/${service.id}/users/${memberSelect.value}/profiles/${profileSelect.value}/roles`;
           const { data, etag } = await api(path);
@@ -863,12 +864,26 @@
           const readOnly = isAdminService && !isOwner();
           const group = checkboxGroup('assign', options, data.roles, readOnly);
           const noRoles = 'Для этого профиля ролей нет.';
+          const result = h('p', { class: saved ? 'result ok' : 'result', role: 'status' }, saved || '');
           target.replaceChildren(options.length ? group : h('p', { class: 'muted' }, noRoles),
             h('p', { class: 'muted' }, `Итоговые права: ${data.permissions.map(p => PERMISSION_NAMES[p] || p).join(', ') || 'нет'}`),
-            readOnly || !options.length ? null : h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => guarded(async () => {
-              await api(path, { method: 'PUT', body: { roles: checked(group, 'assign') }, etag });
-              toast('Роли обновлены. Пользователь увидит новые возможности, вернувшись в приложение.');
-            }, loadAssignment) }, 'Сохранить роли')));
+            readOnly || !options.length ? null : h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: async (event) => {
+              const button = event.currentTarget;
+              button.disabled = true;
+              result.className = 'result'; result.textContent = 'Сохраняем…';
+              clearError();
+              try {
+                await api(path, { method: 'PUT', body: { roles: checked(group, 'assign') }, etag });
+                toast('Роли обновлены. Пользователь увидит новые возможности, вернувшись в приложение.');
+                await loadAssignment('Роли сохранены. Пользователь увидит новые возможности, вернувшись в приложение.');
+              } catch (error) {
+                showError(error);
+                button.disabled = false;
+                result.className = 'result error';
+                result.textContent = `Не сохранено: ${error instanceof ApiError ? error.message : 'не удалось выполнить действие.'}`
+                  + (error.requestId ? ` Код обращения: ${error.requestId}` : '');
+              }
+            } }, 'Сохранить роли')), result);
         });
       }
       box.append(field('Участник', memberSelect), field('Профиль', profileSelect), target);
