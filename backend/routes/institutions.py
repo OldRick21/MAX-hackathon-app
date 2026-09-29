@@ -240,7 +240,8 @@ def list_my_services(institution_id: str, profile: Profile = PROFILE_QUERY, loca
     user, _ = session_data
     _active(_member(db, institution_id, user.id, profile))
     services = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
-                                                ServiceInstance.enabled == True).all()  # noqa: E712
+                                                ServiceInstance.enabled == True,  # noqa: E712
+                                                ServiceInstance.deleted_at.is_(None)).all()
     cards = [service_card(db, s, user.id, profile, locale) for s in services if profile in (s.supported_profiles or [])]
     # В списке только экземпляры с доступными профилю меню; headless-сессия по-прежнему доступна по id.
     visible = [c for c in cards if c["menus"]]
@@ -266,7 +267,8 @@ def get_my_service(institution_id: str, service_id: str, profile: Profile = PROF
     user, _ = session_data
     _active(_member(db, institution_id, user.id, profile))
     service = db.get(ServiceInstance, service_id)
-    if not service or service.institution_id != institution_id or profile not in (service.supported_profiles or []):
+    if (not service or service.deleted_at is not None or service.institution_id != institution_id
+            or profile not in (service.supported_profiles or [])):
         raise DomainError(404, "RESOURCE_NOT_FOUND", "Сервис не найден")
     if not service.enabled:
         raise DomainError(409, "RESOURCE_INACTIVE", "Сервис отключён")

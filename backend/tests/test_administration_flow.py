@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from tests.keys import issue_key  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
-from database.tables import PlatformStaff  # noqa: E402
+from database.tables import PlatformStaff, ServiceInstance  # noqa: E402
 from main import app  # noqa: E402
 
 
@@ -202,10 +202,32 @@ class AdministrationFlow(unittest.TestCase):
                        json={"roles": ["viewer"]})
         self.assertEqual(r.json()["error"]["code"], "INVALID_ROLE_ASSIGNMENT")
 
+        # Удаление экземпляра логическое: ключи отозваны, экземпляр не выдаётся, UUID не
+        # переиспользуется, слот типа свободен для новой установки, запись и журнал остаются.
+        cw_id = cw_path.rsplit("/", 1)[1]
+        key = self.c.post(f"{cw_path}/credentials", headers=owner_h).json()
+        basic = (key["credential"]["client_id"], key["client_secret"])
+        self.assertEqual(self.c.post("/api/v1/internal/auth/token", auth=basic,
+                                     json={"grant_type": "client_credentials"}).status_code, 200)
+        r = self.c.delete(cw_path, headers={**owner_h, "If-Match": self.etag(cw_path, owner_h)})
+        self.assertEqual(r.status_code, 204, r.text)
+        self.assertEqual(self.c.get(cw_path, headers=owner_h).status_code, 404)
+        self.assertNotIn(cw_id, [x["id"] for x in self.c.get(f"{base}/services", headers=owner_h).json()["items"]])
+        self.assertEqual(self.c.post("/api/v1/internal/auth/token", auth=basic,
+                                     json={"grant_type": "client_credentials"}).status_code, 401)
+        again = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())}, json=local)
+        self.assertEqual(again.status_code, 201, again.text)
+        self.assertNotEqual(again.json()["id"], cw_id)
+        with session_local() as db:
+            gone = db.get(ServiceInstance, cw_id)
+            self.assertIsNotNone(gone.deleted_at)
+            self.assertFalse(gone.enabled)
+
         # Журнал содержит изменения и отказы.
         audit = self.c.get(f"{base}/audit", headers=owner_h).json()["items"]
         actions = {e["action"] for e in audit}
-        self.assertTrue({"institution.provision", "member.add", "service.install", "assignments.replace"} <= actions)
+        self.assertTrue({"institution.provision", "member.add", "service.install", "service.uninstall",
+                         "assignments.replace"} <= actions)
         self.assertTrue(any(e["outcome"] == "denied" for e in audit))
 
         # Приостановка вуза поддержкой.

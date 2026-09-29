@@ -11,7 +11,8 @@
 # Что делает:
 #   1) готовит .env: генерирует недостающие секреты, спрашивает токен бота;
 #   2) каталоги и проверка сертификата ядра;
-#   3) поднимает ядро (оно переводит экземпляры в облако), ставит расписание и «Людей» всем активным вузам;
+#   3) сохраняет копию базы ядра (последние 5 — том core-data, /data/backups), поднимает ядро
+#      (оно переводит экземпляры в облако), ставит расписание и «Людей» всем активным вузам;
 #   4) один раз переносит данные прежних контейнеров вузов (schedule-<имя>, people-<имя>) и старых общих томов
 #      в папки экземпляров раннеров и убирает контейнеры прежней схемы;
 #   5) поднимает раннеры и оболочку. Повторный запуск безопасен.
@@ -79,6 +80,16 @@ chmod 750 services/connected
 # --- 3. Ядро и облачные сервисы вузам --------------------------------------
 step "Сборка и запуск ядра"
 docker compose config --quiet
+PROJECT="$(docker compose config 2>/dev/null | sed -n 's/^name: *//p' | head -1)"
+# Резервная копия базы ядра перед обновлением (новая версия может перестроить таблицы при запуске).
+if docker volume inspect "${PROJECT}_core-data" >/dev/null 2>&1; then
+  docker run --rm -v "${PROJECT}_core-data:/data" alpine:3 sh -c '
+    [ -e /data/core-jwt.db ] || exit 0
+    dir="/data/backups/$(date +%Y%m%d-%H%M%S)"   # вместе с журналом WAL (-wal, -shm)
+    mkdir -p "$dir" && cp -a /data/core-jwt.db* "$dir/"
+    ls -1dt /data/backups/*/ | tail -n +6 | xargs -r rm -rf
+    echo "  копия базы ядра: том core-data, $dir"'
+fi
 docker compose up -d --build backend operator redis bot
 for attempt in $(seq 1 60); do
   if docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)" >/dev/null 2>&1; then
@@ -88,7 +99,6 @@ for attempt in $(seq 1 60); do
   sleep 5
 done
 manage() { docker compose exec -T backend python manage.py "$@"; }
-PROJECT="$(docker compose config 2>/dev/null | sed -n 's/^name: *//p' | head -1)"
 
 declare -A SID  # "<вуз>:<тип>" → UUID экземпляра
 if [[ $CORE_ONLY -eq 0 ]]; then

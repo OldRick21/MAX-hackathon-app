@@ -62,6 +62,7 @@ def admin_service_of(db: Session, institution_id: str) -> Optional[ServiceInstan
     return db.query(ServiceInstance).filter(
         ServiceInstance.institution_id == institution_id,
         ServiceInstance.service_type == "administration",
+        ServiceInstance.deleted_at.is_(None),
     ).first()
 
 
@@ -396,10 +397,11 @@ def ensure_platform_invariants(db: Session) -> None:
             create_admin_instance(db, inst.id)
         else:
             sync_admin_instance(db, admin)
-    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type.in_(list(LEGACY_TYPES))).all():
+    live = db.query(ServiceInstance).filter(ServiceInstance.deleted_at.is_(None))
+    for service in live.filter(ServiceInstance.service_type.in_(list(LEGACY_TYPES))).all():
         target = LEGACY_TYPES[service.service_type]
-        if db.query(ServiceInstance).filter(ServiceInstance.institution_id == service.institution_id,
-                                            ServiceInstance.service_type == target).first():
+        if live.filter(ServiceInstance.institution_id == service.institution_id,
+                       ServiceInstance.service_type == target).first():
             logger.warning("%s %s: %s already exists, legacy instance left as is", service.service_type, service.id, target)
             continue
         logger.info("%s %s -> %s", service.service_type, service.id, target)
@@ -408,9 +410,9 @@ def ensure_platform_invariants(db: Session) -> None:
     # Расписание и «Люди» — облачные: процесс вуза запускает раннер типа. Адреса пересчитываются при
     # каждом запуске (смена SHELL_ORIGIN — перезапуск ядра); экземпляры прежнего локального размещения
     # (контейнер вуза) переводятся в облако, их прежние ключи отзываются.
-    for service in db.query(ServiceInstance).filter(ServiceInstance.service_type.in_(catalog.CLOUD_INSTALLABLE)).all():
+    for service in live.filter(ServiceInstance.service_type.in_(catalog.CLOUD_INSTALLABLE)).all():
         make_cloud(db, service)
-    for service in db.query(ServiceInstance).all():
+    for service in live.all():
         if "admin" not in (service.supported_profiles or []):
             logger.info("%s %s: admin profile added", service.service_type, service.id)
             service.supported_profiles = [*(service.supported_profiles or []), "admin"]

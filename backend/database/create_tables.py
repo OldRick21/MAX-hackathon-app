@@ -33,9 +33,60 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def migrate_service_tombstones():
+    """Схема до логического удаления: колонка deleted_at и частичный уникальный индекс вместо
+    UNIQUE(institution_id, service_type). В SQLite ограничение таблицы снимается только
+    пересозданием таблицы: одна явная транзакция, foreign_keys=OFF (без каскадного удаления ролей,
+    ключей и сессий), затем проверка ссылок."""
+    from sqlalchemy import inspect
+    from sqlalchemy.schema import CreateIndex, CreateTable
+    if engine.dialect.name != "sqlite" or not inspect(engine).has_table("services"):
+        return
+    columns = {c["name"] for c in inspect(engine).get_columns("services")}
+    raw = engine.raw_connection()
+    try:
+        db = raw.driver_connection
+        ddl = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='services'").fetchone()[0] or ""
+        if "deleted_at" in columns and "uq_institution_service_type" not in ddl:
+            return
+        log.warning("Migrating services table to logical deletion")
+        table = ServiceInstance.__table__
+        previous = db.isolation_level
+        db.isolation_level = None  # транзакцией управляем сами: DDL в ней тоже откатывается
+        db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            if "deleted_at" not in columns:
+                db.execute("ALTER TABLE services ADD COLUMN deleted_at DATETIME")
+            if "uq_institution_service_type" in ddl:
+                # «Создать новую — скопировать — удалить старую — переименовать новую»: ссылки других
+                # таблиц на services остаются по имени и указывают на новую таблицу.
+                create = str(CreateTable(table).compile(engine)).replace("CREATE TABLE services ", "CREATE TABLE services_new ", 1)
+                db.execute(create)
+                names = ", ".join(c.name for c in table.columns)
+                db.execute(f"INSERT INTO services_new ({names}) SELECT {names} FROM services")
+                db.execute("DROP TABLE services")
+                db.execute("ALTER TABLE services_new RENAME TO services")
+                for index in table.indexes:
+                    db.execute(str(CreateIndex(index).compile(engine, compile_kwargs={"literal_binds": True})))
+            broken = db.execute("PRAGMA foreign_key_check").fetchall()
+            if broken:
+                raise RuntimeError(f"foreign key check failed after migration: {broken[:5]}")
+            db.execute("COMMIT")
+        except Exception:
+            db.execute("ROLLBACK")
+            raise
+        finally:
+            db.execute("PRAGMA foreign_keys=ON")
+            db.isolation_level = previous
+    finally:
+        raw.close()
+
+
 def create_tables():
     from platform_core.registry import ensure_platform_invariants
 
+    migrate_service_tombstones()
     table_class.metadata.create_all(bind=engine)
     db = session_local()
     try:

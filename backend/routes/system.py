@@ -18,7 +18,8 @@ def shell_csp(db: Session) -> str:
     """CSP HTML-оболочки: iframe только с зарегистрированных client origins включённых сервисов
     и origin облачного администрирования (CORE_API_SPEC.md §6)."""
     frames = {_origin(settings.ADMINISTRATION_PUBLIC_ORIGIN)}
-    for (url,) in db.query(ServiceInstance.client_base_url).filter(ServiceInstance.enabled == True):  # noqa: E712
+    for (url,) in db.query(ServiceInstance.client_base_url).filter(ServiceInstance.enabled == True,  # noqa: E712
+                                                                    ServiceInstance.deleted_at.is_(None)):
         frames.add(_origin(url))
     frames.discard("")
     frame_src = " ".join(["'self'", *sorted(frames)])

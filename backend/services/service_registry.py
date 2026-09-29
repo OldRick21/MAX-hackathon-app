@@ -46,7 +46,7 @@ def own_service(db: Session, ctx: MachineContext, service_id: str) -> ServiceIns
     if not is_uuid(service_id) or service_id != ctx.service_id:
         raise not_found("Экземпляр сервиса не найден")
     service = db.get(ServiceInstance, service_id)
-    if not service or service.institution_id != ctx.institution_id:
+    if not service or service.deleted_at is not None or service.institution_id != ctx.institution_id:
         raise not_found("Экземпляр сервиса не найден")
     return service
 

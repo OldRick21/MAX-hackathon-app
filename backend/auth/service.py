@@ -219,7 +219,7 @@ class AuthService:
         if institution.status != 'active':
             raise DomainError(409, 'RESOURCE_INACTIVE', 'Вуз не активен')
         service = db.get(ServiceInstance, service_id, populate_existing=True)
-        if not service or service.institution_id != institution_id or profile not in service.supported_profiles:
+        if not service or service.deleted_at is not None or service.institution_id != institution_id or profile not in service.supported_profiles:
             raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Сервис не найден для этого профиля')
         if not service.enabled:
             raise DomainError(409, 'RESOURCE_INACTIVE', 'Сервис отключён')
@@ -285,7 +285,7 @@ class AuthService:
     def issue_machine_token(cred, db):
         failure = invalid_client()
         service = db.get(ServiceInstance, cred.service_id)
-        if not service:
+        if not service or service.deleted_at is not None:
             raise failure
         institution = registry.lock_institution(db, service.institution_id)
         db.refresh(cred)

@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from sqlalchemy.orm import Session
 
 from database.tables import (
+    CloudBinding,
     StudyGroup,
     StudyGroupMember,
     AuditEvent,
@@ -111,7 +112,7 @@ def _uuid(value: str, what: str) -> str:
 def _service(db: Session, ctx: ActorContext, service_id: str) -> ServiceInstance:
     _uuid(service_id, "Сервис")
     service = db.get(ServiceInstance, service_id)
-    if not service or service.institution_id != ctx.institution_id:
+    if not service or service.deleted_at is not None or service.institution_id != ctx.institution_id:
         raise not_found("Экземпляр сервиса не найден в этом вузе")
     return service
 
@@ -474,7 +475,8 @@ def replace_group_members(db: Session, ctx: ActorContext, group_id: str, payload
 
 def list_services(db: Session, ctx: ActorContext, limit, cursor) -> Result:
     ctx.require("services.read")
-    query = db.query(ServiceInstance).filter(ServiceInstance.institution_id == ctx.institution_id)
+    query = db.query(ServiceInstance).filter(ServiceInstance.institution_id == ctx.institution_id,
+                                             ServiceInstance.deleted_at.is_(None))
     return _page(ctx, "services", query, ServiceInstance.id, lambda s: s.id, service_view, limit, cursor)
 
 
@@ -548,7 +550,8 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
         raise validation("cloud: schedule, user-profile; local: coursework или custom.<код>", "service_type")
 
     if db.query(ServiceInstance).filter(ServiceInstance.institution_id == ctx.institution_id,
-                                        ServiceInstance.service_type == service_type).first():
+                                        ServiceInstance.service_type == service_type,
+                                        ServiceInstance.deleted_at.is_(None)).first():
         raise DomainError(409, "SERVICE_ALREADY_EXISTS", "Сервис с таким кодом уже подключён в вузе")
 
     if deployment == "cloud":
@@ -622,15 +625,24 @@ def uninstall_service(db: Session, ctx: ActorContext, service_id: str, if_match:
     if service.protected or service.service_type == "administration":
         raise protected("Сервис администрирования предоставляется вузу по умолчанию и не может быть удалён")
     now = utc_now()
+    # Логическое удаление (CORE_API_SPEC.md §7): экземпляр перестаёт выдаваться, ключи и сессии
+    # отзываются, назначения ролей снимаются, привязка раннера отключается. Запись, роли и журнал
+    # остаются; UUID не переиспользуется, слот типа освобождается для новой установки.
     for cred in service.credentials:
         if cred.revoked_at is None:
             cred.revoked_at = now
     registry.revoke_service_sessions(db, service_id=service.id)
+    holders = db.query(RoleAssignment).filter(RoleAssignment.service_id == service.id)
+    assignments = holders.count()
+    holders.delete(synchronize_session=False)
+    binding = db.get(CloudBinding, service.id)
+    if binding:
+        binding.active = False
+    service.enabled = False
+    service.deleted_at = now
     ctx.audit(db, "service.uninstall", "service", service.id,
-              {"service_type": service.service_type, "deployment": service.deployment})
-    # Каскад удаляет роли, назначения, сессии, credentials и binding. UUID не
-    # переиспользуется (uuid4), слот типа освобождается; журнал сохраняется.
-    db.delete(service)
+              {"service_type": service.service_type, "deployment": service.deployment,
+               "roles": sorted(r.code for r in service.roles), "assignments_removed": assignments})
     db.commit()
     return Result(status=204)
 

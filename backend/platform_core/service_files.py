@@ -22,7 +22,7 @@ def export_services(session_factory):
     # Readers see whole files; concurrent commits rebuild from the latest DB state.
     with FileLock(str(root / '.export.lock')):
         with session_factory() as db:
-            services = db.query(ServiceInstance).all()
+            services = db.query(ServiceInstance).filter(ServiceInstance.deleted_at.is_(None)).all()
             expected = set()
             for service in services:
                 name = str(UUID(service.id)) + '.json'

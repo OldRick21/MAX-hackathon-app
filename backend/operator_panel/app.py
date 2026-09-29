@@ -270,7 +270,8 @@ def _health_targets() -> dict:
     targets = {"Ядро": CORE_HEALTH}
     with session_local() as db:
         insts = {i.id: _inst_name(i) for i in db.query(Institution)}
-        services = db.query(ServiceInstance).filter(ServiceInstance.enabled.is_(True)).all()
+        services = db.query(ServiceInstance).filter(ServiceInstance.enabled.is_(True),
+                                                    ServiceInstance.deleted_at.is_(None)).all()
         many = len({s.institution_id for s in services}) > 1
         for s in sorted(services, key=lambda x: (insts.get(x.institution_id, ""), x.service_type)):
             title = (s.manifest or {}).get("titles", {}).get("ru") or s.service_type
@@ -361,7 +362,8 @@ def _institution_card(db: Session, inst: Institution, pending: dict) -> dict:
     view["services"] = [{"id": s.id, "service_type": s.service_type, "enabled": bool(s.enabled),
                          "deployment": s.deployment,
                          "title": (s.manifest or {}).get("titles", {}).get("ru", s.service_type)}
-                        for s in db.query(ServiceInstance).filter(ServiceInstance.institution_id == inst.id)]
+                        for s in db.query(ServiceInstance).filter(ServiceInstance.institution_id == inst.id,
+                                                                  ServiceInstance.deleted_at.is_(None))]
     return view
 
 

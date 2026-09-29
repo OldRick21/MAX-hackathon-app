@@ -60,7 +60,8 @@ def install_cloud_service(db: Session, institution_id: str, service_type: str) -
         raise DomainError(422, "VALIDATION_ERROR", "Облачно устанавливаются schedule и user-profile")
     registry.lock_institution(db, institution_id)
     service = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
-                                               ServiceInstance.service_type == service_type).first()
+                                               ServiceInstance.service_type == service_type,
+                                               ServiceInstance.deleted_at.is_(None)).first()
     if service:
         registry.make_cloud(db, service)
         return service, False

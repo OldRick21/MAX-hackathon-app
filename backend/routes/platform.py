@@ -188,7 +188,7 @@ def cloud_instances(authorization: Optional[str] = Header(None), db: Session = D
     items = []
     rows = db.query(CloudBinding, ServiceInstance).join(ServiceInstance, ServiceInstance.id == CloudBinding.service_id) \
         .filter(CloudBinding.service_type == service_type, CloudBinding.active.is_(True),
-                ServiceInstance.deployment == "cloud").all()
+                ServiceInstance.deployment == "cloud", ServiceInstance.deleted_at.is_(None)).all()
     for binding, service in rows:
         credential = db.get(ServiceCredential, binding.credential_id)
         if not credential or credential.revoked_at is not None:

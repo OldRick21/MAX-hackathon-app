@@ -167,14 +167,18 @@ class ServiceInstance(table_class):
     # Манифест меню и заголовков (ServiceManifest)
     manifest = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    # Логическое удаление (CORE_API_SPEC.md §7): экземпляр больше не выдаётся, UUID не переиспользуется,
+    # слот типа освобождается, журнал сохраняется.
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     institution = relationship("Institution", back_populates="services")
     roles = relationship("ServiceRole", back_populates="service", cascade="all, delete-orphan")
     credentials = relationship("ServiceCredential", back_populates="service", cascade="all, delete-orphan")
 
     __table_args__ = (
-        # Один тип сервиса на вуз по спецификации
-        UniqueConstraint("institution_id", "service_type", name="uq_institution_service_type"),
+        # Один действующий экземпляр типа на вуз; удалённые (tombstone) слот не занимают.
+        Index("uq_active_service_type", "institution_id", "service_type", unique=True,
+              sqlite_where=deleted_at.is_(None), postgresql_where=deleted_at.is_(None)),
     )
 
 # --- RBAC внутри сервисов ---
@@ -272,8 +276,8 @@ class InstitutionLocalHost(table_class):
 class CloudBinding(table_class):
     """Привязка облачного экземпляра к credential (CLOUD_RUNTIME_SPEC.md §2).
 
-    Устарело: прежняя облачная выдача ключей. Ядро при запуске отключает все bindings
-    (registry.ensure_platform_invariants); ключи сервисам выдаются в карточке сервиса.
+    Раннер типа получает по ней ключ экземпляра (секрет выводится из CLOUD_BINDING_KEY).
+    Неактивная привязка (удалённый экземпляр, ротация) раннеру не выдаётся.
     """
     __tablename__ = "cloud_bindings"
 

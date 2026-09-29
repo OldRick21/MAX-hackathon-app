@@ -46,7 +46,7 @@ def machine_state(db, claims, require_active=True):
             or credential.service_id != claims['service_id']):
         return None
     service = db.get(ServiceInstance, credential.service_id, populate_existing=True)
-    if not service or service.institution_id != claims['institution_id']:
+    if not service or service.deleted_at is not None or service.institution_id != claims['institution_id']:
         return None
     institution = db.get(Institution, service.institution_id, populate_existing=True)
     if (not institution or (require_active and institution.status != 'active')
@@ -73,6 +73,7 @@ def service_state(db, claims):
     service = db.get(ServiceInstance, session.service_id, populate_existing=True)
     member = db.get(Membership, (session.institution_id, session.user_id), populate_existing=True)
     if (not institution or institution.status != 'active' or not service or not service.enabled
+            or service.deleted_at is not None
             or service.institution_id != session.institution_id or session.profile not in service.supported_profiles
             or not member or session.profile not in member.profiles):
         return None
