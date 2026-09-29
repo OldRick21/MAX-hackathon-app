@@ -46,8 +46,20 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
     setManualTeacher('');
   };
 
-  // Анкеты не различают студентов и преподавателей — сервер сам проверит, что выбран преподаватель.
-  const people = useAsync<ProfileCard[]>(async signal => (profiles ? (await profiles.listUsers('', null, signal)).items : []), [profiles]);
+  // Преподаватели — все страницы «Людей» (в вузе бывает больше 50 человек), только с профилем «Преподаватель»:
+  // студента сервер не примет преподавателем занятия (INVALID_REFERENCE).
+  const people = useAsync<ProfileCard[]>(async signal => {
+    if (!profiles) return [];
+    const all: ProfileCard[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 40; page++) {
+      const res: { items: ProfileCard[]; next_cursor: string | null } = await profiles.listUsers('', cursor, signal);
+      all.push(...res.items);
+      if (!res.next_cursor) break;
+      cursor = res.next_cursor;
+    }
+    return all.filter(c => !c.profiles || c.profiles.includes('teacher'));
+  }, [profiles]);
 
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
 
