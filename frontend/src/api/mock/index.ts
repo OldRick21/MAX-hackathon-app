@@ -257,11 +257,10 @@ export function createMockBackend(): Backend {
       const c = (await profiles(svc).getMe()).data;
       const group = D.groups[inst]?.find(g => D.groupStudents[g.id]?.includes(D.ME));
       const label = { student: 'Студент', teacher: 'Преподаватель', admin: 'Администратор' }[svc.profile];
-      // Как у сервиса «Люди»: учёная степень — только у преподавателя, должность — у преподавателя и администратора.
-      const fields: [keyof ProfileCard, string][] = [['display_name', 'имя'], ['about', 'о себе'],
-        ...(svc.profile !== 'student' ? [['position', 'должность'] as [keyof ProfileCard, string]] : []),
-        ...(svc.profile === 'teacher' ? [['academic_degree', 'учёную степень'] as [keyof ProfileCard, string]] : [])];
-      const missing = fields.filter(([k]) => !String(c[k] ?? '').trim()).map(([, l]) => l);
+      // Как у сервиса «Люди»: считаются только поля, которые человек меняет сам; имя из заявки уже видно.
+      const fields: [keyof ProfileCard, string][] = [['display_name', 'имя'], ['about', 'о себе']];
+      // В демо у пользователя всегда есть имя из заявки, поэтому «имя» считается заполненным.
+      const missing = fields.filter(([k]) => k !== 'display_name' && !String(c[k] ?? '').trim()).map(([, l]) => l);
       return { kind: 'profile', user_id: D.ME, title: c.display_name || 'Без имени',
         lines: [svc.profile === 'student' && group ? `${label} · Группа ${group.name}` : label, ...[c.position, c.academic_degree].filter((x): x is string => !!x)],
         progress: Math.round(100 * (fields.length - missing.length) / fields.length), ...(missing.length ? { hint: `Добавьте ${missing.join(', ')}` } : {}) };

@@ -279,11 +279,9 @@ def service_view(locale:str|None=Query(None,max_length=8),ctx=Depends(authentica
 def me(ctx=Depends(authenticate)): return get_card(ctx,ctx[1]['sub'])
 
 PROFILE_LABEL = {'student': 'Студент', 'teacher': 'Преподаватель', 'admin': 'Администратор'}
-# Что должно быть заполнено в анкете, чтобы она считалась полной (по профилю).
-FILL_FIELDS = {'student': (('display_name', 'имя'), ('about', 'о себе')),
-               'teacher': (('display_name', 'имя'), ('about', 'о себе'), ('position', 'должность'),
-                           ('academic_degree', 'учёную степень')),
-               'admin': (('display_name', 'имя'), ('about', 'о себе'), ('position', 'должность'))}
+# Заполненность анкеты считается только по полям, которые человек меняет сам (PATCH /profile/me):
+# должность и учёную степень вносит редактор анкет, их отсутствие не должно мешать дойти до 100 %.
+FILL_FIELDS = (('display_name', 'имя'), ('about', 'о себе'))
 
 
 @app.get('/api/v1/profile/widgets/me')
@@ -305,7 +303,8 @@ def widget_me(ctx=Depends(authenticate)):
             first += ' · Группа ' + ', '.join(names)
     lines = [first] + [x for x in (value.get('position'), value.get('academic_degree')) if x][:2]
     own = dict(row) if row else {}
-    fields = FILL_FIELDS[profile]
+    own['display_name'] = own.get('display_name') or who.name  # имя из заявки уже видно в карточке
+    fields = FILL_FIELDS
     missing = [label for key, label in fields if not (own.get(key) or '').strip()]
     body = {'kind': 'profile', 'user_id': user_id, 'title': value.get('display_name') or 'Без имени', 'lines': lines,
             'progress': round(100 * (len(fields) - len(missing)) / len(fields))}

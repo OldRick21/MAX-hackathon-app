@@ -106,16 +106,18 @@ class Profiles(unittest.TestCase):
              patch.object(m.core,'member',return_value=registered), \
              patch.object(m.core,'groups',return_value=[{'id':'g1','name':'ПИ-11'},{'id':'g2','name':'ПИ-12'}]), TestClient(m.app) as c:
             w=c.get('/api/v1/profile/widgets/me',headers=h).json()
+            # Имя из заявки уже есть — не хватает только «О себе».
             self.assertEqual((w['kind'],w['user_id'],w['title'],w['lines'],w['progress']),
-                             ('profile',U,'Мария Ильина',['Студент · Группа ПИ-11'],0))
-            self.assertEqual(w['hint'],'Добавьте имя, о себе')
+                             ('profile',U,'Мария Ильина',['Студент · Группа ПИ-11'],50))
+            self.assertEqual(w['hint'],'Добавьте о себе')
             me=c.get('/api/v1/profile/me',headers=h)
             c.patch('/api/v1/profile/me',headers={**h,'If-Match':me.headers['etag']},json={'display_name':'Маша','about':'Люблю матан'})
             w=c.get('/api/v1/profile/widgets/me',headers=h).json()
             self.assertEqual((w['title'],w['progress'],'hint' in w),('Маша',100,False))
             state.update(info('teacher'))
             w=c.get('/api/v1/profile/widgets/me',headers=head('teacher')).json()
-            self.assertEqual((w['lines'],w['progress'],w['hint']),(['Преподаватель'],50,'Добавьте должность, учёную степень'))
+            # Должность и степень вносит редактор анкет — сам преподаватель доходит до 100 %.
+            self.assertEqual((w['lines'],w['progress'],'hint' in w),(['Преподаватель'],100,False))
         self.assertEqual([x['id'] for x in m.MANIFEST['widgets']],['me'])
 
     def test_registered_name_without_card(self):

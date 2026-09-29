@@ -17,7 +17,7 @@ const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).j
 /** 403/404/204 — карточку скрыть (виджет недоступен этому пользователю); остальное — «Не удалось загрузить». */
 const hidden = (e: unknown) => e instanceof ApiError && (e.status === 403 || e.status === 404);
 
-export function WidgetCard({ widget, to, tick }: { widget: WidgetView; to: string | null; tick: number }) {
+export function WidgetCard({ widget, to, tick, span }: { widget: WidgetView; to: string | null; tick: number; span: number }) {
   const backend = useBackend();
   const { institution, profile } = useInstitution();
   const state = useAsync(signal => backend.widgetData(institution.id, profile, widget, signal),
@@ -32,7 +32,8 @@ export function WidgetCard({ widget, to, tick }: { widget: WidgetView; to: strin
       ? <p className={s.caption}>Не удалось загрузить</p>
       : <div className={s.skeleton}><Skeleton width="60%" height="2.4rem" /><Skeleton width="85%" height="2rem" /><Skeleton width="40%" height="2rem" /></div>
     : <WidgetBody data={data} title={widget.display_name} />;
-  const className = cx(s.widget, widget.size === 'wide' && s.wide, data?.kind === 'profile' && s.profileWidget);
+  const className = cx(s.widget, data?.kind === 'profile' && s.profileWidget);
+  const style = { gridColumn: `span ${span}` };
   const content = (
     <>
       {data?.kind !== 'profile' && <h2 className={s.widgetTitle}>{data?.kind === 'events' ? eventsTitle(data.day) : widget.display_name}</h2>}
@@ -40,8 +41,8 @@ export function WidgetCard({ widget, to, tick }: { widget: WidgetView; to: strin
     </>
   );
   return to
-    ? <Link to={to} className={cx(className, s.clickable)} aria-label={widget.display_name}>{content}</Link>
-    : <section className={className} aria-label={widget.display_name}>{content}</section>;
+    ? <Link to={to} className={cx(className, s.clickable)} style={style} aria-label={widget.display_name}>{content}</Link>
+    : <section className={className} style={style} aria-label={widget.display_name}>{content}</section>;
 }
 
 function eventsTitle(day: string | null) {

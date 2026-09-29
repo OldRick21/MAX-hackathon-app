@@ -220,6 +220,22 @@
     dialog.showModal();
   }
 
+  // Иконки разделов: контур 24×24, как в приложении.
+  const ICONS = {
+    institution: '<path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6"/>',
+    requests: '<path d="M4 4h16v12H8l-4 4V4z"/><path d="M8 9h8M8 12h5"/>',
+    members: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c1.8.7 3 2.4 3.5 5.2"/>',
+    groups: '<rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    services: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
+    roles: '<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
+    audit: '<path d="M6 3h9l4 4v14H6V3z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
+  };
+  const tabIcon = (id) => {
+    const span = h('span', { class: 'tab-icon', 'aria-hidden': 'true' });
+    span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</svg>`;
+    return span;
+  };
+
   const TABS = [
     { id: 'institution', label: 'Вуз', allowed: () => can('institution.read'), render: renderInstitution },
     { id: 'requests', label: 'Заявки', allowed: () => can('members.read'), render: renderRequests },
@@ -251,8 +267,9 @@
       toast('Доступ ограничен.');
       return;
     }
+    // Разделы — сетка плиток, все видны сразу: без горизонтальной прокрутки на любой ширине.
     $('tabs').replaceChildren(...tabs.map(t => h('button', { type: 'button', class: 'tab', 'data-tab': t.id,
-      onclick: () => openTab(t.id) }, t.label)));
+      onclick: () => openTab(t.id) }, tabIcon(t.id), h('span', { class: 'tab-label' }, t.label), h('span', { class: 'tab-count', hidden: true }))));
     $('tabs').hidden = false;
     refreshRequestBadge();
     await openTab(tabs.some(t => t.id === activeTab) ? activeTab : tabs[0].id);
@@ -277,7 +294,8 @@
     try {
       const { data } = await api('/join-requests?status=pending');
       const tab = $('tabs').querySelector('[data-tab="requests"]');
-      if (tab) tab.textContent = data.items.length ? `Заявки (${data.items.length})` : 'Заявки';
+      const count = tab?.querySelector('.tab-count');
+      if (count) { count.textContent = String(data.items.length); count.hidden = !data.items.length; }
     } catch { /* счётчик необязателен */ }
     badgeTimer = setTimeout(refreshRequestBadge, 30000);
   }

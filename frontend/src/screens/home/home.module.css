@@ -1,12 +1,12 @@
-/* Главная — только виджеты сервисов (docs/services/sdk/WIDGETS_SPEC.md §8): приветствие и сетка карточек.
-   Широкий экран — две колонки, wide во всю строку; телефон — одна колонка. */
+/* Главная — виджеты сервисов (docs/services/sdk/WIDGETS_SPEC.md §8): приветствие и сетка карточек.
+   Колонки (4 / 2 / 1) и ширину карточек задаёт HomeScreen: wide — половина строки, small — колонка. */
 
 .head { display: flex; align-items: baseline; gap: 1.6rem; flex-wrap: wrap; }
 .greeting { font-family: var(--font-accent); font-weight: 500; font-size: 3.4rem; line-height: 1.2; letter-spacing: -.005em; }
 .subtitle { font-size: 2.2rem; color: var(--text-2); }
 .subtitle::first-letter, .widgetTitle::first-letter { text-transform: uppercase; }
 
-.widgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.4rem; margin-top: 2.8rem; align-items: stretch; }
+.widgets { display: grid; grid-template-columns: repeat(var(--columns, 2), minmax(0, 1fr)); gap: 2.4rem; margin-top: 2.8rem; align-items: stretch; }
 
 .widget {
   --home-avatar: 11rem;
@@ -15,7 +15,6 @@
   color: inherit; text-decoration: none; animation: rise var(--dur) var(--ease) both;
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.wide { grid-column: 1 / -1; }
 .clickable:hover { border-color: var(--accent); box-shadow: var(--shadow-accent); }
 .widgetTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; line-height: 1.25; }
 .caption { font-size: 1.9rem; line-height: 1.4; color: var(--text-2); }
@@ -97,8 +96,7 @@
 @media (max-width: 767px) {
   .greeting { font-size: 2.4rem; }
   .subtitle { font-size: 1.5rem; }
-  .widgets { grid-template-columns: 1fr; gap: 1.2rem; margin-top: 1.6rem; }
-  .filler { display: none; }
+  .widgets { gap: 1.2rem; margin-top: 1.6rem; }
   .widget { --home-avatar: 7.2rem; gap: 1rem; padding: 1.6rem; border-radius: 1.6rem; }
   .widgetTitle { font-size: 1.7rem; }
   .caption { font-size: 1.4rem; }
@@ -117,3 +115,6 @@
   .bar { height: .8rem; }
   .noticeTitle { font-size: 1.6rem; }
 }
+
+/* Карточка профиля в строке с более высоким соседом — по центру, а не прижата к верху. */
+.profileWidget { justify-content: center; }
