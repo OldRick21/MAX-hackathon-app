@@ -31,6 +31,9 @@ class FakeCore:
         self.calls.append(('update', code, sorted(patch)))
         self._roles[code].update(patch)
 
+    def release_role(self, b, code, profiles=None):
+        self.calls.append(('release', code, sorted(profiles) if profiles else None))
+
     def delete_role(self, b, code):
         self.calls.append(('delete', code))
         self._roles.pop(code)
@@ -68,6 +71,8 @@ class Onboarding(unittest.TestCase):
         onboarding.sync(core, MANIFEST, [ROLE], retired=('group_editor',))
         self.assertIn(('update', 'schedule_editor', ['allowed_profiles', 'permissions', 'titles']), core.calls)
         self.assertIn(('delete', 'group_editor'), core.calls)      # роль прежней версии
+        # Перед удалением роль снимается с участников: иначе ядро ответит 409 ROLE_IN_USE.
+        self.assertLess(core.calls.index(('release', 'group_editor', None)), core.calls.index(('delete', 'group_editor')))
         self.assertIn(('delete', 'groups_by_hand'), core.calls)    # не осталось ни одного права
         self.assertIn(('update', 'custom_writer', ['permissions']), core.calls)  # лишнее право снято
         self.assertEqual(core._roles['custom_writer']['permissions'], ['schedule.write'])

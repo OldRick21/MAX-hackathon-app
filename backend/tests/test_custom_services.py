@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from tests.keys import issue_key, register_service  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
-from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
+from database.tables import AuditEvent, InstitutionLocalHost, Membership, PlatformStaff, RoleAssignment, ServiceInstance, ServiceRole  # noqa: E402
 from main import app  # noqa: E402
 
 MENU = {'id': 'books', 'titles': {'ru': 'Книги'}, 'entrypoint_path': '/books', 'profiles': ['student'],
@@ -250,16 +250,35 @@ class CustomServices(unittest.TestCase):
             svc_id = svc.id
             db.add(ServiceRole(service_id=svc_id, code='schedule_editor', titles={'ru': 'Р'}, allowed_profiles=['admin', 'teacher'],
                                permissions=['schedule.write'], system=False))
+            db.add(Membership(institution_id=inst, user_id=user, profiles=['teacher']))
             db.add(RoleAssignment(service_id=svc_id, user_id=user, profile='teacher', roles=['schedule_editor']))
             key, secret = registry.issue_credential(db, db.get(ServiceInstance, svc_id))
             client_id = key.client_id
             db.commit()
         token = self.c.post('/api/v1/internal/auth/token', auth=(client_id, secret), json={'grant_type': 'client_credentials'}).json()
         m = {'Authorization': 'Bearer ' + token['access_token']}
-        r = self.c.patch(f'/api/v1/internal/service/{svc_id}/roles/schedule_editor', headers=m, json={'allowed_profiles': ['admin']})
+        role_url = f'/api/v1/internal/service/{svc_id}/roles/schedule_editor'
+        assign_url = f'/api/v1/internal/service/{svc_id}/users/{user}/profiles/teacher/roles'
+        # Без If-Match — 428; сужение профилей при назначении в исключаемом профиле — 409 ROLE_IN_USE.
+        self.assertEqual(self.c.patch(role_url, headers=m, json={'allowed_profiles': ['admin']}).status_code, 428)
+        tag = self.c.get(role_url, headers=m).headers['ETag']
+        r = self.c.patch(role_url, headers={**m, 'If-Match': tag}, json={'allowed_profiles': ['admin']})
+        self.assertEqual((r.status_code, r.json()['error']['code']), (409, 'ROLE_IN_USE'))
+        r = self.c.delete(role_url, headers={**m, 'If-Match': tag})
+        self.assertEqual((r.status_code, r.json()['error']['code']), (409, 'ROLE_IN_USE'))
+        # Сервис снимает назначение (If-Match набора), затем сужает роль и удаляет её.
+        current = self.c.get(assign_url, headers=m)
+        cleared = self.c.put(assign_url, headers={**m, 'If-Match': current.headers['ETag']}, json={'roles': []})
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertEqual(self.c.put(assign_url, headers={**m, 'If-Match': current.headers['ETag']}, json={'roles': []}).status_code, 412)
+        r = self.c.patch(role_url, headers={**m, 'If-Match': tag}, json={'allowed_profiles': ['admin']})
         self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(self.c.delete(role_url, headers={**m, 'If-Match': r.headers['ETag']}).status_code, 204)
         with session_local() as db:
-            self.assertEqual(db.get(RoleAssignment, (svc_id, user, 'teacher')).roles, [])
+            actions = [e.action for e in db.query(AuditEvent).filter(AuditEvent.institution_id == inst)]
+            self.assertTrue({'assignments.replace', 'role.update', 'role.delete'} <= set(actions), actions)
+            self.assertTrue(all(e.machine_credential_id for e in db.query(AuditEvent).filter(
+                AuditEvent.institution_id == inst, AuditEvent.actor_kind == 'service')))
 
 if __name__ == '__main__':
     unittest.main()

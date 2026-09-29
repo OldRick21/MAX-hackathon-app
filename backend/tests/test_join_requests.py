@@ -135,12 +135,12 @@ class JoinRequests(unittest.TestCase):
         self.assertEqual(dup.json()['error']['code'], 'MEMBERSHIP_ALREADY_EXISTS')
 
         # Имя из регистрации доступно сервису «Люди» через machine API ядра.
-        from services.service_registry import ServiceRegistry
+        from services import service_registry
         with session_local() as db:
-            claims = {'service_id': a_admin, 'institution_id': a}
-            listed = ServiceRegistry.list_service_members(a_admin, claims, db)['items']
+            ctx = service_registry.MachineContext(a_admin, a, None, None)
+            listed = service_registry.list_members(db, ctx, a_admin).body['items']
             self.assertEqual({m['user_id']: m['display_name'] for m in listed}[user_id], 'Иван Петров')
-            self.assertEqual(ServiceRegistry.get_service_user_profiles(a_admin, user_id, claims, db)['display_name'],
+            self.assertEqual(service_registry.get_user_profiles(db, ctx, a_admin, user_id).body['display_name'],
                              'Иван Петров')
 
         # Аватар: свой загружает сам, видят участники общих вузов, посторонние — нет.
@@ -162,14 +162,14 @@ class JoinRequests(unittest.TestCase):
         # Удаление из вуза стирает заявки в этот вуз: при повторном добавлении имя не вернётся,
         # а новая дата членства заставит «Людей» завести новую анкету.
         with session_local() as db:
-            since = ServiceRegistry.get_service_user_profiles(a_admin, user_id, claims, db)['member_since']
+            since = service_registry.get_user_profiles(db, ctx, a_admin, user_id).body["member_since"]
         tag = self.c.get(f'/api/v1/institution/{a}/internal/members/{user_id}', headers=pa).headers['ETag']
         self.assertEqual(self.c.delete(f'/api/v1/institution/{a}/internal/members/{user_id}',
                                        headers={**pa, 'If-Match': tag}).status_code, 204)
         self.assertEqual(self.c.post(f'/api/v1/institution/{a}/internal/members', headers=pa,
                                      json={'user_id': user_id, 'profiles': ['student']}).status_code, 201)
         with session_local() as db:
-            again = ServiceRegistry.get_service_user_profiles(a_admin, user_id, claims, db)
+            again = service_registry.get_user_profiles(db, ctx, a_admin, user_id).body
             self.assertNotEqual(again['member_since'], since)
             # Остались только заявки в другие вузы: имя берётся из них, а не из удалённой.
             self.assertEqual(db.query(JoinRequest).filter_by(institution_id=a, user_id=user_id).count(), 0)

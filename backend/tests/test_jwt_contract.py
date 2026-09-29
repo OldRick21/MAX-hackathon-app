@@ -274,11 +274,15 @@ class JWTContract(unittest.TestCase):
         created = self.c.post(base + '/roles', headers=headers, json={
             'code': role, 'titles': {'ru': 'Reader'}, 'allowed_profiles': ['student'], 'permissions': []})
         self.assertEqual(created.status_code, 201, created.text)
-        assigned = self.c.put(f'{base}/users/{self.uid}/profiles/student/roles', headers=headers, json={'roles': [role]})
+        self.assertEqual(created.headers['Location'], f'{base}/roles/{role}')
+        current = self.c.get(f'{base}/users/{self.uid}/profiles/student/roles', headers=headers)
+        assigned = self.c.put(f'{base}/users/{self.uid}/profiles/student/roles',
+                              headers={**headers, 'If-Match': current.headers['ETag']}, json={'roles': [role]})
         self.assertEqual(assigned.status_code, 200, assigned.text)
         child = self.child()
         self.assertEqual(claims(child['access_token'])['permissions'], [])
-        updated = self.c.patch(base + '/roles/' + role, headers=headers, json={'permissions': ['profiles.manage']})
+        updated = self.c.patch(base + '/roles/' + role, headers={**headers, 'If-Match': created.headers['ETag']},
+                               json={'permissions': ['profiles.manage']})
         self.assertEqual(updated.status_code, 200, updated.text)
         self.assertEqual(self.introspect(child['access_token'], machine).json()['permissions'], ['profiles.manage'])
         renewed = self.refresh(child, True)

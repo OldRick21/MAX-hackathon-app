@@ -179,29 +179,73 @@ class CoreClient:
     # --- Меню и роли: сервис публикует их сам (CORE_API_SPEC §7), как любой сервис вуза ---
 
     def roles(self, binding: Binding) -> list:
-        response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/roles")
-        if response.status_code != 200:
-            raise CoreUnavailable(f"roles read failed: {response.status_code}")
-        items = (self._json(response) or {}).get("items")
-        return [r for r in items if isinstance(r, dict)] if isinstance(items, list) else []
+        """Все роли экземпляра: список постраничный (limit/cursor)."""
+        result, cursor = [], None
+        while True:
+            response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/roles",
+                                             params={"limit": 100, **({"cursor": cursor} if cursor else {})})
+            if response.status_code != 200:
+                raise CoreUnavailable(f"roles read failed: {response.status_code}")
+            data = self._json(response) or {}
+            items = data.get("items")
+            result += [r for r in items if isinstance(r, dict)] if isinstance(items, list) else []
+            cursor = data.get("next_cursor")
+            if not cursor:
+                return result
 
     def create_role(self, binding: Binding, role: dict) -> None:
         response = self._machine_request(binding, "POST", f"/api/v1/internal/service/{binding.service_id}/roles", json=role)
         if response.status_code not in (200, 201, 409):
             raise CoreUnavailable(f"role create failed: {response.status_code} {response.text[:200]}")
 
+    def _role_etag(self, binding: Binding, code: str) -> Optional[str]:
+        response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/roles/{code}")
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            raise CoreUnavailable(f"role read failed: {response.status_code}")
+        return response.headers.get("ETag")
+
     def update_role(self, binding: Binding, code: str, patch: dict) -> None:
         response = self._machine_request(binding, "PATCH", f"/api/v1/internal/service/{binding.service_id}/roles/{code}",
-                                         json=patch)
+                                         json=patch, headers={"If-Match": self._role_etag(binding, code) or ""})
         if response.status_code != 200:
             raise CoreUnavailable(f"role update failed: {response.status_code} {response.text[:200]}")
 
     def delete_role(self, binding: Binding, code: str) -> None:
-        """Удаляет свою роль вместе с назначениями (роли прежних версий)."""
-        response = self._machine_request(binding, "DELETE",
-                                         f"/api/v1/internal/service/{binding.service_id}/roles/{code}?cascade=true")
+        """Удаляет свою роль; назначения нужно снять заранее (release_role), иначе ядро ответит 409."""
+        etag = self._role_etag(binding, code)
+        if etag is None:
+            return
+        response = self._machine_request(binding, "DELETE", f"/api/v1/internal/service/{binding.service_id}/roles/{code}",
+                                         headers={"If-Match": etag})
         if response.status_code not in (204, 404):
-            raise CoreUnavailable(f"role delete failed: {response.status_code}")
+            raise CoreUnavailable(f"role delete failed: {response.status_code} {response.text[:200]}")
+
+    def release_role(self, binding: Binding, code: str, profiles=None) -> None:
+        """Снимает роль с участников (во всех профилях или только в указанных) — перед удалением
+        роли или сужением её профилей: ядро не делает этого само (409 ROLE_IN_USE)."""
+        base = f"/api/v1/internal/service/{binding.service_id}"
+        response = self._machine_request(binding, "GET", f"{base}/members")
+        if response.status_code != 200:
+            raise CoreUnavailable(f"members read failed: {response.status_code}")
+        for member in (self._json(response) or {}).get("items") or []:
+            for profile in member.get("profiles") or []:
+                if profiles is not None and profile not in profiles:
+                    continue
+                path = f"{base}/users/{member['user_id']}/profiles/{profile}/roles"
+                current = self._machine_request(binding, "GET", path)
+                if current.status_code == 404:
+                    continue
+                if current.status_code != 200:
+                    raise CoreUnavailable(f"assignments read failed: {current.status_code}")
+                roles = (self._json(current) or {}).get("roles") or []
+                if code not in roles:
+                    continue
+                saved = self._machine_request(binding, "PUT", path, json={"roles": [r for r in roles if r != code]},
+                                              headers={"If-Match": current.headers.get("ETag") or ""})
+                if saved.status_code != 200:
+                    raise CoreUnavailable(f"assignments update failed: {saved.status_code} {saved.text[:200]}")
 
     def manifest_with_etag(self, binding: Binding):
         response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/manifest")

@@ -3,7 +3,8 @@
 Запускается в фоне при старте и повторяется с паузой до 5 минут, пока ядро не примет всё:
 - свои роли создаются или приводятся к описанию сервиса;
 - права, которых у сервиса больше нет, снимаются с остальных ролей; роль без прав и роли
-  прежних версий удаляются вместе с назначениями;
+  прежних версий удаляются, а перед удалением или сужением профилей роль снимается с участников
+  (ядро отвечает 409 ROLE_IN_USE, пока назначения есть);
 - меню публикуется, если отличается от опубликованного.
 """
 import logging
@@ -26,6 +27,9 @@ def sync(core, manifest: dict, roles: list, retired: tuple = ()) -> None:
             core.create_role(binding, role)
             continue
         patch = {k: role[k] for k in ("titles", "allowed_profiles", "permissions") if have.get(k) != role[k]}
+        removed = set(have.get("allowed_profiles") or []) - set(role["allowed_profiles"])
+        if removed:
+            core.release_role(binding, code, removed)
         if patch:
             core.update_role(binding, code, patch)
     for code, have in existing.items():
@@ -33,6 +37,7 @@ def sync(core, manifest: dict, roles: list, retired: tuple = ()) -> None:
             continue
         kept = [p for p in have.get("permissions") or [] if p in known]
         if code in retired or not kept:
+            core.release_role(binding, code)
             core.delete_role(binding, code)
         elif kept != list(have.get("permissions") or []):
             core.update_role(binding, code, {"permissions": kept})
