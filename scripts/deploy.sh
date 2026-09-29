@@ -100,7 +100,8 @@ run() {
 
 [[ $EUID -eq 0 ]] || { echo "Запустите через sudo: sudo $0" >&2; exit 1; }
 VERSION="$(git -c safe.directory="$ROOT" -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo 'без git')"
-LOG_FROM=$(( $(wc -l <"$LOG" 2>/dev/null || echo 0) + 1 ))  # хвост лога при сбое — только этого запуска
+touch "$LOG" && chmod 640 "$LOG"
+LOG_FROM=$(( $(wc -l <"$LOG") + 1 ))  # хвост лога при сбое — только этого запуска
 { echo; echo "=== $(date '+%F %T') deploy.sh $* · $VERSION"; } >>"$LOG"
 banner
 
