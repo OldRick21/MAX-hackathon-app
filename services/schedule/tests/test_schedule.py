@@ -119,9 +119,11 @@ class Schedule(unittest.TestCase):
         self.assertEqual(self.post(editor, self.event([GA], [T1], start='2026-09-28T08:00:00Z')).json()['error']['code'],
                          'INVALID_TIME_RANGE')
         self.assertEqual(self.post(editor, self.event([str(uuid.uuid4())], [T1])).json()['error']['code'], 'INVALID_REFERENCE')
-        created = self.post(editor, self.event([GA], [T1]))
+        self.assertEqual(self.post(editor, self.event([GA], [T1], lesson_type='exam')).status_code, 422)
+        created = self.post(editor, self.event([GA], [T1], lesson_type='seminar'))
         self.assertEqual(created.status_code, 201, created.text)
         event = created.json()
+        self.assertEqual(event['lesson_type'], 'seminar')  # тип занятия для цветной пометки
         other = self.post(writer_only, self.event([GB], [T2], start='2026-09-29T06:00:00+03:00',
                                                   end='2026-09-29T07:30:00+03:00')).json()
         self.assertEqual(other['starts_at'], '2026-09-29T03:00:00Z')
@@ -209,9 +211,9 @@ class Schedule(unittest.TestCase):
         import io, json, zipfile
         from xml.sax.saxutils import escape
         editor, teacher, student = self.as_(EDITOR, 'admin', EDITOR_PERMS), self.as_(T1, 'teacher'), self.as_(ST1, 'student')
-        header = ['Дата', 'Начало', 'Конец', 'Дисциплина', 'Группы', 'Преподаватели', 'Аудитория', 'Комментарий', 'Статус']
-        rows = [['01.10.2026', '08:30', '10:05', 'Матанализ', 'ИВТ-21', 'Пётр Преподов', '205', '', ''],
-                ['01.10.2026', '10:15', '11:50', 'Физика', 'ИВТ-21; ИВТ-22', T1, '', 'Лекция', 'отменено']]
+        header = ['Дата', 'Начало', 'Конец', 'Дисциплина', 'Группы', 'Преподаватели', 'Аудитория', 'Комментарий', 'Статус', 'Тип']
+        rows = [['01.10.2026', '08:30', '10:05', 'Матанализ', 'ИВТ-21', 'Пётр Преподов', '205', '', '', 'Лаб.'],
+                ['01.10.2026', '10:15', '11:50', 'Физика', 'ИВТ-21; ИВТ-22', T1, '', 'Лекция', 'отменено', '']]
         def csv_bytes(table):
             import csv
             out = io.StringIO()
@@ -257,6 +259,10 @@ class Schedule(unittest.TestCase):
             week = self.c.get('/api/v1/schedule/events', headers=teacher,
                               params={'from': '2026-10-01T00:00:00Z', 'to': '2026-10-02T00:00:00Z'}).json()['items']
             self.assertEqual([e['title'] for e in week], ['Матанализ', 'Физика'])
+            # Тип занятия из столбца «Тип»: «Лаб.» — лабораторная, пусто — без типа.
+            self.assertEqual([e['lesson_type'] for e in week], ['lab', None])
+            unknown = imp(editor, 'x.json', json.dumps([{**dict(zip(header, rows[0])), 'Тип': 'Коллоквиум'}], ensure_ascii=False).encode())
+            self.assertIn('тип занятия «Коллоквиум»', unknown.json()['errors'][0]['message'])
             # Ошибки по строкам: при загрузке ничего не записывается.
             bad = json.dumps([{'Дата': '32.10.2026', 'Начало': '08:30', 'Конец': '10:05', 'Дисциплина': 'X', 'Группы': 'ИВТ-99',
                                'Преподаватели': 'Никто'},
@@ -352,6 +358,8 @@ class Migration(unittest.TestCase):
                 self.assertEqual(db.execute('SELECT group_id FROM event_groups').fetchall()[0][0], 'g1')
                 # Занятие с группой ядра, которой нет в старой таблице, теперь сохраняется.
                 db.execute("INSERT INTO event_groups VALUES ('i', 's', 'e1', 'core-group', 1)")
+                # Старой базе добавлен столбец типа занятия; прежние занятия — без типа.
+                self.assertIsNone(db.execute("SELECT lesson_type FROM events WHERE id='e1'").fetchone()[0])
             self.assertEqual(export_groups.export(),
                              {'groups': [{'id': 'g1', 'institution_id': 'i', 'name': 'ИВТ-21', 'user_ids': ['u1']}]})
 

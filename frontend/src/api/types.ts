@@ -1,6 +1,8 @@
 // Типы по контрактам из MAX-hackathon-app/docs (core/CORE_API_OPENAPI.yaml и services/*/OPENAPI.yaml).
 // Названия полей совпадают с API — не переименовывать.
 
+import type { LessonType } from '../utils/lessonTypes';
+
 export type UUID = string;
 export type DateTime = string;
 export type Locale = 'ru' | 'en';
@@ -126,7 +128,7 @@ export type Tone = 'normal' | 'muted' | 'accent' | 'warning' | 'danger';
 /** Данные виджета от сервиса (WIDGETS_SPEC.md §7); null — сервис ответил 204, карточку не показываем. */
 export type WidgetData =
   | { kind: 'profile'; user_id: UUID; title: string; lines: string[]; progress?: number; hint?: string }
-  | { kind: 'events'; day: string | null; items: { title: string; starts_at: string; ends_at: string; place?: string; status: 'scheduled' | 'cancelled' }[]; more?: number; empty_text?: string }
+  | { kind: 'events'; day: string | null; items: { title: string; starts_at: string; ends_at: string; place?: string; status: 'scheduled' | 'cancelled'; lesson_type?: LessonType | null }[]; more?: number; empty_text?: string }
   | { kind: 'list'; items: { title: string; subtitle?: string; badge?: string; tone?: Tone }[]; total?: number; empty_text?: string }
   | { kind: 'stat'; value: number; unit?: string; caption?: string; tone?: Tone }
   | { kind: 'progress'; value: number; caption?: string; hint?: string }
@@ -190,6 +192,8 @@ export interface ScheduleEvent {
   location: string;
   description: string;
   status: EventStatus;
+  /** Тип занятия для цветной пометки; null — не указан. */
+  lesson_type?: LessonType | null;
 }
 
 export type EventInput = Omit<ScheduleEvent, 'id'>;

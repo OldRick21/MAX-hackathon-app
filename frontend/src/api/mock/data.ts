@@ -120,6 +120,11 @@ const MTUCI_WEEK: Slot[] = [
     { description: 'Подключиться: https://max.ru/join/mtuci-consult' }],
 ];
 
+// Тип занятия для цветных пометок: по названию, иначе поочерёдно — лекция, семинар, лабораторная.
+const TYPE_ORDER = ['lecture', 'seminar', 'lab'] as const;
+const lessonTypeOf = (title: string, wd: number, pair: number) =>
+  /лаборатор/i.test(title) ? 'lab' as const : /семинар|консультац/i.test(title) ? 'seminar' as const : TYPE_ORDER[(wd + pair) % 3];
+
 let seq = 0;
 const eventId = () => `e0000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
 
@@ -139,6 +144,7 @@ function buildEvents(week: Slot[], inst: string): ScheduleEvent[] {
         location,
         description: '',
         status: 'scheduled',
+        lesson_type: lessonTypeOf(title, wd, pair),
         ...extra,
       });
     }

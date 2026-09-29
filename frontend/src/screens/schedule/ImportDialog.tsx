@@ -10,7 +10,7 @@ import p from '../pages.module.css';
 import s from './schedule.module.css';
 
 const ACCEPT = '.json,.xlsx,.csv,.txt,.xml';
-const COLUMNS = 'Дата, Начало, Конец, Дисциплина, Группы, Преподаватели, Аудитория, Комментарий, Статус';
+const COLUMNS = 'Дата, Начало, Конец, Дисциплина, Группы, Преподаватели, Аудитория, Комментарий, Статус, Тип (лекция, семинар, лабораторная)';
 
 export function ImportDialog({ api, groupName, onClose, onDone }: {
   api: ScheduleApi; groupName: Map<string, string>; onClose: () => void; onDone: () => void;

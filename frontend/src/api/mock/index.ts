@@ -270,7 +270,8 @@ export function createMockBackend(): Backend {
       for (let shift = 0; shift < 7; shift++) {
         const items = await api.listEvents({ from: day(shift).toISOString(), to: day(shift + 1).toISOString() });
         if (items.length) return { kind: 'events', day: dayKey(day(shift)), items: items.slice(0, 10).map(e => ({
-          title: e.title, starts_at: e.starts_at, ends_at: e.ends_at, place: e.location || 'онлайн', status: e.status })) };
+          title: e.title, starts_at: e.starts_at, ends_at: e.ends_at, place: e.location || 'онлайн', status: e.status,
+          lesson_type: e.lesson_type })) };
       }
       return { kind: 'events', day: null, items: [], empty_text: 'На ближайшую неделю занятий нет' };
     }
@@ -280,6 +281,7 @@ export function createMockBackend(): Backend {
         .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
       return { kind: 'events', day: today.length ? dayKey(day(0)) : null, empty_text: 'Сегодня занятий в вузе нет',
         items: today.slice(0, 10).map(e => ({ title: e.title, starts_at: e.starts_at, ends_at: e.ends_at, status: e.status,
+          lesson_type: e.lesson_type,
           place: [e.location || 'онлайн', e.group_ids.map(g => names.get(g) ?? '—').join(', ')].filter(Boolean).join(' · ') })),
         ...(today.length > 10 ? { more: today.length - 10 } : {}) };
     }

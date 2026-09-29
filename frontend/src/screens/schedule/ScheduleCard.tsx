@@ -1,6 +1,7 @@
 import type { ScheduleEvent } from '../../api/types';
 import { IconDots, IconVideo } from '../../components/icons/ui';
 import { Badge, Button, Dropdown, IconButton, type DropdownItem } from '../../components/ui';
+import { LESSON_TYPES, lessonStyle } from '../../utils/lessonTypes';
 import { findMeetingLink } from '../../utils/links';
 import { formatTime, now } from '../../utils/time';
 import s from './schedule.module.css';
@@ -27,12 +28,14 @@ export function ScheduleCard({ event: e, teacherNames, groupNames, showGroups, o
   const description = link ? e.description.replace(link, '').replace(/(Ссылка|Подключиться)\s*:?\s*$/i, '').trim() : e.description.trim();
 
   return (
-    <article className={cx(s.card, current && s.current, cancelled && s.cancelled)} aria-label={`${formatTime(e.starts_at)} ${e.title}`}>
+    <article className={cx(s.card, current && s.current, cancelled && s.cancelled, !!e.lesson_type && s.typed)} style={lessonStyle(e.lesson_type)}
+      aria-label={`${formatTime(e.starts_at)} ${e.title}${e.lesson_type ? `, ${LESSON_TYPES[e.lesson_type]}` : ''}`}>
       <div className={s.times}>
         <span className={s.start}>{formatTime(e.starts_at)}</span>
         <span className={s.end}>до {formatTime(e.ends_at)}</span>
       </div>
       <div className={s.body}>
+        {e.lesson_type && <span className={s.lessonType}>{LESSON_TYPES[e.lesson_type]}</span>}
         <h3 className={s.title}>{e.title}</h3>
         <div className={s.meta}>
           <span className={s.metaItem}>{!teacherNames ? '…' : teacherNames.length ? teacherNames.join(', ') : 'Преподаватель не указан'}</span>

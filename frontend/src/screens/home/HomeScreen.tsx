@@ -80,8 +80,10 @@ export function HomeScreen() {
         <p className={s.caption}>Не удалось загрузить главную. <Button variant="ghost" size="small" onClick={widgets.reload}>Повторить</Button></p>
       ) : ordered.length ? (
         <div className={s.widgets} style={{ '--columns': columns } as CSSProperties}>
-          {ordered.map(w => (
-            <WidgetCard key={`${w.service_id}:${w.widget_id}`} widget={w} span={spanOf(w, columns)} to={routeOf(w)} tick={tick} />
+          {ordered.map((w, i) => (
+            // Профиль — отдельной строкой сверху (не шире половины), остальные виджеты — со следующей строки.
+            <WidgetCard key={`${w.service_id}:${w.widget_id}`} widget={w} span={spanOf(w, columns)} to={routeOf(w)} tick={tick}
+              newRow={i === 1 && ordered[0].kind === 'profile'} />
           ))}
         </div>
       ) : (

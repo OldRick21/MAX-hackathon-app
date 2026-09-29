@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS events (
     institution_id TEXT NOT NULL, service_id TEXT NOT NULL, id TEXT NOT NULL,
     title TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL,
     location TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL,
-    revision INTEGER NOT NULL DEFAULT 1,
+    revision INTEGER NOT NULL DEFAULT 1, lesson_type TEXT,
     PRIMARY KEY (institution_id, service_id, id));
 CREATE INDEX IF NOT EXISTS events_by_time ON events (institution_id, service_id, starts_at, id);
 CREATE TABLE IF NOT EXISTS event_groups (
@@ -170,6 +170,9 @@ def prepare():
             ''')
             db.execute('PRAGMA foreign_keys=ON')
         db.executescript(SCHEMA)
+        # Тип занятия (лекция, семинар, лабораторная) добавлен позже: старым базам — столбец без значения.
+        if 'lesson_type' not in {c['name'] for c in db.execute("PRAGMA table_info('events')")}:
+            db.execute('ALTER TABLE events ADD COLUMN lesson_type TEXT')
 
 
 @asynccontextmanager
@@ -403,6 +406,8 @@ class EventInput(BaseModel):
     location: str = Field(max_length=200)
     description: str = Field(max_length=2000)
     status: Literal['scheduled', 'cancelled']
+    # Отличие от контракта: тип занятия для цветной пометки; не указан — без пометки.
+    lesson_type: Optional[Literal['lecture', 'seminar', 'lab']] = None
 
     @field_validator('group_ids', 'teacher_ids')
     @classmethod
@@ -512,7 +517,7 @@ def event_links(db, ctx: Ctx, event_ids: List[str]):
 def event_json(row, group_ids, teacher_ids):
     return {'id': row['id'], 'title': row['title'], 'starts_at': row['starts_at'], 'ends_at': row['ends_at'],
             'group_ids': group_ids, 'teacher_ids': teacher_ids, 'location': row['location'],
-            'description': row['description'], 'status': row['status']}
+            'description': row['description'], 'status': row['status'], 'lesson_type': row['lesson_type']}
 
 
 def load_event(db, ctx: Ctx, event_id: str):
@@ -552,7 +557,7 @@ def checked_event(ctx: Ctx, body: EventInput) -> dict:
                    [{'path': f'teacher_ids/{i}', 'message': f'{teacher_ids[i]} — не преподаватель этого вуза'} for i in bad])
     return {'title': body.title, 'starts_at': starts, 'ends_at': ends, 'group_ids': [str(g) for g in body.group_ids],
             'teacher_ids': teacher_ids, 'location': body.location.strip(), 'description': body.description.strip(),
-            'status': body.status}
+            'status': body.status, 'lesson_type': body.lesson_type}
 
 
 def check_groups_exist(ctx: Ctx, group_ids: List[str]):
@@ -663,7 +668,7 @@ def widget_today(ctx: Ctx = Depends(authenticate)):
                 day, rows = today + timedelta(days=shift), found
                 break
     items = [{'title': r['title'], 'starts_at': r['starts_at'], 'ends_at': r['ends_at'],
-              'place': r['location'] or 'онлайн', 'status': r['status']} for r in rows[:10]]
+              'place': r['location'] or 'онлайн', 'status': r['status'], 'lesson_type': r['lesson_type']} for r in rows[:10]]
     return JSONResponse({'kind': 'events', 'day': day.isoformat() if day else None, 'items': items,
                          'empty_text': 'На ближайшую неделю занятий нет'}, headers={'Cache-Control': 'no-store'})
 
@@ -689,7 +694,8 @@ def widget_today_admin(ctx: Ctx = Depends(authenticate)):
         where = r['location'] or 'онлайн'
         group_text = ', '.join(names.get(g, '—') for g in groups[r['id']])
         items.append({'title': r['title'], 'starts_at': r['starts_at'], 'ends_at': r['ends_at'],
-                      'place': f'{where} · {group_text}'[:80] if group_text else where[:80], 'status': r['status']})
+                      'place': f'{where} · {group_text}'[:80] if group_text else where[:80], 'status': r['status'],
+                      'lesson_type': r['lesson_type']})
     more = len(rows) - len(items)
     return JSONResponse({'kind': 'events', 'day': today.isoformat() if rows else None, 'items': items,
                          'empty_text': 'Сегодня занятий в вузе нет'} | ({'more': more} if more > 0 else {}),
@@ -751,6 +757,11 @@ def import_plan(ctx: Ctx, name: str, data: bytes) -> dict:
         except ValueError as error:
             problems.append(str(error))
             day = start = end = status = None
+        try:
+            lesson_type = importer.parse_lesson_type(row.get('lesson_type'))
+        except ValueError as error:
+            problems.append(str(error))
+            lesson_type = None
         group_ids = []
         for gname in importer.split_list(row.get('groups')):
             gid = groups.get(gname.casefold())
@@ -785,7 +796,8 @@ def import_plan(ctx: Ctx, name: str, data: bytes) -> dict:
         events.append({'row': line, 'title': title, 'starts_at': starts.strftime(fmt), 'ends_at': ends.strftime(fmt),
                        'group_ids': unique(group_ids)[:50], 'teacher_ids': unique(teacher_list)[:10],
                        'location': str(row.get('location') or '').strip()[:200],
-                       'description': str(row.get('description') or '').strip()[:2000], 'status': status})
+                       'description': str(row.get('description') or '').strip()[:2000], 'status': status,
+                       'lesson_type': lesson_type})
     return {'events': events, 'errors': errors}
 
 
@@ -838,9 +850,9 @@ def run_import(ctx: Ctx, name: str, data: bytes, dry_run: bool) -> dict:
                        [{'path': f'row {e["row"]}', 'message': e['message']} for e in plan['errors'][:100]])
         for e in new:
             event_id = str(uuid.uuid4())
-            db.execute('INSERT INTO events (institution_id, service_id, id, title, starts_at, ends_at, location, description, status) '
-                       'VALUES (?,?,?,?,?,?,?,?,?)', (*ctx.tenant, event_id, e['title'], e['starts_at'], e['ends_at'],
-                                                       e['location'], e['description'], e['status']))
+            db.execute('INSERT INTO events (institution_id, service_id, id, title, starts_at, ends_at, location, description, status, '
+                       'lesson_type) VALUES (?,?,?,?,?,?,?,?,?,?)', (*ctx.tenant, event_id, e['title'], e['starts_at'], e['ends_at'],
+                                                                     e['location'], e['description'], e['status'], e['lesson_type']))
             write_links(db, ctx, event_id, e)
         db.commit()
     summary['created'] = len(new)
@@ -860,9 +872,10 @@ def create_event(body: EventInput, idempotency: Optional[str] = Header(None, ali
         if previous:
             return previous
         event_id = str(uuid.uuid4())
-        db.execute('INSERT INTO events (institution_id, service_id, id, title, starts_at, ends_at, location, description, status) '
-                   'VALUES (?,?,?,?,?,?,?,?,?)', (*ctx.tenant, event_id, value['title'], value['starts_at'], value['ends_at'],
-                                                   value['location'], value['description'], value['status']))
+        db.execute('INSERT INTO events (institution_id, service_id, id, title, starts_at, ends_at, location, description, status, '
+                   'lesson_type) VALUES (?,?,?,?,?,?,?,?,?,?)', (*ctx.tenant, event_id, value['title'], value['starts_at'],
+                                                                 value['ends_at'], value['location'], value['description'],
+                                                                 value['status'], value['lesson_type']))
         write_links(db, ctx, event_id, value)
         row, data = load_event(db, ctx, event_id)
         response = remember(db, ctx, key, fp, 201, data,
@@ -900,10 +913,10 @@ def replace_event(event_id: UUID, body: EventInput, if_match: Optional[str] = He
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
         row = editable_event(db, ctx, str(event_id), if_match)
-        db.execute('UPDATE events SET title=?, starts_at=?, ends_at=?, location=?, description=?, status=?, revision=revision+1 '
-                   'WHERE institution_id=? AND service_id=? AND id=?',
+        db.execute('UPDATE events SET title=?, starts_at=?, ends_at=?, location=?, description=?, status=?, lesson_type=?, '
+                   'revision=revision+1 WHERE institution_id=? AND service_id=? AND id=?',
                    (value['title'], value['starts_at'], value['ends_at'], value['location'], value['description'],
-                    value['status'], *ctx.tenant, row['id']))
+                    value['status'], value['lesson_type'], *ctx.tenant, row['id']))
         write_links(db, ctx, row['id'], value)
         row, data = load_event(db, ctx, row['id'])
         db.commit()

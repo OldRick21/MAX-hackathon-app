@@ -3,8 +3,9 @@ import { useState, type FormEvent } from 'react';
 import type { ProfilesApi, ScheduleApi } from '../../api/backend';
 import { humanMessage, isUUID } from '../../api/http';
 import type { EventInput, Group, ProfileCard, ScheduleEvent } from '../../api/types';
-import { Button, Input, LoadingState, Modal, SearchInput, TextArea, toast } from '../../components/ui';
+import { Button, Input, LoadingState, Modal, SearchInput, Select, TextArea, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
+import { LESSON_TYPES, type LessonType } from '../../utils/lessonTypes';
 import { dayKey, formatTime, mskToIso } from '../../utils/time';
 import p from '../pages.module.css';
 import s from './schedule.module.css';
@@ -29,6 +30,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
   const [location, setLocation] = useState(initial?.location ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [cancelled, setCancelled] = useState(initial?.status === 'cancelled');
+  const [lessonType, setLessonType] = useState<LessonType | ''>(initial?.lesson_type ?? '');
   const [groupIds, setGroupIds] = useState<string[]>(initial?.group_ids ?? []);
   const [teacherIds, setTeacherIds] = useState<string[]>(
     initial?.teacher_ids ?? (lockedTeacher ? [lockedTeacher] : []));
@@ -60,7 +62,7 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
     const input: EventInput = {
       title: title.trim(), starts_at: mskToIso(date, start), ends_at: mskToIso(date, end),
       group_ids: groupIds, teacher_ids: teacherIds, location: location.trim(), description: description.trim(),
-      status: cancelled ? 'cancelled' : 'scheduled',
+      status: cancelled ? 'cancelled' : 'scheduled', lesson_type: lessonType || null,
     };
     setBusy(true);
     try {
@@ -99,6 +101,11 @@ export function EventEditor({ api, profiles, groups, initial, etag, lockedTeache
           <Input label="Начало" type="time" value={start} onChange={e => setStart(e.target.value)} required />
           <Input label="Окончание" type="time" value={end} onChange={e => setEnd(e.target.value)} required />
         </div>
+        <Select label="Тип занятия" hint="Цвет пометки: лекция — зелёный, семинар — красный, лабораторная — синий"
+          value={lessonType} onChange={e => setLessonType(e.target.value as LessonType | '')}>
+          <option value="">Не указан</option>
+          {(Object.keys(LESSON_TYPES) as LessonType[]).map(t => <option key={t} value={t}>{LESSON_TYPES[t]}</option>)}
+        </Select>
         <Input label="Аудитория" hint="Оставьте пустым для онлайн-занятия" value={location} onChange={e => setLocation(e.target.value)} maxLength={200} />
         <TextArea label="Описание" hint="Ссылку на онлайн-занятие добавьте сюда — у студентов появится кнопка «Подключиться»"
           value={description} onChange={e => setDescription(e.target.value)} maxLength={2000} />
