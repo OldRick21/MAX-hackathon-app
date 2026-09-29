@@ -29,7 +29,8 @@ def core_state(db, claims):
     if claims.get('family_id', session.family_id) != session.family_id:
         return None
     user = db.get(User, session.user_id)
-    return (user, session) if user else None
+    from privacy import active
+    return (user, session) if user and active(db, user.id) else None
 
 
 def machine_scopes(service):
@@ -57,6 +58,14 @@ def machine_state(db, claims, require_active=True):
 
 
 def service_state(db, claims):
+    from privacy import active, ErasureTask
+    if not active(db, claims['sub']):
+        return None
+    # A legacy/custom service without the privacy SDK must not keep serving
+    # another person's data while its erasure is pending. Updated services
+    # synchronize and acknowledge tasks before requesting introspection.
+    if db.query(ErasureTask).filter_by(service_id=claims['service_id'], completed_at=None).first():
+        return None
     session = db.get(ServiceSession, claims['sid'], populate_existing=True)
     if not alive(session):
         return None

@@ -3615,6 +3615,14 @@ components:
       required:
       - initData
       properties:
+        consent_version:
+          type: string
+          maxLength: 80
+          description: Version displayed and explicitly accepted; required for first registration.
+        consent_challenge:
+          type: string
+          maxLength: 64
+          description: One-use challenge from POST /api/v1/privacy/challenge; no browser-only consent.
         initData:
           type: string
           minLength: 1

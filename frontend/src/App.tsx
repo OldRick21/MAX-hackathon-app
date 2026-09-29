@@ -1,4 +1,5 @@
 import { PlatformScreen } from './platform/PlatformScreen';
+import { ConsentScreen, ErasureScreen, PrivacySettings } from './screens/entry/Privacy';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ErrorState, ToastHost } from './components/ui';
@@ -59,20 +60,22 @@ function InstitutionRoute() {
 function Gate() {
   const { phase } = useSession();
   switch (phase.kind) {
+    case 'consent': return <ConsentScreen />;
+    case 'withdrawn': return <ErasureScreen receipt={phase.receipt} />;
     case 'booting': return <BootScreen />;
     case 'not-in-max': return <NotInMaxScreen />;
     case 'expired': return <SessionProblemScreen title="Сессия завершилась" text="Войдите заново, чтобы продолжить работу." />;
     case 'error': return <SessionProblemScreen title="Не удалось войти" text={phase.message} />;
     case 'ready':
       return (
-        <Routes>
+        <><PrivacySettings /><Routes>
           <Route path="/" element={<Root />} />
           <Route path="/join" element={<JoinScreen />} />
           <Route path="/applications" element={<PlatformScreen />} />
           <Route path="/institution" element={<Root />} />
           <Route path="/institution/:institutionId/*" element={<InstitutionRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        </Routes></>
       );
   }
 }

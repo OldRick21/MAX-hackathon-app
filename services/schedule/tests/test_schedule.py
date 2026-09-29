@@ -358,3 +358,11 @@ class Migration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+# Unit suites stub the core privacy transport, just like token introspection.
+def setUpModule():
+    from unittest.mock import patch
+    stub = patch('app.privacy_protocol.PrivacyGuard.synchronize', return_value=None)
+    stub.start()
+    unittest.addModuleCleanup(stub.stop)
+

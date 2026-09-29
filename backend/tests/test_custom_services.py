@@ -18,7 +18,7 @@ os.environ.update(
     SCHEDULE_PROVISIONING_TOKEN='s' * 48, USER_PROFILE_PROVISIONING_TOKEN='u' * 48,
 )
 
-from fastapi.testclient import TestClient  # noqa: E402
+from testing_consent import TestClient  # noqa: E402
 
 from tests.keys import issue_key, register_service  # noqa: E402
 

@@ -99,6 +99,10 @@ class AuthService:
     @staticmethod
     def login_or_register(auth_data, db: Session):
         import random
+        from sqlalchemy import update
+        # Open a real write transaction before max_user's nested savepoint (SQLite).
+        # A rejected consent must roll back the new account as well as its sessions.
+        db.execute(update(User).where(User.id == '').values(id=User.id))
         user = None
 
         if not settings.ALLOW_DEV_LOGIN:
@@ -161,6 +165,8 @@ class AuthService:
         else:
             raise validation("Нужен initData", "initData")
 
+        from privacy import accept
+        accept(db, user, auth_data)
         now = utc_now().replace(microsecond=0)
         session = CoreSession(id=generate_uuid(), user_id=user.id, family_id=generate_uuid(),
                               current_refresh_jti=generate_uuid(), expires_at=now + timedelta(days=7))
@@ -223,6 +229,8 @@ class AuthService:
             raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Сервис не найден для этого профиля')
         if not service.enabled:
             raise DomainError(409, 'RESOURCE_INACTIVE', 'Сервис отключён')
+        from privacy import remember
+        remember(db, user.id, service)
         deadline = min(timestamp(utc_now()) + 86400, timestamp(parent.expires_at))
         session = ServiceSession(id=generate_uuid(), parent_session_id=parent.id, user_id=user.id,
                                  institution_id=institution_id, service_id=service_id, profile=profile,

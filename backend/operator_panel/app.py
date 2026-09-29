@@ -595,6 +595,41 @@ def delete_user(user_id: str, _: str = Depends(operator), db: Session = Depends(
 # Журнал и служебные команды
 # --------------------------------------------------------------------------
 
+@app.get('/api/privacy')
+def privacy_overview(_: str = Depends(operator), db: Session = Depends(get_db)):
+    from privacy import PrivacyRequest, Erasure, ErasureTask
+    requests = db.query(PrivacyRequest).order_by(PrivacyRequest.created_at.desc()).limit(200).all()
+    jobs = db.query(Erasure).order_by(Erasure.created_at.desc()).limit(200).all()
+    return {'requests': [{'id': r.id, 'user_id': r.user_id, 'message': r.message,
+                         'due_at': r.due_at, 'status': r.status} for r in requests],
+            'erasures': [{'id': j.id, 'created_at': j.created_at, 'completed_at': j.completed_at,
+                         'pending_services': [{'service_id': t.service_id, 'task_id': t.id} for t in db.query(ErasureTask).filter_by(erasure_id=j.id, completed_at=None)]}
+                         for j in jobs]}
+
+@app.post('/api/privacy/tasks/{task_id}/confirm-offline-erasure')
+def confirm_offline_erasure(task_id: str, payload: Any = Body(...), _: str = Depends(operator), db: Session = Depends(get_db)):
+    from privacy import ErasureTask, finish_task
+    proof = payload.get('verification') if isinstance(payload, dict) else None
+    if not isinstance(proof, str) or not 10 <= len(proof.strip()) <= 1000:
+        raise DomainError(422, 'VALIDATION_ERROR', 'Нужно описание проверки фактического удаления (10–1000 символов)')
+    task = db.get(ErasureTask, task_id)
+    if not task:
+        raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Задание не найдено')
+    task.verification = proof.strip()
+    finish_task(db, task)
+    db.commit()
+    return {'status': 'completed'}
+
+@app.post('/api/privacy/requests/{request_id}/resolve')
+def privacy_resolve(request_id: str, _: str = Depends(operator), db: Session = Depends(get_db)):
+    from privacy import PrivacyRequest
+    row = db.get(PrivacyRequest, request_id)
+    if not row:
+        raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Обращение не найдено')
+    row.status = 'resolved'
+    db.commit()
+    return {'status': 'resolved'}
+
 @app.get("/api/audit")
 def audit(institution_id: Optional[str] = Query(None), before: Optional[int] = Query(None),
           _: str = Depends(operator), db: Session = Depends(get_db)):

@@ -173,6 +173,7 @@
     { id: 'institutions', label: 'Вузы', count: 'pending_join_requests' },
     { id: 'users', label: 'Пользователи' },
     { id: 'audit', label: 'Журнал' },
+    { id: 'privacy', label: 'Персональные данные' },
     { id: 'tools', label: 'Обслуживание' },
   ];
   let counts = {};
@@ -195,7 +196,7 @@
     drawNav();
     const view = h('div', {});
     const renderer = { overview: renderOverview, applications: renderApplications, institutions: renderInstitutions,
-      users: renderUsers, audit: renderAudit, tools: renderTools }[section] || renderOverview;
+      users: renderUsers, audit: renderAudit, privacy: renderPrivacy, tools: renderTools }[section] || renderOverview;
     try {
       await renderer(view, rest);
       if (ticket === rendering) $('view').replaceChildren(view);
@@ -700,6 +701,26 @@
   // ------------------------------------------------------------------
   // Обслуживание: бывшие команды manage.py
   // ------------------------------------------------------------------
+  async function renderPrivacy(view) {
+    const data = await get('/privacy');
+    view.append(head('Персональные данные', 'Обращения и подтверждения удаления. Просроченные задания требуют вмешательства.'));
+    for (const r of data.requests) {
+      view.append(h('section', { class: 'card' }, h('h3', {}, `Обращение ${r.id}`),
+        h('p', {}, `Пользователь: ${r.user_id}. Контрольный срок: ${fmtDate(r.due_at)}. ${r.status}`),
+        h('p', {}, r.message), r.status === 'pending' ? h('button', {
+          onclick: () => act(() => api(`/privacy/requests/${r.id}/resolve`, { method: 'POST' }))
+        }, 'Отметить исполненным после ответа пользователю') : null));
+    }
+    for (const j of data.erasures) view.append(h('section', { class: 'card' },
+      h('h3', {}, `Удаление ${j.id}`), h('p', {}, `Начато: ${fmtDate(j.created_at)}`),
+      h('p', {}, j.completed_at ? `Завершено: ${fmtDate(j.completed_at)}` : 'Ожидают очистки:'),
+      j.pending_services.map(t => h('div', {}, h('code', {}, t.service_id), h('button', { onclick: () => {
+        const verification = window.prompt('Только после фактического удаления данных из отключённого сервиса. Укажите, как проверено удаление (без персональных данных):');
+        if (verification) act(() => api(`/privacy/tasks/${t.task_id}/confirm-offline-erasure`, { method: 'POST', body: { verification } }));
+      } }, 'Подтвердить выполненную вручную очистку')))));
+    if (!data.requests.length && !data.erasures.length) view.append(h('p', {}, 'Обращений пока нет.'));
+  }
+
   async function renderTools(view) {
     const tool = (name, text, run, button = 'Выполнить') => h('section', { class: 'card stack' }, h('h2', {}, name),
       h('p', { class: 'muted m0' }, text), h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: run }, button)));

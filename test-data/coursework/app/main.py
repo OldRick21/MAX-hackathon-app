@@ -615,3 +615,7 @@ def download(submission_id: UUID, ctx: sdk.Ctx = Depends(authenticate)):
     return FileResponse(path, media_type='application/pdf',
                         headers={'Content-Disposition': disposition, 'X-Content-Type-Options': 'nosniff',
                                  'ETag': etag(ctx, row['id'], row['revision'])})
+
+from app.privacy_protocol import PrivacyGuard
+from app.privacy_cleanup import erase as erase_personal_data
+app.add_middleware(PrivacyGuard, erase=erase_personal_data, client=lambda: core)

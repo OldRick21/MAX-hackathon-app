@@ -5,6 +5,7 @@ import type { ProfilesApi } from '../api/backend';
 import type { ProfileCard } from '../api/types';
 
 const cache = new Map<string, Promise<ProfileCard | null>>();
+window.addEventListener('vuzy:privacy-withdrawn', () => cache.clear());
 
 export function loadCard(api: ProfilesApi, scope: string, id: string) {
   const key = `${scope}:${id}`;

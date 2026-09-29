@@ -23,6 +23,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         return
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA secure_delete=ON")
     # Контейнер перезапускают в любой момент: WAL журналирует так, что прерванная
     # запись откатывается при следующем открытии файла, а busy_timeout ждёт чужую
     # запись вместо ошибки "database is locked" и ответа 503. synchronous остаётся
@@ -84,6 +85,7 @@ def migrate_service_tombstones():
 
 
 def create_tables():
+    import privacy  # register additive privacy tables before create_all
     from platform_core.registry import ensure_platform_invariants
 
     migrate_service_tombstones()

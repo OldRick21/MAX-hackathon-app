@@ -98,6 +98,9 @@ def get_user_profiles(db: Session, ctx: MachineContext, service_id: str, user_id
     member = db.get(Membership, (service.institution_id, user_id)) if is_uuid(user_id) else None
     if not member:
         raise not_found("Участник не найден в этом вузе")
+    from privacy import remember
+    remember(db, user_id, service)
+    db.commit()
     return Result({
         "user_id": user_id,
         "institution_id": service.institution_id,
@@ -116,6 +119,10 @@ def list_members(db: Session, ctx: MachineContext, service_id: str) -> Result:
     names = member_names(db, service.institution_id)
     rows = db.query(Membership).filter(Membership.institution_id == service.institution_id) \
         .order_by(Membership.user_id).all()
+    from privacy import remember
+    for member in rows:
+        remember(db, member.user_id, service)
+    db.commit()
     return Result({"items": [{"user_id": m.user_id, "profiles": list(m.profiles or []),
                               "display_name": names.get(m.user_id), "member_since": m.created_at.isoformat()}
                              for m in rows], "next_cursor": None})

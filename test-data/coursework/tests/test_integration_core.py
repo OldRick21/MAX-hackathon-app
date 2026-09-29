@@ -25,7 +25,7 @@ os.environ.update(
     SERVICE_CLIENT_BASE_URL='https://coursework.university.ru', SHELL_ORIGIN='https://shell.test',
 )
 
-from fastapi.testclient import TestClient  # noqa: E402
+from testing_consent import TestClient  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
 from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402

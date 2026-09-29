@@ -6,6 +6,8 @@ class RequestModel(BaseModel):
 
 
 class AuthTokenRequest(RequestModel):
+    consent_version: Optional[str] = Field(None, max_length=80)
+    consent_challenge: Optional[str] = Field(None, max_length=64)
     # Контракт: только initData (обязателен вне режима разработки — проверка в AuthService).
     initData: Optional[str] = Field(None, min_length=1, max_length=16384, strict=True)
     username: Optional[str] = None

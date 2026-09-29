@@ -4,6 +4,10 @@ import type { Backend } from '../api/backend';
 import { useBackend } from '../state/session';
 
 const cache = new Map<string, Promise<string | null>>();
+window.addEventListener('vuzy:privacy-withdrawn', () => {
+  for (const value of cache.values()) value.then(url => { if (url) URL.revokeObjectURL(url); });
+  cache.clear();
+});
 const EVENT = 'vuzy:avatar-changed';
 
 function load(backend: Backend, userId: string) {

@@ -190,11 +190,16 @@ export function createRealBackend(): Backend {
     async deleteAvatar() {
       await core.call('/api/v1/users/me/avatar', { method: 'DELETE' });
     },
-    async login() {
+    clearSession() {
+      for (const ss of sessions.values()) ss.dispose();
+      sessions.clear();
+      core.clear();
+    },
+    async login(consent) {
       await loadBridge();
       const data = await waitInitData();
       if (!data) throw new NotInMaxError();
-      await core.login(data);
+      await core.login(data, consent);
       return core.call<User>('/api/v1/auth/me');
     },
     listInstitutions: signal => listAll<InstitutionView>(async cursor => {
