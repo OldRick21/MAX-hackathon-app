@@ -83,9 +83,14 @@ class Runner(unittest.TestCase):
             self.assertEqual((a['path'], a['query'], a['body']), ('x/y', {'q': '1'}, 'hello'))
             self.assertEqual(c.get('/33333333-3333-4333-8333-333333333333/echo/').status_code, 404)
             self.assertEqual(c.get('/health').json()['instances'], 2)
+            # Состояние экземпляра для пульта: без запуска процесса; неизвестный — 404.
+            self.assertEqual(c.get(f'/health?service_id={A}').json(), {'status': 'ok', 'running': True})
+            self.assertEqual(c.get('/health?service_id=33333333-3333-4333-8333-333333333333').status_code, 404)
 
             # Простой: процесс останавливается и поднимается снова первым запросом.
             self.assertTrue(wait(lambda: not runner.instances[A].running, 10), 'idle process not stopped')
+            self.assertEqual(c.get(f'/health?service_id={A}').json(), {'status': 'ok', 'running': False})
+            self.assertFalse(runner.instances[A].running)  # проверка не будит процесс
             again = c.get(f'/{A}/echo/').json()
             self.assertNotEqual(again['pid'], a['pid'])
 

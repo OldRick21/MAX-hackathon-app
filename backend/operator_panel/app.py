@@ -258,10 +258,17 @@ def logout():
 # --------------------------------------------------------------------------
 
 CORE_HEALTH = "http://backend:8000/api/v1/health"
+# Раннеры облачных сервисов во внутренней сети compose (имя сервиса → адрес).
+RUNNERS = {"administration": os.environ.get("RUNNER_ADMINISTRATION_URL", "http://administration:8000"),
+           "schedule": os.environ.get("RUNNER_SCHEDULE_URL", "http://schedule:8000"),
+           "user-profile": os.environ.get("RUNNER_USER_PROFILE_URL", "http://user-profile:8000")}
 
 
 def _health_targets() -> dict:
-    """Ядро и каждый включённый сервис каждого вуза — по его настоящему адресу (свой контейнер вуза).
+    """Ядро и каждый включённый сервис каждого вуза.
+
+    Облачный — у раннера его типа по внутренней сети: раннер знает экземпляр (процесс работает или
+    спит до первого запроса) — сервис доступен; процесс проверкой не будится. Свой сервис вуза — по его адресу.
 
     OPERATOR_HEALTH_TARGETS (JSON «имя → URL») заменяет список целиком — для тестов и особых схем.
     """
@@ -276,7 +283,10 @@ def _health_targets() -> dict:
         for s in sorted(services, key=lambda x: (insts.get(x.institution_id, ""), x.service_type)):
             title = (s.manifest or {}).get("titles", {}).get("ru") or s.service_type
             name = f"{insts.get(s.institution_id, 'ВУЗ')} · {title}" if many else title
-            targets[name] = s.api_base_url.rstrip("/") + "/health"
+            if s.deployment == "cloud" and s.service_type in RUNNERS:
+                targets[name] = f"{RUNNERS[s.service_type]}/health?service_id={s.id}"
+            else:
+                targets[name] = s.api_base_url.rstrip("/") + "/health"
     return targets
 
 

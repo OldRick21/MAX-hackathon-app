@@ -238,6 +238,14 @@ async def proxy(request: Request) -> Response:
 
 
 async def health(request: Request) -> JSONResponse:
+    """Раннер жив. С ?service_id= — состояние экземпляра вуза без запуска процесса: 404, если раннер
+    его не знает; running=false — процесс остановлен по простою и поднимется первым запросом."""
+    sid = request.query_params.get("service_id")
+    if sid is not None:
+        inst = instances.get(sid)
+        if inst is None:
+            return JSONResponse({"status": "unknown"}, status_code=404)
+        return JSONResponse({"status": "ok", "running": inst.running})
     return JSONResponse({"status": "ok", "instances": len(instances),
                          "running": sum(1 for i in instances.values() if i.running)})
 

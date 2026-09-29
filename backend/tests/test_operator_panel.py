@@ -299,12 +299,15 @@ class OperatorPanel(unittest.TestCase):
             off = registry.create_local_instance(db, inst.id, 'custom.people', 'https://people.check.ru/api/v1',
                                                  'https://people.check.ru', {'ru': 'Люди'}, ['admin'])
             db.commit()
+            admin_id = registry.admin_service_of(db, inst.id).id
         with patch.dict(os.environ, {'OPERATOR_HEALTH_TARGETS': ''}):
             targets = panel._health_targets()
         self.assertEqual(targets[next(k for k in targets if k.endswith('Своё расписание'))], 'https://schedule.check.ru/api/v1/health')
         self.assertIn('Ядро', targets)
         self.assertNotIn('https://people.check.ru/api/v1/health', targets.values())  # выключенный не проверяется
-        self.assertTrue(any(v.startswith('https://admin.platform.example/') and v.endswith('/api/v1/health') for v in targets.values()))
+        # Облачные — у раннера по внутренней сети, без пробуждения процесса.
+        self.assertIn(f'http://administration:8000/health?service_id={admin_id}', targets.values())
+        self.assertTrue(any(v.startswith('http://schedule:8000/health?service_id=') for v in targets.values()))
 
 if __name__ == '__main__':
     unittest.main()
