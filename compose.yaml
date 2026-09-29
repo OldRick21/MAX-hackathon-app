@@ -3,8 +3,13 @@ services:
     build: ./bot
     restart: unless-stopped
     init: true
-    env_file:
-      - .env
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
+      BOT_CORE_TOKEN: ${BOT_CORE_TOKEN:?Set BOT_CORE_TOKEN in .env}
+      CORE_INTERNAL_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
 
   backend:
     build: ./backend
@@ -15,6 +20,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env}
       JWT_KEYRING_PATH: /data/jwt/keys.json
       MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
+      BOT_CORE_TOKEN: ${BOT_CORE_TOKEN:?Set BOT_CORE_TOKEN in .env}
       # Облачные сервисы: ключ вывода секретов, токены раннеров, публичные адреса.
       CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Set CLOUD_BINDING_KEY in .env}
       ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN:?Set ADMINISTRATION_PROVISIONING_TOKEN in .env}
@@ -55,6 +61,8 @@ services:
     command: ["uvicorn", "operator_panel.app:app", "--host", "0.0.0.0", "--port", "8500", "--workers", "1"]
     environment:
       <<: *core-env
+      # Пульт не является ботом и не получает его внутренний секрет.
+      BOT_CORE_TOKEN: ""
       OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:?Set OPERATOR_PASSWORD in .env}
     volumes:
       - core-data:/data

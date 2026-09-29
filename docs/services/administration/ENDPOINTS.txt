@@ -6,6 +6,9 @@ POST /api/v1/administration/members
 GET /api/v1/administration/members/{user_id}
 DELETE /api/v1/administration/members/{user_id}
 PUT /api/v1/administration/members/{user_id}/profiles
+GET /api/v1/administration/group-chats
+GET /api/v1/administration/groups/{group_id}/chat
+PUT /api/v1/administration/groups/{group_id}/chat
 GET /api/v1/administration/services
 POST /api/v1/administration/services
 GET /api/v1/administration/services/{service_id}

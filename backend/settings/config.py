@@ -3,6 +3,8 @@ from auth.config import AuthSettings
 class Settings(AuthSettings):
     SERVICE_CONFIG_DIR: str = ""
     DATABASE_URL: str
+    # Отдельный внутренний секрет read-only API для MAX-бота. Не равен токену самого бота.
+    BOT_CORE_TOKEN: str = ""
     # --- Облачные сервисы (CLOUD_RUNTIME_SPEC.md): раннер на тип, внутри процесс на вуз ---
     # Ключ вывода секретов облачных экземпляров; только в секретах deployment.
     CLOUD_BINDING_KEY: str = ""

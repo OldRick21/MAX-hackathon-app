@@ -10,6 +10,7 @@
   const PERMISSION_NAMES = {
     'institution.read': 'Просмотр настроек вуза', 'institution.update': 'Изменение настроек вуза',
     'members.read': 'Просмотр участников', 'members.manage': 'Управление участниками', 'groups.manage': 'Управление группами',
+    'group_chats.manage': 'Ссылки на чаты учебных групп',
     'services.read': 'Просмотр сервисов', 'services.manage': 'Управление сервисами',
     'roles.manage': 'Назначение ролей', 'credentials.manage': 'Ключи локальных сервисов',
     'schedule.read_all': 'Чтение всего расписания', 'schedule.write': 'Редактирование расписания',
@@ -18,7 +19,7 @@
   };
   const ACTIONS = {
     'institution.update': 'Изменены настройки вуза', 'institution.provision': 'Вуз подключён платформой',
-    'institution.status': 'Изменён статус вуза', 'group.create': 'Создана группа', 'group.rename': 'Группа переименована', 'group.delete': 'Группа удалена', 'group.members.replace': 'Изменён состав группы', 'member.group.set': 'Изменена группа студента', 'service.manifest.publish': 'Сервис опубликовал меню', 'institution.local_hosts': 'Изменены одобренные хосты',
+    'institution.status': 'Изменён статус вуза', 'group.create': 'Создана группа', 'group.rename': 'Группа переименована', 'group.delete': 'Группа удалена', 'group.members.replace': 'Изменён состав группы', 'member.group.set': 'Изменена группа студента', 'group_chat_link.update': 'Изменена ссылка на чат группы', 'service.manifest.publish': 'Сервис опубликовал меню', 'institution.local_hosts': 'Изменены одобренные хосты',
     'join_request.submit': 'Подана заявка на вступление', 'join_request.approve': 'Заявка на вступление одобрена',
     'join_request.reject': 'Заявка на вступление отклонена',
     'owner.initial_assign': 'Назначен первый владелец', 'member.add': 'Добавлен участник',
@@ -229,6 +230,7 @@
     requests: '<path d="M4 4h16v12H8l-4 4V4z"/><path d="M8 9h8M8 12h5"/>',
     members: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c1.8.7 3 2.4 3.5 5.2"/>',
     groups: '<rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    group_chats: '<path d="M4 5h16v11H9l-5 4V5z"/><path d="M8 9h8M8 12h5"/>',
     services: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
     roles: '<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
     audit: '<path d="M6 3h9l4 4v14H6V3z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
@@ -244,6 +246,7 @@
     { id: 'requests', label: 'Заявки', allowed: () => can('members.read'), render: renderRequests },
     { id: 'members', label: 'Участники', allowed: () => can('members.read'), render: renderMembers },
     { id: 'groups', label: 'Группы', allowed: () => can('members.read'), render: renderGroups },
+    { id: 'group_chats', label: 'Чаты групп', allowed: () => can('group_chats.manage'), render: renderGroupChats },
     { id: 'services', label: 'Сервисы', allowed: () => can('services.read'), render: renderServices },
     { id: 'roles', label: 'Роли', allowed: () => can('services.read') || can('roles.manage'), render: renderRoles },
     { id: 'audit', label: 'Журнал', allowed: () => can('institution.read'), render: renderAudit },
@@ -258,7 +261,7 @@
     }
     session.view = data;
     $('roles').textContent = data.roles.length
-      ? 'Ваши роли: ' + data.roles.map(r => ({ owner: 'владелец', technical_admin: 'технический администратор', membership_admin: 'администратор участников' }[r] || r)).join(', ')
+      ? 'Ваши роли: ' + data.roles.map(r => ({ owner: 'владелец', technical_admin: 'технический администратор', membership_admin: 'администратор участников', chat_creator: 'создатель чатов' }[r] || r)).join(', ')
       : 'У вас нет ролей в администрировании.';
     const tabs = TABS.filter(t => t.allowed());
     if (!tabs.length) {
@@ -752,6 +755,39 @@
       await api(`/groups/${group.id}/members`, { method: 'PUT', body: { user_ids: checked(box, 'roster') }, etag });
       toast('Состав обновлён.');
     }, reload);
+  }
+
+  // ------------------------------------------------------------------
+  // Чаты учебных групп: отдельная роль не получает доступ к участникам
+  // ------------------------------------------------------------------
+  async function renderGroupChats(view) {
+    const groups = await listAll('/group-chats');
+    const box = h('section', { class: 'card' },
+      h('h2', {}, `Чаты учебных групп (${groups.length})`),
+      h('p', { class: 'muted' }, 'Добавьте HTTPS-ссылку-приглашение MAX. Бот покажет её только студентам этой учебной группы.'));
+    for (const group of groups) {
+      const input = h('input', { type: 'url', value: group.chat_url || '', placeholder: 'https://max.ru/...', maxLength: 2048 });
+      const save = async (url) => {
+        const { etag } = await api(`/groups/${group.group_id}/chat`);
+        await api(`/groups/${group.group_id}/chat`, { method: 'PUT', body: { url }, etag });
+      };
+      box.append(h('div', { class: 'row' },
+        h('div', { class: 'row-main' }, h('strong', {}, group.group_name),
+          group.chat_url ? h('span', { class: 'badge ok' }, 'ссылка добавлена') : h('span', { class: 'badge' }, 'нет ссылки'),
+          input),
+        h('div', { class: 'actions' },
+          h('button', { class: 'primary', onclick: () => guarded(async () => {
+            const value = input.value.trim();
+            if (!value) throw new ApiError('Укажите ссылку или нажмите «Удалить ссылку».');
+            await save(value); toast('Ссылка сохранена.');
+          }, reload) }, 'Сохранить'),
+          group.chat_url ? h('button', { class: 'danger', onclick: () => guarded(async () => {
+            if (!await confirmDialog('Удалить ссылку?', h('p', {}, `Бот перестанет предлагать чат группы «${group.group_name}».`), 'Удалить')) return;
+            await save(null); toast('Ссылка удалена.');
+          }, reload) }, 'Удалить ссылку') : null)));
+    }
+    if (!groups.length) box.append(h('p', { class: 'muted' }, 'Учебных групп пока нет. Их создаёт администратор участников.'));
+    view.replaceChildren(box);
   }
 
   // ------------------------------------------------------------------

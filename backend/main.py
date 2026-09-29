@@ -14,6 +14,7 @@ from routes.service_registry import router as router_service_registry
 from routes.system import router as router_system
 from routes.private_admin import router_private
 from routes.platform import router_platform
+from routes.bot import router as router_bot
 from routes.avatars import router as router_avatars
 from platform_core.errors import DomainError
 
@@ -22,8 +23,9 @@ from platform_core.errors import DomainError
 async def lifespan(app: FastAPI):
     from settings.config import settings
     if not settings.ALLOW_DEV_LOGIN:
-        if not settings.MAX_BOT_TOKEN.strip() or len(settings.CURSOR_SECRET_KEY) < 32:
-            raise RuntimeError("Set MAX_BOT_TOKEN and a random CURSOR_SECRET_KEY of at least 32 characters")
+        if (not settings.MAX_BOT_TOKEN.strip() or len(settings.CURSOR_SECRET_KEY) < 32
+                or len(settings.BOT_CORE_TOKEN) < 32):
+            raise RuntimeError("Set MAX_BOT_TOKEN, BOT_CORE_TOKEN and a random CURSOR_SECRET_KEY of at least 32 characters")
         # Облачные сервисы: ключ вывода секретов и токены раннеров (каждый 32+ случайных символа).
         weak = [name for name, value in (("CLOUD_BINDING_KEY", settings.CLOUD_BINDING_KEY),
                                          *((f"{t.upper().replace('-', '_')}_PROVISIONING_TOKEN", v)
@@ -79,6 +81,7 @@ app.include_router(router_system)
 app.include_router(router_private)
 app.include_router(router_platform)
 app.include_router(router_avatars)
+app.include_router(router_bot)
 from privacy import router as privacy_router
 app.include_router(privacy_router)
 

@@ -175,6 +175,27 @@ def replace_group_members(group_id: str, if_match: Optional[str] = Header(None, 
                   lambda: svc.replace_group_members(db, ctx, group_id, payload, if_match))
 
 
+# --- Ссылки на групповые чаты MAX (отдельная роль, без доступа к составу групп) ---
+
+@router_private.get("/group-chats")
+def list_group_chats(limit: Optional[int] = Query(None), cursor: Optional[str] = Query(None, max_length=2048),
+                     ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return respond(svc.list_group_chats(db, ctx, limit, cursor))
+
+
+@router_private.get("/groups/{group_id}/chat")
+def get_group_chat(group_id: str, ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    return respond(svc.get_group_chat(db, ctx, group_id))
+
+
+@router_private.put("/groups/{group_id}/chat")
+def set_group_chat(group_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                   ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                   payload: Any = Depends(json_body)):
+    return mutate(db, ctx, "group_chat_link.update", group_id,
+                  lambda: svc.set_group_chat(db, ctx, group_id, payload, if_match))
+
+
 # --- Экземпляры ---
 
 @router_private.get("/services")

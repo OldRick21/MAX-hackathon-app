@@ -45,3 +45,7 @@ POST /api/v1/institution/{institution_id}/internal/services/{service_id}/credent
 DELETE /api/v1/institution/{institution_id}/internal/services/{service_id}/credentials/{credential_id}
 GET /institution
 GET /institution/{institution_id}
+POST /api/v1/internal/bot/group-chats/resolve
+GET /api/v1/institution/{institution_id}/internal/group-chats
+GET /api/v1/institution/{institution_id}/internal/groups/{group_id}/chat
+PUT /api/v1/institution/{institution_id}/internal/groups/{group_id}/chat

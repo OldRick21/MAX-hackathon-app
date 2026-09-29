@@ -164,6 +164,7 @@ sudo ./scripts/deploy.sh        # первый запуск и каждое об
 | Переменная | Назначение |
 | --- | --- |
 | `BOT_TOKEN` | Токен бота MAX |
+| `BOT_CORE_TOKEN` | Отдельный секрет внутреннего read-only API ядра для бота |
 | `JWT_ISSUER`, `SHELL_ORIGIN` | Публичный HTTPS-адрес приложения |
 | `ADMINISTRATION_PUBLIC_ORIGIN` | Адрес администрирования (порт 8444) |
 | `CURSOR_SECRET_KEY` | Подпись курсоров постраничного вывода |
@@ -210,7 +211,7 @@ netfilter-persistent save
 
 - **Членство** связывает пользователя с вузом; **профиль** (`student`, `teacher`, `admin`) — его статус в вузе.
 - **Роль** даёт права в конкретном сервисе и профиле. Профиль `admin` сам по себе полномочий не даёт: их дают роли.
-- **Администрирование**: `owner` (все права), `technical_admin` (сервисы и ключи), `membership_admin` (участники и группы). Роли администрирования назначает только владелец.
+- **Администрирование**: `owner` (все права), `technical_admin` (сервисы и ключи), `membership_admin` (участники и группы), `chat_creator` (только ссылки на чаты учебных групп). Роли администрирования назначает только владелец.
 - **Расписание**: «Редактор расписания» (`schedule_editor`) — видеть всё и править; назначается и администратору, и преподавателю.
 - **«Люди»**: «Редактор анкет» (`profile_editor`) — должность и учёная степень.
 - **Курсовые**: «Менеджер курсовых» (`coursework_manager`).
@@ -221,7 +222,7 @@ netfilter-persistent save
 
 | Сервис | Размещение | Что делает | Документы |
 | --- | --- | --- | --- |
-| Администрирование | облачный, защищённый | Вуз, участники, заявки, группы, сервисы, роли, виджеты, журнал | [SPEC](docs/services/administration/SPEC.md) · [реализация](docs/services/administration/IMPLEMENTATION.md) |
+| Администрирование | облачный, защищённый | Вуз, участники, заявки, группы, ссылки на чаты MAX, сервисы, роли, виджеты, журнал | [SPEC](docs/services/administration/SPEC.md) · [реализация](docs/services/administration/IMPLEMENTATION.md) |
 | Расписание | облачный | Занятия, права по профилям, импорт из файлов | [SPEC](docs/services/schedule/SPEC.md) · [реализация](docs/services/schedule/IMPLEMENTATION.md) |
 | «Люди» | облачный | Анкеты участников, фото | [SPEC](docs/services/user-profile/SPEC.md) · [реализация](docs/services/user-profile/IMPLEMENTATION.md) |
 | Курсовые | локальный (сервер вуза) | Загрузка и проверка курсовых работ (PDF) | [SPEC](docs/services/coursework/SPEC.md) · [README](test-data/coursework/README.md) |

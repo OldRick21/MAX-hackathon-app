@@ -30,6 +30,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(roles["owner"], set(catalog.ADMIN_PERMISSIONS))
         self.assertNotIn("roles.manage", roles["technical_admin"])
         self.assertEqual(roles["membership_admin"], {"institution.read", "members.read", "members.manage", "groups.manage"})
+        self.assertEqual(roles["chat_creator"], {"group_chats.manage"})
         self.assertEqual(catalog.default_manifest("administration")["menus"][0]["entrypoint_path"], "/admin")
 
     def test_urls(self):

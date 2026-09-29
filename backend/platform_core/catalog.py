@@ -24,6 +24,7 @@ ADMIN_PERMISSIONS = [
     "members.read",
     "members.manage",
     "groups.manage",
+    "group_chats.manage",
     "services.read",
     "services.manage",
     "roles.manage",
@@ -49,6 +50,12 @@ ADMIN_SYSTEM_ROLES = [
         "titles": {"ru": "Администратор участников", "en": "Membership administrator"},
         "allowed_profiles": ["admin"],
         "permissions": ["institution.read", "members.read", "members.manage", "groups.manage"],
+    },
+    {
+        "code": "chat_creator",
+        "titles": {"ru": "Создатель чатов", "en": "Chat creator"},
+        "allowed_profiles": ["admin"],
+        "permissions": ["group_chats.manage"],
     },
 ]
 OWNER_ROLE = "owner"

@@ -15,6 +15,8 @@ tags:
   description: Расширение реализации — учебные группы для оболочки (CORE_API_SPEC.md §7.1).
 - name: Private study groups
   description: Расширение реализации — управление учебными группами (private API администрирования).
+- name: Group chats
+  description: Ссылки на групповые чаты MAX и закрытый read-only API бота.
 - name: Health
 - name: Auth
 - name: Institutions
@@ -3200,6 +3202,114 @@ paths:
       description: Публичная оболочка без персональных данных и JWT. Авторизация и redirect при одном вузе выполняются
         shell после JSON login. Не читает bearer из URL.
       security: []
+  /api/v1/institution/{institution_id}/internal/group-chats:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    get:
+      tags: [Group chats]
+      summary: Список учебных групп и ссылок на их чаты MAX
+      operationId: listInstitutionGroupChats
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешно.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupChatPage'
+        '400': { $ref: '#/components/responses/Error400' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '422': { $ref: '#/components/responses/Error422' }
+        '429': { $ref: '#/components/responses/Error429' }
+        '503': { $ref: '#/components/responses/Error503' }
+      description: Требует group_chats.manage; состав групп не возвращается.
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/institution/{institution_id}/internal/groups/{group_id}/chat:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/group_id'
+    get:
+      tags: [Group chats]
+      summary: Прочитать ссылку и ETag
+      operationId: getInstitutionGroupChat
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudyGroupChat' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '404': { $ref: '#/components/responses/Error404' }
+        '503': { $ref: '#/components/responses/Error503' }
+      description: Требует group_chats.manage.
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+    put:
+      tags: [Group chats]
+      summary: Задать или удалить ссылку на чат
+      operationId: setInstitutionGroupChat
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StudyGroupChatInput' }
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudyGroupChat' }
+        '400': { $ref: '#/components/responses/Error400' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '403': { $ref: '#/components/responses/Error403' }
+        '404': { $ref: '#/components/responses/Error404' }
+        '412': { $ref: '#/components/responses/Error412' }
+        '422': { $ref: '#/components/responses/Error422' }
+        '428': { $ref: '#/components/responses/Error428' }
+        '503': { $ref: '#/components/responses/Error503' }
+      description: Требует group_chats.manage и If-Match. В аудит полный URL не записывается.
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/internal/bot/group-chats/resolve:
+    post:
+      tags: [Group chats]
+      summary: Разрешить доступные пользователю ссылки для диалога с ботом
+      operationId: resolveBotGroupChats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BotGroupChatsRequest' }
+      responses:
+        '200':
+          description: Успешно; отсутствие данных представлено пустым массивом institutions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BotGroupChatsResponse' }
+        '400': { $ref: '#/components/responses/Error400' }
+        '401': { $ref: '#/components/responses/Error401' }
+        '422': { $ref: '#/components/responses/Error422' }
+        '503': { $ref: '#/components/responses/Error503' }
+      security:
+      - BotBearer: []
+      x-network-access: internal-bot-only
 components:
   securitySchemes:
     CoreBearer:
@@ -3223,6 +3333,10 @@ components:
       name: X-Actor-Token
       description: 'JWT без префикса Bearer: service_access человека для экземпляра administration, профиль admin.
         AND с MachineBearer; актуальный RBAC из БД.'
+    BotBearer:
+      type: http
+      scheme: bearer
+      description: Отдельный BOT_CORE_TOKEN; только внутренний read-only маршрут бота.
   parameters:
     widget_id:
       name: widget_id
@@ -3969,6 +4083,79 @@ components:
           maxItems: 1000
           items:
             $ref: '#/components/schemas/UUID'
+    StudyGroupChat:
+      type: object
+      additionalProperties: false
+      required: [group_id, group_name, chat_url, updated_at]
+      properties:
+        group_id:
+          $ref: '#/components/schemas/UUID'
+        group_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        chat_url:
+          type: [string, 'null']
+          format: uri
+          pattern: ^https://max\.ru/
+          maxLength: 2048
+        updated_at:
+          type: [string, 'null']
+          format: date-time
+    StudyGroupChatInput:
+      type: object
+      additionalProperties: false
+      required: [url]
+      properties:
+        url:
+          type: [string, 'null']
+          format: uri
+          pattern: ^https://max\.ru/
+          maxLength: 2048
+    StudyGroupChatPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/StudyGroupChat' }
+        next_cursor:
+          type: [string, 'null']
+          maxLength: 2048
+    BotGroupChatsRequest:
+      type: object
+      additionalProperties: false
+      required: [max_user_id]
+      properties:
+        max_user_id:
+          type: string
+          pattern: ^[1-9][0-9]{0,31}$
+    BotGroupChatsResponse:
+      type: object
+      additionalProperties: false
+      required: [institutions]
+      properties:
+        institutions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name, groups]
+            properties:
+              id: { $ref: '#/components/schemas/UUID' }
+              name: { type: string, minLength: 1, maxLength: 200 }
+              groups:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [id, name, chat_url]
+                  properties:
+                    id: { $ref: '#/components/schemas/UUID' }
+                    name: { type: string, minLength: 1, maxLength: 100 }
+                    chat_url: { type: string, format: uri, pattern: '^https://max\.ru/', maxLength: 2048 }
     MemberGroupInput:
       type: object
       additionalProperties: false

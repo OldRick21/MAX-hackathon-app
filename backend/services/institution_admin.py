@@ -6,12 +6,14 @@ permission и принадлежность ресурса вузу, выполн
 """
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
 from database.tables import (
     CloudBinding,
     StudyGroup,
+    StudyGroupChat,
     StudyGroupMember,
     AuditEvent,
     IdempotencyRecord,
@@ -467,6 +469,92 @@ def replace_group_members(db: Session, ctx: ActorContext, group_id: str, payload
               {"added": sorted(set(user_ids) - set(before)), "removed": sorted(set(before) - set(user_ids))})
     db.commit()
     return Result({"group_id": group.id, "user_ids": sorted(user_ids)}, etag=_members_tag(group))
+
+
+# --------------------------------------------------------------------------
+# Ссылки на чаты MAX: отдельное право, не раскрывающее состав групп
+# --------------------------------------------------------------------------
+
+def _group_chat_row(db: Session, group_id: str) -> Optional[StudyGroupChat]:
+    return db.get(StudyGroupChat, group_id)
+
+
+def group_chat_view(db: Session, group: StudyGroup) -> dict:
+    row = _group_chat_row(db, group.id)
+    return {
+        "group_id": group.id,
+        "group_name": group.name,
+        "chat_url": row.invite_url if row else None,
+        "updated_at": registry.iso(row.updated_at) if row else None,
+    }
+
+
+def _group_chat_tag(db: Session, group: StudyGroup) -> str:
+    row = _group_chat_row(db, group.id)
+    return compute_etag({"group_chat": group.id, "revision": row.revision if row else 0})
+
+
+def _chat_url(payload) -> Optional[str]:
+    body = _body(payload, {"url"}, {"url"})
+    value = body["url"]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise validation("url должен быть строкой или null", "url")
+    value = value.strip()
+    if not value or len(value) > 2048 or any(ch.isspace() or ord(ch) < 32 for ch in value):
+        raise validation("Укажите корректную HTTPS-ссылку MAX длиной до 2048 символов", "url")
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        raise validation("Укажите корректную HTTPS-ссылку MAX", "url")
+    if (parsed.scheme.lower() != "https" or parsed.hostname != "max.ru" or parsed.username is not None
+            or parsed.password is not None or port not in (None, 443) or parsed.fragment
+            or not parsed.path or parsed.path == "/"):
+        raise validation("Разрешены только ссылки вида https://max.ru/... без fragment и userinfo", "url")
+    return value
+
+
+def list_group_chats(db: Session, ctx: ActorContext, limit, cursor) -> Result:
+    ctx.require("group_chats.manage")
+    query = db.query(StudyGroup).filter(StudyGroup.institution_id == ctx.institution_id)
+    return _page(ctx, "group_chats", query, StudyGroup.id, lambda g: g.id,
+                 lambda g: group_chat_view(db, g), limit, cursor)
+
+
+def get_group_chat(db: Session, ctx: ActorContext, group_id: str) -> Result:
+    ctx.require("group_chats.manage")
+    group = _group(db, ctx, group_id)
+    return Result(group_chat_view(db, group), etag=_group_chat_tag(db, group))
+
+
+def set_group_chat(db: Session, ctx: ActorContext, group_id: str, payload, if_match: Optional[str]) -> Result:
+    ctx.require("group_chats.manage")
+    url = _chat_url(payload)
+    registry.lock_institution(db, ctx.institution_id)
+    group = _group(db, ctx, group_id)
+    require_if_match(if_match, _group_chat_tag(db, group))
+    row = _group_chat_row(db, group.id)
+    configured_before = bool(row and row.invite_url)
+    changed = False
+    if row:
+        if row.invite_url != url:
+            row.invite_url = url
+            row.revision += 1
+            row.updated_at = utc_now()
+            changed = True
+    elif url is not None:
+        row = StudyGroupChat(group_id=group.id, invite_url=url)
+        db.add(row)
+        changed = True
+    configured_after = url is not None
+    if changed:
+        # URL намеренно никогда не попадает в аудит. Сохраняется только факт настройки.
+        ctx.audit(db, "group_chat_link.update", "group", group.id,
+                  {"configured_before": configured_before, "configured_after": configured_after})
+    db.commit()
+    return Result(group_chat_view(db, group), etag=_group_chat_tag(db, group))
 
 
 # --------------------------------------------------------------------------

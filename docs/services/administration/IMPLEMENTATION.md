@@ -6,9 +6,9 @@
 
 | Где | Что делает |
 | --- | --- |
-| `services/administration/app/main.py` | Процесс сервиса (один на все вузы): SDK-проверка запроса, 25 явных операций фасада, `GET /api/v1/service`, `/admin`, assets с content hash |
+| `services/administration/app/main.py` | Процесс сервиса (один на все вузы): SDK-проверка запроса, 41 явная операция фасада, `GET /api/v1/service`, `/admin`, assets с content hash |
 | `services/administration/app/core_client.py` | Клиент ядра: binding по UUID, machine JWT с кэшем по credential/revision, online introspection без кэша, вызовы private API, отказ → 503 |
-| `services/administration/client/` | Интерфейс в iframe: протокол SDK (init/ready/context/refresh/session_ended), разделы «Вуз», «Участники», «Сервисы», «Роли», «Журнал» |
+| `services/administration/client/` | Интерфейс в iframe: протокол SDK (init/ready/context/refresh/session_ended), включая отдельную вкладку «Чаты групп» |
 | `backend/routes/private_admin.py`, `services/institution_admin.py` | Private API вуза: все операции контракта + расширения, ETag/If-Match, Idempotency-Key, LAST_OWNER, журнал |
 | `backend/auth/authorization.py` | Три проверки private API: сеть, machine credential administration этого вуза, actor с живыми сессиями и правами из БД |
 | `backend/routes/platform.py`, `services/platform_support.py` | Заявки вузов, поддержка платформы, provisioning bindings |
@@ -19,7 +19,7 @@
 ## Разделение полномочий
 
 - **Поддержка платформы** (`platform_staff`) рассматривает заявки, меняет статус вуза active/suspended, ведёт список одобренных хостов для local и может назначить владельца **только вузу без владельцев**. Участников, роли и сервисы вуза она не видит и не меняет. Одобрить собственную заявку нельзя.
-- **Администратор вуза** действует только через сервис «Администрирование» и только по ролям `owner`, `technical_admin`, `membership_admin`. Профиль `admin` без роли прав не даёт. Прежний код выдавал все права любому admin-профилю — это исправлено.
+- **Администратор вуза** действует только через сервис «Администрирование» и только по ролям `owner`, `technical_admin`, `membership_admin`, `chat_creator`. Последняя роль видит только названия учебных групп и управляет ссылками на их чаты. Профиль `admin` без роли прав не даёт.
 - Роли administration назначает только `owner`; `roles.manage` без `owner` этого не позволяет. Участника с ролью `owner` может изменить или удалить только владелец. Последнего владельца снять нельзя (`409 LAST_OWNER`) — проверка идёт под блокировкой записи вуза.
 
 ## Первый администратор
@@ -39,6 +39,8 @@
 | PUT `/api/v1/administration/services/{id}/manifest` | PUT `.../internal/services/{id}/manifest` | services.manage (только local) |
 | POST `/api/v1/administration/services/{id}/roles` | POST `.../internal/services/{id}/roles` | roles.manage (не administration) |
 | GET/PATCH/DELETE `/api/v1/administration/services/{id}/roles/{code}` | то же в `.../internal` | services.read / roles.manage |
+| GET `/api/v1/administration/group-chats` | GET `.../internal/group-chats` | group_chats.manage |
+| GET/PUT `/api/v1/administration/groups/{id}/chat` | то же в `.../internal` | group_chats.manage |
 
 Платформенные (core, публичный ingress, core access):
 

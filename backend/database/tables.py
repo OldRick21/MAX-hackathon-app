@@ -108,6 +108,22 @@ class StudyGroupMember(table_class):
     group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="CASCADE"), nullable=False, index=True)
 
 
+class StudyGroupChat(table_class):
+    """Ссылка-приглашение в групповой чат MAX для учебной группы.
+
+    Сущность отделена от StudyGroup, чтобы добавление функции не требовало
+    изменения существующей таблицы и чтобы ссылка не попадала в публичные
+    представления учебных групп по умолчанию.
+    """
+    __tablename__ = "study_group_chats"
+
+    group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="CASCADE"), primary_key=True)
+    invite_url = Column(String(2048), nullable=True)
+    revision = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
 class UserAvatar(table_class):
     """Аватар пользователя платформы: один на человека во всех вузах.
 

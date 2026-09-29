@@ -126,7 +126,7 @@ secret() {  # создать секрет, если его нет или он к
 step "Настройки (.env)"
 [[ -f .env ]] || { cp .env.example .env; info "создан .env из .env.example"; }
 chmod 600 .env
-for name in CURSOR_SECRET_KEY CLOUD_BINDING_KEY ADMINISTRATION_PROVISIONING_TOKEN SCHEDULE_PROVISIONING_TOKEN \
+for name in CURSOR_SECRET_KEY BOT_CORE_TOKEN CLOUD_BINDING_KEY ADMINISTRATION_PROVISIONING_TOKEN SCHEDULE_PROVISIONING_TOKEN \
             USER_PROFILE_PROVISIONING_TOKEN; do secret "$name"; done
 NEW_OPERATOR_PASSWORD=0
 if [[ -z "$(env_get OPERATOR_PASSWORD)" ]]; then
