@@ -6,7 +6,7 @@ import { SectionGate } from '../../components/SectionGate';
 import { IconArrowRight, IconUserOff } from '../../components/icons/ui';
 import { Avatar, Button, EmptyState, ErrorState, SearchInput, Skeleton } from '../../components/ui';
 import { useAvatar } from '../../hooks/useAvatar';
-import { useInstitution } from '../../state/institution';
+import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useBackend, useSession } from '../../state/session';
 import p from '../pages.module.css';
 import s from './users.module.css';
@@ -19,8 +19,13 @@ export function cardSubtitle(c: ProfileCard) {
   return [c.position, c.academic_degree].filter(Boolean).join(' · ');
 }
 
+/** «Студент», «Преподаватель, Администратор» — кем человек состоит в вузе. */
+export function roleLabel(c: ProfileCard) {
+  return (c.profiles ?? []).map(p => PROFILE_LABEL[p]).join(', ');
+}
+
 export function UserRow({ card, to, isMe }: { card: ProfileCard; to: string; isMe: boolean }) {
-  const meta = cardSubtitle(card) || (card.about ? card.about.split('\n')[0] : '');
+  const meta = [roleLabel(card), cardSubtitle(card) || (card.about ? card.about.split('\n')[0] : '')].filter(Boolean).join(' · ');
   const photo = useAvatar(card.user_id);
   return (
     <Link to={to} className={s.row}>

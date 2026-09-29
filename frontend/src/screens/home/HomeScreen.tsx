@@ -24,10 +24,8 @@ function useColumns() {
   return columns;
 }
 
-/** Ширина виджета в колонках: wide — половина строки (на двух колонках — вся), small — одна колонка.
- *  Профиль — всегда вся строка: рядом с длинным расписанием он растягивался в высоту. */
-const spanOf = (w: WidgetView, columns: number) =>
-  w.kind === 'profile' ? columns : w.size === 'wide' ? (columns >= 4 ? columns / 2 : columns) : 1;
+/** Ширина виджета в колонках: wide — половина строки (на двух колонках — вся), small — одна колонка. */
+const spanOf = (w: WidgetView, columns: number) => (w.size === 'wide' ? (columns >= 4 ? columns / 2 : columns) : 1);
 
 export function HomeScreen() {
   const backend = useBackend();

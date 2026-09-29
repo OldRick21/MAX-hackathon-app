@@ -202,6 +202,8 @@ export interface ProfileCard {
   about: string;
   position: string | null;
   academic_degree: string | null;
+  /** Профили участника в вузе — для подписи «Студент» / «Преподаватель» / «Администратор». */
+  profiles?: Profile[];
 }
 
 export interface SelfCardPatch {

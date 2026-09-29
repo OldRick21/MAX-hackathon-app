@@ -174,14 +174,15 @@ class CoreClient:
         return [{"id": g["id"], "name": g["name"]} for g in items if isinstance(g, dict)] if isinstance(items, list) else []
 
     def members(self, binding) -> Dict[str, dict]:
-        """Все участники вуза: user_id → {display_name, member_since}."""
+        """Все участники вуза: user_id → {display_name, member_since, profiles}."""
         response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/members")
         if response.status_code != 200:
             raise CoreUnavailable("members lookup failed")
         items = (self._json(response) or {}).get("items")
         if not isinstance(items, list):
             raise CoreUnavailable("malformed members list")
-        return {m["user_id"]: {"display_name": m.get("display_name"), "member_since": m.get("member_since")}
+        return {m["user_id"]: {"display_name": m.get("display_name"), "member_since": m.get("member_since"),
+                               "profiles": m.get("profiles")}
                 for m in items if isinstance(m, dict) and m.get("profiles")}
 
     # --- Меню и роли: сервис публикует их сам (CORE_API_SPEC §7), как любой сервис вуза ---

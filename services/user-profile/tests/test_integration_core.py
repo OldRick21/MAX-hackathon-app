@@ -152,9 +152,11 @@ class PeopleAgainstCore(unittest.TestCase):
                                            json={'display_name': 'Другая'}).status_code, 412)
         listed = self.people.get('/api/v1/profile/users', headers=admin_h).json()['items']
         self.assertEqual([x['user_id'] for x in listed], [teacher_id])
+        self.assertEqual(listed[0]['profiles'], ['teacher'])  # подпись роли в «Людях»
 
         # Должность ставит только admin с profiles.manage; роль назначает владелец.
         card = self.people.get(f'/api/v1/profile/users/{teacher_id}', headers=admin_h)
+        self.assertEqual(card.json()['profiles'], ['teacher'])
         academic = {'position': 'Доцент', 'academic_degree': 'к.т.н.'}
         self.assertEqual(self.people.patch(f'/api/v1/profile/users/{teacher_id}',
                                            headers={**admin_h, 'If-Match': card.headers['etag']},

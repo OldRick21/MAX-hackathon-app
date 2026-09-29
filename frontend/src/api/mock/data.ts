@@ -36,19 +36,19 @@ const S = {
 /** Анкеты по вузам. Тип профиля (студент/преподаватель) в анкете по контракту не хранится. */
 export const cards: Record<string, ProfileCard[]> = {
   [INST_MEPHI]: [
-    { user_id: ME, display_name: 'Геннадий Лужин', about: 'Студент кафедры 42. Интересуюсь криптографическими протоколами и CTF.', position: null, academic_degree: null },
-    { user_id: T.ivanov, display_name: 'Иванов Сергей Андреевич', about: 'Веду курс по безопасности компьютерных сетей.', position: 'Доцент кафедры 42 «Криптология и кибербезопасность»', academic_degree: 'Кандидат технических наук' },
-    { user_id: T.petrova, display_name: 'Петрова Анна Викторовна', about: '', position: 'Старший преподаватель кафедры 42', academic_degree: null },
-    { user_id: T.sokolov, display_name: 'Соколов Дмитрий Олегович', about: 'Научные интересы: программно-аппаратная защита информации.', position: 'Профессор кафедры 36', academic_degree: 'Доктор технических наук' },
-    { user_id: S.belova, display_name: 'Белова Мария', about: 'Староста группы Б21-161.', position: null, academic_degree: null },
-    { user_id: S.orlov, display_name: 'Орлов Никита', about: '', position: null, academic_degree: null },
-    { user_id: S.zaytseva, display_name: 'Зайцева Полина', about: 'Олимпиадное программирование.', position: null, academic_degree: null },
-    { user_id: S.frolov, display_name: 'Фролов Артём', about: '', position: null, academic_degree: null },
+    { user_id: ME, display_name: 'Геннадий Лужин', about: 'Студент кафедры 42. Интересуюсь криптографическими протоколами и CTF.', position: null, academic_degree: null, profiles: ['student'] },
+    { user_id: T.ivanov, display_name: 'Иванов Сергей Андреевич', about: 'Веду курс по безопасности компьютерных сетей.', position: 'Доцент кафедры 42 «Криптология и кибербезопасность»', academic_degree: 'Кандидат технических наук', profiles: ['teacher'] },
+    { user_id: T.petrova, display_name: 'Петрова Анна Викторовна', about: '', position: 'Старший преподаватель кафедры 42', academic_degree: null, profiles: ['teacher'] },
+    { user_id: T.sokolov, display_name: 'Соколов Дмитрий Олегович', about: 'Научные интересы: программно-аппаратная защита информации.', position: 'Профессор кафедры 36', academic_degree: 'Доктор технических наук', profiles: ['teacher'] },
+    { user_id: S.belova, display_name: 'Белова Мария', about: 'Староста группы Б21-161.', position: null, academic_degree: null, profiles: ['student'] },
+    { user_id: S.orlov, display_name: 'Орлов Никита', about: '', position: null, academic_degree: null, profiles: ['student'] },
+    { user_id: S.zaytseva, display_name: 'Зайцева Полина', about: 'Олимпиадное программирование.', position: null, academic_degree: null, profiles: ['student'] },
+    { user_id: S.frolov, display_name: 'Фролов Артём', about: '', position: null, academic_degree: null, profiles: ['student'] },
   ],
   [INST_MTUCI]: [
-    { user_id: ME, display_name: 'Геннадий Лужин', about: 'Ассистент кафедры информационной безопасности.', position: 'Ассистент кафедры ИБ', academic_degree: null },
-    { user_id: T.kuznetsova, display_name: 'Кузнецова Елена Павловна', about: '', position: 'Заведующая кафедрой ИБ', academic_degree: 'Доктор технических наук' },
-    { user_id: T.morozov, display_name: 'Морозов Павел Игоревич', about: '', position: 'Доцент кафедры ИБ', academic_degree: 'Кандидат физико-математических наук' },
+    { user_id: ME, display_name: 'Геннадий Лужин', about: 'Ассистент кафедры информационной безопасности.', position: 'Ассистент кафедры ИБ', academic_degree: null, profiles: ['student'] },
+    { user_id: T.kuznetsova, display_name: 'Кузнецова Елена Павловна', about: '', position: 'Заведующая кафедрой ИБ', academic_degree: 'Доктор технических наук', profiles: ['teacher'] },
+    { user_id: T.morozov, display_name: 'Морозов Павел Игоревич', about: '', position: 'Доцент кафедры ИБ', academic_degree: 'Кандидат физико-математических наук', profiles: ['teacher'] },
   ],
 };
 
