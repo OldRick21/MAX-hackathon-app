@@ -2,7 +2,8 @@
 # Сквозная проверка без Docker: поднимает ядро (порт 8000), пульт (18500) и раннеры
 # расписания, «Людей», администрирования (18100–18102) во временном каталоге, прогоняет
 # e2e.py и всё останавливает. Нужны Python-зависимости backend и сервисов.
-#   ./scripts/e2e/run.sh
+#   ./scripts/e2e/run.sh                 # основной сценарий e2e.py
+#   ./scripts/e2e/run.sh test_data.py    # другой сценарий из scripts/e2e
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 S="$(mktemp -d)"
@@ -16,7 +17,7 @@ export DATABASE_URL="sqlite:///$S/core.db" JWT_ISSUER=https://core.test JWT_KEYR
   SERVICE_CONFIG_DIR="$S/connected" CLOUD_BINDING_KEY="$(key b)" ADMINISTRATION_PROVISIONING_TOKEN="$(key p)" \
   SCHEDULE_PROVISIONING_TOKEN="$(key s)" USER_PROFILE_PROVISIONING_TOKEN="$(key u)" SHELL_ORIGIN=https://shell.test \
   ADMINISTRATION_PUBLIC_ORIGIN=https://shell.test:8444 OPERATOR_PASSWORD='correct horse battery' \
-  OPERATOR_COOKIE_SECURE=false OPERATOR_HEALTH_TARGETS='{}'
+  OPERATOR_COOKIE_SECURE=false OPERATOR_HEALTH_TARGETS='{}' RUNNER_SCHEDULE_URL=http://127.0.0.1:18100
 (cd "$ROOT/backend" && exec python -m uvicorn main:app --port 8000 >"$S/core.log" 2>&1) & pids+=($!)
 (cd "$ROOT/backend" && exec python -m uvicorn operator_panel.app:app --port 18500 >"$S/op.log" 2>&1) & pids+=($!)
 runner() {  # тип, переменная БД, файл БД, токен, порт
@@ -29,4 +30,4 @@ runner schedule SCHEDULE_DB schedule.db "$(key s)" 18100
 runner user-profile PROFILE_DB profiles.db "$(key u)" 18101
 runner administration "" "" "$(key p)" 18102
 cd "$S"
-python3 "$ROOT/scripts/e2e/e2e.py" || { echo "Логи: $S (сохранены)"; trap - EXIT; kill "${pids[@]}"; exit 1; }
+python3 "$ROOT/scripts/e2e/${1:-e2e.py}" || { echo "Логи: $S (сохранены)"; trap - EXIT; kill "${pids[@]}"; exit 1; }

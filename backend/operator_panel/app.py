@@ -609,6 +609,13 @@ def audit(institution_id: Optional[str] = Query(None), before: Optional[int] = Q
     return {"items": items, "next_before": rows[49].id if len(rows) > 50 else None}
 
 
+@app.get("/api/test-data")
+def test_data_status(_: str = Depends(operator)):
+    """Состояние тестовых данных: сколько создано и идёт ли загрузка расписания."""
+    from services import test_data
+    return test_data.status()
+
+
 @app.post("/api/tools/{tool}")
 def tool(tool: str, payload: Any = Body(None), _: str = Depends(operator), db: Session = Depends(get_db)):
     """Команды manage.py, которые раньше запускались через docker compose exec."""
@@ -631,6 +638,15 @@ def tool(tool: str, payload: Any = Body(None), _: str = Depends(operator), db: S
         with contextlib.redirect_stdout(out):
             manage.import_groups(io.StringIO(json.dumps(payload)))
         message = out.getvalue().strip()
+    elif tool == "test-data-create":
+        from services import test_data
+        user_id = payload.get("user_id") if isinstance(payload, dict) else None
+        if user_id is not None and not is_uuid(user_id):
+            raise validation("Выберите пользователя из списка", "user_id")
+        message = test_data.create(payload, user_id)["message"]
+    elif tool == "test-data-delete":
+        from services import test_data
+        message = test_data.delete(STAFF)["message"]
     else:
         raise not_found("Команда не найдена")
     return {"message": message}
