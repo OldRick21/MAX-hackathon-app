@@ -12,6 +12,7 @@ import { PROFILE_LABEL, useInstitution } from '../../state/institution';
 import { useBackend, useSession } from '../../state/session';
 import { squareAvatar } from '../../utils/image';
 import p from '../pages.module.css';
+import { RoleTags } from './UsersScreen';
 import s from './users.module.css';
 
 export function UserProfileScreen() {
@@ -58,6 +59,7 @@ function UserProfile({ service }: { service: ServiceView }) {
           <Avatar name={name} src={photo} size="var(--avatar)" className={s.photo} />
           <div className={s.headText}>
             <h1 className={s.name}>{name}</h1>
+            {!isMe && <RoleTags profiles={c.profiles} />}
             <p className={s.meta}>{isMe ? <MyStatus /> : [c.position, c.academic_degree].filter(Boolean).join(' · ') || 'Участник вуза'}</p>
             {isMe && (c.position || c.academic_degree) && <p className={s.meta}>{[c.position, c.academic_degree].filter(Boolean).join(' · ')}</p>}
             <p className={s.uni}>{institution.display_name}</p>

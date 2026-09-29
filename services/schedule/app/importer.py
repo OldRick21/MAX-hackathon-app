@@ -13,6 +13,7 @@
 | location    | Аудитория, Место, location                  | Текст; пусто — онлайн                      |
 | description | Комментарий, Описание, description          | Текст                                      |
 | status      | Статус, status                              | пусто/scheduled/проводится; cancelled/отменено |
+| lesson_type | Тип, Вид занятия, type                      | лекция, семинар (практика), лабораторная; пусто — без типа |
 
 Типы файлов: JSON (`[{...}]` или `{"events": [...]}`), Excel `.xlsx` (первый лист, первая строка —
 заголовки), выгрузки 1С — CSV/TXT (разделитель «;», табуляция или запятая; UTF-8 или Windows-1251)
@@ -41,6 +42,7 @@ FIELDS = {
     "location": ("аудитория", "место", "location", "room", "кабинет"),
     "description": ("комментарий", "описание", "примечание", "description", "comment"),
     "status": ("статус", "status"),
+    "lesson_type": ("тип", "тип занятия", "вид", "вид занятия", "type", "lesson_type", "kind"),
 }
 ALIASES = {alias: field for field, names in FIELDS.items() for alias in names}
 REQUIRED = ("date", "start", "end", "title", "groups", "teachers")
@@ -234,6 +236,23 @@ def parse_status(value) -> str:
     if text in SCHEDULED:
         return "scheduled"
     raise ValueError(f"статус «{value}» — «проводится» или «отменено»")
+
+
+LESSON_TYPES = {
+    "lecture": {"lecture", "лекция", "лекции", "лек", "лк", "л"},
+    "seminar": {"seminar", "семинар", "семинары", "сем", "практика", "практическое", "практическое занятие", "пр", "пз"},
+    "lab": {"lab", "лаба", "лабораторная", "лабораторная работа", "лабораторное занятие", "лаб", "лр"},
+}
+
+
+def parse_lesson_type(value) -> Optional[str]:
+    text = re.sub(r"[.\s]+$", "", str(value or "").strip().lower())
+    if not text:
+        return None
+    for code, names in LESSON_TYPES.items():
+        if text in names:
+            return code
+    raise ValueError(f"тип занятия «{value}» — «лекция», «семинар» или «лабораторная»")
 
 
 def canonical(row: dict) -> dict:

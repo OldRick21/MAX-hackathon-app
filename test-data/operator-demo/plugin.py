@@ -195,7 +195,8 @@ def _lessons(rng: random.Random, groups, teachers) -> list:
                 rows.append({"Дата": d.strftime("%d.%m.%Y"), "Начало": start, "Конец": end, "Дисциплина": rng.choice(SUBJECTS),
                              "Группы": group.name, "Преподаватели": rng.choice(teachers),
                              "Аудитория": f"{rng.choice('АБВ')}-{rng.randint(101, 420)}",
-                             "Статус": "отменено" if rng.random() < .04 else ""})
+                             "Статус": "отменено" if rng.random() < .04 else "",
+                             "Тип": rng.choice(("лекция", "семинар", "лабораторная"))})
     return rows
 
 

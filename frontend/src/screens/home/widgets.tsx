@@ -8,6 +8,7 @@ import { useAsync } from '../../hooks/useAsync';
 import { useAvatar } from '../../hooks/useAvatar';
 import { useInstitution } from '../../state/institution';
 import { useBackend } from '../../state/session';
+import { LESSON_TYPES, lessonStyle } from '../../utils/lessonTypes';
 import { dayKey, formatShort, formatTime, formatWeekday, now } from '../../utils/time';
 import s from './home.module.css';
 
@@ -17,7 +18,7 @@ const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).j
 /** 403/404/204 — карточку скрыть (виджет недоступен этому пользователю); остальное — «Не удалось загрузить». */
 const hidden = (e: unknown) => e instanceof ApiError && (e.status === 403 || e.status === 404);
 
-export function WidgetCard({ widget, to, tick, span }: { widget: WidgetView; to: string | null; tick: number; span: number }) {
+export function WidgetCard({ widget, to, tick, span, newRow }: { widget: WidgetView; to: string | null; tick: number; span: number; newRow?: boolean }) {
   const backend = useBackend();
   const { institution, profile } = useInstitution();
   const state = useAsync(signal => backend.widgetData(institution.id, profile, widget, signal),
@@ -33,7 +34,7 @@ export function WidgetCard({ widget, to, tick, span }: { widget: WidgetView; to:
       : <div className={s.skeleton}><Skeleton width="60%" height="2.4rem" /><Skeleton width="85%" height="2rem" /><Skeleton width="40%" height="2rem" /></div>
     : <WidgetBody data={data} title={widget.display_name} />;
   const className = cx(s.widget, data?.kind === 'profile' && s.profileWidget);
-  const style = { gridColumn: `span ${span}` };
+  const style = { gridColumn: newRow ? `1 / span ${span}` : `span ${span}` };
   const content = (
     <>
       {data?.kind !== 'profile' && <h2 className={s.widgetTitle}>{data?.kind === 'events' ? eventsTitle(data.day) : widget.display_name}</h2>}
@@ -132,8 +133,11 @@ function EventsBody({ data }: { data: Extract<WidgetData, { kind: 'events' }> })
       {shown.map((e, i) => {
         const current = e.status !== 'cancelled' && Date.parse(e.starts_at) <= t && t < Date.parse(e.ends_at);
         return (
-          <li key={i} className={cx(s.lesson, e.status === 'cancelled' && s.cancelled, current && s.now)}>
-            <span className={s.time}>{formatTime(e.starts_at)}–{formatTime(e.ends_at)}</span>
+          <li key={i} className={cx(s.lesson, e.status === 'cancelled' && s.cancelled, current && s.now)} style={lessonStyle(e.lesson_type)}>
+            <span className={s.time}>
+              {e.lesson_type && <span className={s.lessonDot} role="img" aria-label={LESSON_TYPES[e.lesson_type]} title={LESSON_TYPES[e.lesson_type]} />}
+              {formatTime(e.starts_at)}–{formatTime(e.ends_at)}
+            </span>
             <span className={s.subject}>{e.title}</span>
             <span className={s.room}>{e.place || 'онлайн'}</span>
           </li>

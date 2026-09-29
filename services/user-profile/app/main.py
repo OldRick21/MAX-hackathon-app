@@ -159,13 +159,17 @@ def authenticate(request: Request):
 
 
 class Membership:
-    """Что ядро знает об участнике: имя из регистрации и начало текущего членства."""
+    """Что ядро знает об участнике: имя из регистрации, начало текущего членства и профили в вузе."""
+    ORDER = ('student', 'teacher', 'admin')
+
     def __init__(self, data):
         data = data if isinstance(data, dict) else {}
         name = data.get('display_name')
         self.name = name if isinstance(name, str) and name.strip() else None
         since = data.get('member_since')
         self.since = since if isinstance(since, str) else None
+        profiles = data.get('profiles') if isinstance(data.get('profiles'), list) else []
+        self.profiles = [p for p in self.ORDER if p in profiles]
 
 
 def member(ctx, user_id):
@@ -211,7 +215,8 @@ def get_card(ctx,user_id):
     with database() as db:
         forget_stale(db,ctx,user_id,who.since)
         value,etag,_ = card(db,ctx,user_id,who.name)
-    return JSONResponse(value,headers={'ETag':etag})
+    # Профили — для подписи «Студент» / «Преподаватель» / «Администратор» в «Людях».
+    return JSONResponse({**value,'profiles':who.profiles},headers={'ETag':etag})
 
 class SelfPatch(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -247,7 +252,7 @@ def patch_card(ctx,user_id,values,if_match):
             (ctx[0].institution_id,ctx[0].service_id,user_id,old['display_name'],old['about'],old['position'],old['academic_degree'],revision+1,who.since))
         value,new_tag,_=card(db,ctx,user_id,who.name)
         db.commit()
-    return JSONResponse(value,headers={'ETag':new_tag})
+    return JSONResponse({**value,'profiles':who.profiles},headers={'ETag':new_tag})
 
 @app.get('/api/v1/health')
 def health(): return {'status':'ok','onboarding':STATE['onboarding']}
@@ -356,7 +361,7 @@ def users(q:str=Query('',max_length=200),cursor:str|None=Query(None,max_length=2
             value=card(db,ctx,user_id,who.name)[0] if user_id in stored else \
                 {'user_id':user_id,'display_name':who.name,'about':'','position':None,'academic_degree':None}
             if value['display_name'] and needle in (value['display_name']+' '+(value['position'] or '')).casefold():
-                matched.append(value)
+                matched.append({**value,'profiles':who.profiles})
                 if len(matched)>limit:
                     break
         items=matched[:limit]

@@ -13,6 +13,7 @@ import { useInstitution } from '../../state/institution';
 import { useBackend } from '../../state/session';
 import { addDays, dayKey, formatShort, formatWeekday, now, startOfWeek } from '../../utils/time';
 import p from '../pages.module.css';
+import { LESSON_TYPES, lessonStyle, type LessonType } from '../../utils/lessonTypes';
 import { EventEditor } from './EventEditor';
 import { ImportDialog } from './ImportDialog';
 import { ScheduleCard } from './ScheduleCard';
@@ -123,6 +124,14 @@ function Schedule({ service }: { service: ServiceView }) {
           </Select>
         )}
       </div>
+
+      {list.some(e => e.lesson_type) && (
+        <div className={s.legend} aria-label="Типы занятий">
+          {(Object.keys(LESSON_TYPES) as LessonType[]).map(t => (
+            <span key={t} className={s.legendItem} style={lessonStyle(t)}>{LESSON_TYPES[t]}</span>
+          ))}
+        </div>
+      )}
 
       {events.status === 'error' ? (
         <ErrorState title="Не удалось загрузить расписание" text={humanMessage(events.error)} onRetry={events.reload} />

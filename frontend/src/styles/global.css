@@ -20,6 +20,20 @@
   --error-soft: rgba(217, 45, 32, 0.1);
   --warning: #B54708;
   --warning-soft: rgba(247, 144, 9, 0.14);
+  /* Типы занятий: лекция — зелёный, семинар — красный, лабораторная — синий (метка и подпись). */
+  --lesson-lecture: #22A06B;
+  --lesson-lecture-text: #13744B;
+  --lesson-seminar: #D92D20;
+  --lesson-seminar-text: #B42318;
+  --lesson-lab: #1570EF;
+  --lesson-lab-text: #175CD3;
+  /* Профили в «Людях»: студент — синий, преподаватель — зелёный, администратор — фиолетовый. */
+  --role-student: #1570EF;
+  --role-student-text: #175CD3;
+  --role-teacher: #22A06B;
+  --role-teacher-text: #13744B;
+  --role-admin: #6D4AFF;
+  --role-admin-text: #3D2CC9;
 
   /* Производные цвета: всё, что раньше было зашито в модулях. Тёмная тема переопределяет их ниже. */
   --accent-hover: #3D2CC9;      /* фон основной кнопки при наведении */
@@ -95,6 +109,18 @@
     --error-soft: rgba(255, 122, 110, .15);
     --warning: #FDB022;
     --warning-soft: rgba(253, 176, 34, .15);
+    --lesson-lecture: #3CCB8C;
+    --lesson-lecture-text: #7BE3B4;
+    --lesson-seminar: #FF7A6E;
+    --lesson-seminar-text: #FFA59C;
+    --lesson-lab: #5B9BFF;
+    --lesson-lab-text: #A8C8FF;
+    --role-student: #5B9BFF;
+    --role-student-text: #A8C8FF;
+    --role-teacher: #3CCB8C;
+    --role-teacher-text: #7BE3B4;
+    --role-admin: #8C70FF;
+    --role-admin-text: #C3B4FF;
     --accent-hover: #7657FF;
     --on-accent: #FFFFFF;
     --inverse-text: #0E1016;
@@ -140,6 +166,18 @@
   --error-soft: rgba(255, 122, 110, .15);
   --warning: #FDB022;
   --warning-soft: rgba(253, 176, 34, .15);
+  --lesson-lecture: #3CCB8C;
+  --lesson-lecture-text: #7BE3B4;
+  --lesson-seminar: #FF7A6E;
+  --lesson-seminar-text: #FFA59C;
+  --lesson-lab: #5B9BFF;
+  --lesson-lab-text: #A8C8FF;
+  --role-student: #5B9BFF;
+  --role-student-text: #A8C8FF;
+  --role-teacher: #3CCB8C;
+  --role-teacher-text: #7BE3B4;
+  --role-admin: #8C70FF;
+  --role-admin-text: #C3B4FF;
   --accent-hover: #7657FF;
   --on-accent: #FFFFFF;
   --inverse-text: #0E1016;
