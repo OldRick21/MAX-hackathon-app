@@ -211,6 +211,17 @@ class OperatorPanel(unittest.TestCase):
         session = self.core.post(f'/api/v1/institution/{inst}/service/{sched}/session', headers=student_h,
                                  json={'profile': 'student'})
         self.assertEqual(session.status_code, 201, session.text)
+        renewed = self.core.post(f'/api/v1/institution/{inst}/service/{sched}/session/refresh',
+                                 json={'refresh_token': session.json()['refresh_token']})
+        self.assertEqual(renewed.status_code, 200, renewed.text)
+        session_id = session.json()['session_id']
+        from database.tables import InstitutionApplication
+        from auth.models import RefreshUse
+        with session_local() as db:
+            db.add(InstitutionApplication(applicant_user_id=owner, titles={'ru': 'Удаляемый вуз'}, default_locale='ru',
+                                          contact='r@example.ru', status='approved', institution_id=inst))
+            db.commit()
+            self.assertEqual(db.query(RefreshUse).filter_by(session_id=session_id).count(), 2)
 
         def leftovers():
             with session_local() as db:
@@ -244,10 +255,13 @@ class OperatorPanel(unittest.TestCase):
 
         # В ядре не осталось ничего от вуза; в том числе по прямой проверке всех таблиц с institution_id/service_id.
         self.assertEqual(leftovers(), {})
+        with session_local() as db:
+            self.assertEqual(db.query(RefreshUse).filter_by(session_id=session_id).count(), 0)  # история refresh
+            self.assertEqual(db.query(InstitutionApplication).filter_by(institution_id=inst).count(), 0)
         with engine.connect() as conn:
             for table in inspect(engine).get_table_names():
                 cols = {c['name'] for c in inspect(engine).get_columns(table)}
-                if table in ('audit_events', 'purged_instances', 'institution_applications'):
+                if table in ('audit_events', 'purged_instances'):
                     continue  # журнал и список очистки остаются намеренно
                 if 'institution_id' in cols:
                     n = conn.execute(text(f'SELECT count(*) FROM {table} WHERE institution_id = :i'), {'i': inst}).scalar()

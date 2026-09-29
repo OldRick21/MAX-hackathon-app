@@ -130,6 +130,8 @@ async def stop(inst: Instance, locked: bool = False) -> None:
                 proc.kill()
                 await proc.wait()
             log.info("stopped %s", inst.service_id)
+        with suppress(FileNotFoundError):
+            inst.sock.unlink()
     if locked:
         await _stop()
     else:

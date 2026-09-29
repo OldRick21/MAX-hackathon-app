@@ -27,6 +27,7 @@ from database.tables import (
     User,
     utc_now,
 )
+from auth.models import RefreshUse, ServiceSession
 from platform_core import catalog, registry
 from platform_core.concurrency import (
     check_limit,
@@ -277,6 +278,7 @@ def delete_institution(db: Session, staff: StaffContext, institution_id: str, pa
     """Полное удаление вуза оператором: подтверждение — точное русское название вуза.
 
     Удаляются членства, группы, заявки, экземпляры сервисов с ролями, ключами и сессиями.
+    Удаляются также история refresh сессий сервисов вуза и заявка на его подключение.
     Облачные экземпляры попадают в список очистки: раннеры останавливают процессы вуза и стирают
     их данные. Локальные сервисы работают на серверах вуза — их ключи отзываются удалением.
     Журнал платформы сохраняет запись об удалении.
@@ -291,6 +293,11 @@ def delete_institution(db: Session, staff: StaffContext, institution_id: str, pa
         if service.deployment == "cloud" and not db.get(PurgedInstance, service.id):
             db.add(PurgedInstance(service_id=service.id, service_type=service.service_type, institution_id=inst.id))
     registry.revoke_service_sessions(db, institution_id=inst.id)
+    # История refresh сессий сервисов вуза (хеши токенов) — без внешнего ключа, удаляется явно.
+    sessions = db.query(ServiceSession.id).filter(ServiceSession.institution_id == inst.id)
+    db.query(RefreshUse).filter(RefreshUse.session_id.in_(sessions.scalar_subquery())).delete(synchronize_session=False)
+    # Заявка на подключение этого вуза (название, контакт, заявитель).
+    db.query(InstitutionApplication).filter(InstitutionApplication.institution_id == inst.id).delete(synchronize_session=False)
     db.query(IdempotencyRecord).filter(IdempotencyRecord.institution_id == inst.id).delete(synchronize_session=False)
     members = db.query(Membership).filter(Membership.institution_id == inst.id).count()
     staff.audit(db, "institution.delete", "institution", inst.id,
