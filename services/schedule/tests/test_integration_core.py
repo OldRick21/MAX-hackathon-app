@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
 from database.base import utc_now  # noqa: E402
-from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
+from database.tables import InstitutionLocalHost, Membership, PlatformStaff, RoleAssignment, ServiceInstance, ServiceRole  # noqa: E402
 from platform_core import registry  # noqa: E402
 from main import app as core_app  # noqa: E402
 
@@ -125,17 +125,28 @@ class ScheduleAgainstCore(unittest.TestCase):
         key = self.issue_key(schedule_id)
         schedule.core = CoreClient('http://core.test', key['client_id'], key['client_secret'], API, CLIENT,
                                    session=self.transport)
-        onboarding.sync(schedule.core, schedule.MANIFEST, schedule.ROLES, schedule.RETIRED_ROLES)
+        onboarding.sync(schedule.core, schedule.MANIFEST, schedule.ROLES, schedule.RETIRED_ROLES, schedule.RENAMED_ROLES)
         with session_local() as db:
             service = db.get(ServiceInstance, schedule_id)
             # Меню и роль — по контракту (SPEC §1).
             self.assertEqual([m['id'] for m in service.manifest['menus']], ['schedule', 'schedule_admin'])
+            # Одна роль «Редактор расписания» для администраторов и преподавателей.
             self.assertEqual({r.code: (r.allowed_profiles, r.permissions) for r in service.roles},
-                             {'schedule_editor': (['admin'], ['schedule.read_all', 'schedule.write']),
-                              'teacher_editor': (['teacher'], ['schedule.read_all', 'schedule.write'])})
+                             {'schedule_editor': (['admin', 'teacher'], ['schedule.read_all', 'schedule.write'])})
             service.enabled = True
             db.add(Membership(institution_id=inst_id, user_id=teacher_id, profiles=['teacher']))
             db.add(Membership(institution_id=inst_id, user_id=student_id, profiles=['student']))
+            # База прежней версии: отдельная роль teacher_editor, назначенная преподавателю.
+            db.add(ServiceRole(service_id=schedule_id, code='teacher_editor', titles={'ru': 'Редактирование расписания'},
+                               allowed_profiles=['teacher'], permissions=['schedule.read_all', 'schedule.write'], system=False))
+            db.add(RoleAssignment(service_id=schedule_id, user_id=teacher_id, profile='teacher', roles=['teacher_editor']))
+            db.commit()
+        # Повторный запуск сервиса переносит назначение на schedule_editor и удаляет старую роль.
+        onboarding.sync(schedule.core, schedule.MANIFEST, schedule.ROLES, schedule.RETIRED_ROLES, schedule.RENAMED_ROLES)
+        with session_local() as db:
+            self.assertEqual({r.code for r in db.query(ServiceRole).filter_by(service_id=schedule_id)}, {'schedule_editor'})
+            self.assertEqual(db.get(RoleAssignment, (schedule_id, teacher_id, 'teacher')).roles, ['schedule_editor'])
+            db.get(RoleAssignment, (schedule_id, teacher_id, 'teacher')).roles = []
             db.commit()
 
         teacher_h = self.service_session(inst_id, schedule_id, teacher_core, 'teacher')
@@ -157,8 +168,8 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(granted.status_code, 200, granted.text)
         teacher_roles = f'/api/v1/institution/{inst_id}/internal/services/{schedule_id}/users/{teacher_id}/profiles/teacher/roles'
         tag = self.core.get(teacher_roles, headers=private).headers['ETag']
-        refused = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
-        self.assertIn(refused.status_code, (409, 422), refused.text)
+        refused = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['teacher_editor']})
+        self.assertEqual(refused.status_code, 422, refused.text)  # прежней роли больше нет
 
         # Группы ведёт ядро (отличие от контракта); расписание их только читает.
         base = f'/api/v1/institution/{inst_id}/internal/groups'
@@ -180,7 +191,7 @@ class ScheduleAgainstCore(unittest.TestCase):
         self.assertEqual(denied.status_code, 403, denied.text)
         # Администратор включает преподавателю правку расписания — и выключает обратно.
         tag = self.core.get(teacher_roles, headers=private).headers['ETag']
-        on = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['teacher_editor']})
+        on = self.core.put(teacher_roles, headers={**private, 'If-Match': tag}, json={'roles': ['schedule_editor']})
         self.assertEqual(on.status_code, 200, on.text)
         by_teacher = self.svc.post('/api/v1/schedule/events', headers={**teacher_h, 'Idempotency-Key': str(uuid.uuid4())},
                                    json={**event, 'starts_at': '2026-10-01T06:00:00Z', 'ends_at': '2026-10-01T07:00:00Z'})

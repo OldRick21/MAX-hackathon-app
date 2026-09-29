@@ -5,6 +5,8 @@
 - права, которых у сервиса больше нет, снимаются с остальных ролей; роль без прав и роли
   прежних версий удаляются, а перед удалением или сужением профилей роль снимается с участников
   (ядро отвечает 409 ROLE_IN_USE, пока назначения есть);
+- роли, заменённые новой (renamed: старый код → новый), не снимаются, а переносятся: у каждого
+  участника старая роль заменяется новой, затем старая удаляется;
 - меню публикуется, если отличается от опубликованного.
 """
 import logging
@@ -16,7 +18,7 @@ from app.core_client import BindingMissing, CoreUnavailable
 log = logging.getLogger(__name__.split(".")[0] + ".onboarding")
 
 
-def sync(core, manifest: dict, roles: list, retired: tuple = ()) -> None:
+def sync(core, manifest: dict, roles: list, retired: tuple = (), renamed: dict = None) -> None:
     binding = core.binding()
     known = {p for r in roles for p in r["permissions"]}
     wanted = {r["code"]: r for r in roles}
@@ -32,6 +34,11 @@ def sync(core, manifest: dict, roles: list, retired: tuple = ()) -> None:
             core.release_role(binding, code, removed)
         if patch:
             core.update_role(binding, code, patch)
+    for old, new in (renamed or {}).items():
+        if old in existing and new in wanted:
+            core.release_role(binding, old, replace_with=new)
+            core.delete_role(binding, old)
+            existing.pop(old)
     for code, have in existing.items():
         if code in wanted or have.get("system"):
             continue
@@ -46,12 +53,12 @@ def sync(core, manifest: dict, roles: list, retired: tuple = ()) -> None:
         core.publish_manifest(binding, manifest, etag)
 
 
-def start(core, manifest: dict, roles: list, state: dict, retired: tuple = ()) -> threading.Thread:
+def start(core, manifest: dict, roles: list, state: dict, retired: tuple = (), renamed: dict = None) -> threading.Thread:
     def run():
         delay = 5
         while True:
             try:
-                sync(core, manifest, roles, retired)
+                sync(core, manifest, roles, retired, renamed)
                 state.update(onboarding="ready", error=None)
                 log.info("onboarding complete")
                 return

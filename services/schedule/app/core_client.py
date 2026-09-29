@@ -224,9 +224,10 @@ class CoreClient:
         if response.status_code not in (204, 404):
             raise CoreUnavailable(f"role delete failed: {response.status_code} {response.text[:200]}")
 
-    def release_role(self, binding: Binding, code: str, profiles=None) -> None:
+    def release_role(self, binding: Binding, code: str, profiles=None, replace_with: Optional[str] = None) -> None:
         """Снимает роль с участников (во всех профилях или только в указанных) — перед удалением
-        роли или сужением её профилей: ядро не делает этого само (409 ROLE_IN_USE)."""
+        роли или сужением её профилей: ядро не делает этого само (409 ROLE_IN_USE).
+        replace_with — вместо снятия заменить роль другой (перенос назначений при переименовании роли)."""
         base = f"/api/v1/internal/service/{binding.service_id}"
         response = self._machine_request(binding, "GET", f"{base}/members")
         if response.status_code != 200:
@@ -244,7 +245,10 @@ class CoreClient:
                 roles = (self._json(current) or {}).get("roles") or []
                 if code not in roles:
                     continue
-                saved = self._machine_request(binding, "PUT", path, json={"roles": [r for r in roles if r != code]},
+                updated = [r for r in roles if r != code]
+                if replace_with and replace_with not in updated:
+                    updated.append(replace_with)
+                saved = self._machine_request(binding, "PUT", path, json={"roles": updated},
                                               headers={"If-Match": current.headers.get("ETag") or ""})
                 if saved.status_code != 200:
                     raise CoreUnavailable(f"assignments update failed: {saved.status_code} {saved.text[:200]}")

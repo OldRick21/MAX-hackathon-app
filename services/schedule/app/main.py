@@ -65,12 +65,13 @@ MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus':
         {'id': 'today_stats', 'titles': {'ru': 'Занятия сегодня', 'en': 'Classes today'}, 'kind': 'stat', 'size': 'small',
          'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'data_path': '/schedule/widgets/today-stats',
          'open_menu': 'schedule_admin', 'order': 1}]}
+# Одна роль «Редактор расписания» для администраторов и преподавателей. Отличие от контракта:
+# там роль только для admin; здесь её можно назначить и преподавателю (профиль назначения — свой).
 ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактор расписания', 'en': 'Schedule editor'},
-          'allowed_profiles': ['admin'], 'permissions': ['schedule.read_all', 'schedule.write']},
-         # Отличие от контракта: правку расписания администратор может включить и преподавателю.
-         {'code': 'teacher_editor', 'titles': {'ru': 'Редактирование расписания', 'en': 'Schedule editing'},
-          'allowed_profiles': ['teacher'], 'permissions': ['schedule.read_all', 'schedule.write']}]
+          'allowed_profiles': ['admin', 'teacher'], 'permissions': ['schedule.read_all', 'schedule.write']}]
 RETIRED_ROLES = ('group_editor',)
+# Прежняя отдельная роль преподавателя: её назначения при запуске переносятся на schedule_editor.
+RENAMED_ROLES = {'teacher_editor': 'schedule_editor'}
 STATE = {'onboarding': 'pending', 'error': None}
 
 MAX_RANGE = timedelta(days=31)
@@ -183,7 +184,7 @@ async def lifespan(app):
     except (OSError, sqlite3.Error) as error:
         # Обычная причина — том /data принадлежит root, а процесс работает под uid 10004.
         raise RuntimeError(f'Хранилище {DB} недоступно для записи: {error}') from error
-    onboarding.start(core, MANIFEST, ROLES, STATE, RETIRED_ROLES)
+    onboarding.start(core, MANIFEST, ROLES, STATE, RETIRED_ROLES, RENAMED_ROLES)
     yield
 
 

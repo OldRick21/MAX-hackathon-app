@@ -31,8 +31,8 @@ class FakeCore:
         self.calls.append(('update', code, sorted(patch)))
         self._roles[code].update(patch)
 
-    def release_role(self, b, code, profiles=None):
-        self.calls.append(('release', code, sorted(profiles) if profiles else None))
+    def release_role(self, b, code, profiles=None, replace_with=None):
+        self.calls.append(('release', code, sorted(profiles) if profiles else None) + ((replace_with,) if replace_with else ()))
 
     def delete_role(self, b, code):
         self.calls.append(('delete', code))
@@ -77,6 +77,18 @@ class Onboarding(unittest.TestCase):
         self.assertIn(('update', 'custom_writer', ['permissions']), core.calls)  # лишнее право снято
         self.assertEqual(core._roles['custom_writer']['permissions'], ['schedule.write'])
         self.assertNotIn('manifest', [c[0] for c in core.calls])   # меню уже совпадает
+
+
+class Renamed(unittest.TestCase):
+    def test_renamed_role_moves_assignments(self):
+        """Прежняя роль teacher_editor: назначения переносятся на schedule_editor, затем роль удаляется."""
+        role = {**ROLE, 'allowed_profiles': ['admin', 'teacher']}
+        old = [dict(role), {'code': 'teacher_editor', 'titles': {'ru': 'Редактирование расписания'},
+                            'allowed_profiles': ['teacher'], 'permissions': ['schedule.write']}]
+        core = FakeCore(old, MANIFEST)
+        onboarding.sync(core, MANIFEST, [role], renamed={'teacher_editor': 'schedule_editor'})
+        moved, deleted = core.calls.index(('release', 'teacher_editor', None, 'schedule_editor')), core.calls.index(('delete', 'teacher_editor'))
+        self.assertLess(moved, deleted)
 
 
 if __name__ == '__main__':

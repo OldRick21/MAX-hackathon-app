@@ -48,7 +48,7 @@ check('расписание и «Люди» опубликовали меню', 
 print('    студент видит:', menus(sh,'student')); print('    преподаватель видит:', menus(th,'teacher')); print('    администратор видит:', menus(oh,'admin'))
 check('админ без ролей не видит расписание', 'schedule' not in menus(oh,'admin'))
 roles=[x['code'] for x in op.get(f"{base}/services/{svcs['schedule']}/roles").json()['items']]
-check('роли расписания опубликованы', {'schedule_editor','teacher_editor'} <= set(roles), roles)
+check('роль расписания одна — «Редактор расписания»', set(roles)=={'schedule_editor'}, roles)
 
 print('3. Назначение роли и работа с расписанием через раннер')
 path=f"{base}/services/{svcs['schedule']}/users/{owner}/profiles/admin/roles"
