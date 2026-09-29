@@ -1,34 +1,7 @@
-# Люди — сервис вуза
+# Люди — облачный сервис
 
-Один контейнер — один вуз, как курсовые: свой ключ, своё DNS-имя, свой HTTPS. С ядром сервис общается только по HTTPS через `CORE_URL` и ключ.
+Работает в раннере (`services/runner`): контейнер `user-profile` в общем `compose.yaml`, внутри у каждого вуза свой процесс этого сервиса. Подключение вузу — одна кнопка в админке или пульте («Сервисы платформы»). Ключ и адреса создаёт платформа, данные вуза — в `/data/<service_id>` тома раннера.
 
-## Автоматически
+Отдельно, без раннера (разработка): `uvicorn app.main:app` с `CORE_URL`, `SHELL_ORIGIN`, `SERVICE_CLIENT_ID`, `SERVICE_CLIENT_SECRET`, `SERVICE_API_BASE_URL`, `SERVICE_CLIENT_BASE_URL`.
 
-```bash
-sudo ./scripts/connect-services.sh INSTITUTION_UUID [ИМЯ] people
-```
-
-Скрипт регистрирует сервис в ядре, выдаёт ключ, пишет `people-<ИМЯ>.env`, выпускает сертификат, запускает контейнер и включает сервис. Всё приложение целиком — `sudo ./scripts/deploy.sh`.
-
-## Вручную
-
-Регистрация: админка вуза или пульт → «Сервисы» → «Подключить свой сервис», код `people`, адреса на одобренном хосте → «Выдать ключ». Меню и роль «Редактор анкет» (`profiles.manage`) сервис публикует сам.
-
-```bash
-cd services/user-profile
-cp people.env.example people-main.env && chmod 600 people-main.env
-nano people-main.env          # строки «Выдать ключ», SERVICE_HOST, SERVICE_PORT
-sudo docker compose --env-file people-main.env run --rm certbot certonly --webroot -w /var/www/acme \
-  -d people.195-133-197-144.sslip.io --cert-name people-main
-sudo docker compose --env-file people-main.env up -d --build
-curl https://people.195-133-197-144.sslip.io:9446/api/v1/health
-```
-
-Для второго вуза на том же сервере — отдельный файл (`people-<вуз>.env`) со своими `INSTANCE`, `SERVICE_HOST`, `SERVICE_PORT`, `CERT_NAME`.
-
-Продление сертификата:
-
-```bash
-sudo docker compose --env-file people-main.env run --rm certbot renew
-sudo docker compose --env-file people-main.env exec proxy nginx -s reload
-```
+Тесты: `python -m unittest discover -s tests -t .` (сквозные — с `PYTHONPATH=../../backend`).

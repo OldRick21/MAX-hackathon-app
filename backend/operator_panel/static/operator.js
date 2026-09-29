@@ -509,11 +509,15 @@
       }) : h('p', { class: 'muted' }, 'Групп пока нет. Без групп студенты не смогут подать заявку на вступление.')));
   }
 
-  // Коды типов контракта регистрируются как есть (название и профили — из каталога ядра), остальные — custom.<код>.
+  // Коды типов контракта: schedule и user-profile (people) — облачные (одной кнопкой, адреса и ключ — платформа),
+  // coursework — локальный с адресами; любой другой код — свой сервис custom.<код>.
   const CONTRACT_TYPES = { schedule: 'schedule', people: 'user-profile', 'user-profile': 'user-profile', coursework: 'coursework' };
+  const CLOUD_TYPES = { schedule: 'Расписание', 'user-profile': 'Люди' };
   function registrationBody(code, name, profiles, apiUrl, clientUrl) {
     const c = code.trim().toLowerCase();
-    if (CONTRACT_TYPES[c]) return { service_type: CONTRACT_TYPES[c], deployment: 'local', api_base_url: apiUrl, client_base_url: clientUrl };
+    const type = CONTRACT_TYPES[c];
+    if (type && CLOUD_TYPES[type]) return { service_type: type, deployment: 'cloud' };
+    if (type) return { service_type: type, deployment: 'local', api_base_url: apiUrl, client_base_url: clientUrl };
     return { service_type: `custom.${c}`, deployment: 'local', titles: { ru: name }, supported_profiles: profiles,
       api_base_url: apiUrl, client_base_url: clientUrl };
   }
@@ -545,7 +549,7 @@
         return false;
       }) }, 'Выдать ключ');
       if (!s.protected) {
-        card.append(h('div', { class: 'actions' }, issueKey,
+        card.append(h('div', { class: 'actions' }, s.deployment === 'local' ? issueKey : null,
           h('button', { class: s.enabled ? 'quiet' : 'primary', onclick: () => act(async () => {
             const { etag } = await api(`${base}/services/${s.id}`);
             await api(`${base}/services/${s.id}`, { method: 'PATCH', body: { enabled: !s.enabled }, etag });
@@ -555,18 +559,12 @@
             act(async () => { const { etag } = await api(`${base}/services/${s.id}`); await api(`${base}/services/${s.id}`, { method: 'DELETE', etag }); }, 'Сервис удалён.');
           } }, 'Удалить')));
       } else {
-        const apiIn = h('input', { value: s.api_base_url }), clientIn = h('input', { value: s.client_base_url });
-        card.append(h('p', { class: 'muted small m0' }, 'Администрирование есть у каждого вуза и не отключается. Адреса и ключ его контейнера задаёт оператор.'),
-          h('div', { class: 'row2' }, field('Адрес API', apiIn), field('Адрес клиента (origin)', clientIn)),
-          h('div', { class: 'actions' }, issueKey, h('button', { class: 'primary', onclick: () => act(async () => {
-            const { etag } = await api(`${base}/services/${s.id}`);
-            await api(`${base}/services/${s.id}`, { method: 'PATCH', body: { api_base_url: apiIn.value.trim(), client_base_url: clientIn.value.trim() }, etag });
-          }, 'Адреса сохранены.') }, 'Сохранить адреса')));
+        card.append(h('p', { class: 'muted small m0' }, 'Администрирование есть у каждого вуза и не отключается. Облачный сервис: адреса и ключ задаёт платформа.'));
       }
       body.append(card);
     }
     body.append(h('section', { class: 'card stack' }, h('h2', {}, 'Подключить свой сервис вуза'),
-      h('p', { class: 'muted small m0' }, 'Расписание, «Люди», курсовые и любые другие сервисы подключаются здесь: код (schedule, people, coursework…), адреса на одобренном хосте (вкладка «Обзор»). Администраторам сервис доступен всегда. После регистрации выдайте ключ — сервис сам опубликует меню и роли.'),
+      h('p', { class: 'muted small m0' }, 'Коды schedule и people подключают облачные сервисы платформы (адреса не нужны). Курсовые (coursework) и свои сервисы — локальные: адреса на одобренном хосте (вкладка «Обзор»), затем «Выдать ключ» — сервис сам опубликует меню и роли.'),
       h('div', { class: 'row2' }, field('Название', name), field('Код', code, 'латиница, цифры, -')), profiles,
       h('div', { class: 'row2' }, field('Адрес API', apiUrl), field('Адрес клиента (origin)', client)),
       h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`${base}/services`, { method: 'POST', idem: true,

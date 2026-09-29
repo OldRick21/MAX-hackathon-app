@@ -15,9 +15,13 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:?Set JWT_ISSUER in .env}
       JWT_KEYRING_PATH: /data/jwt/keys.json
       MAX_BOT_TOKEN: ${BOT_TOKEN:?Set BOT_TOKEN in .env}
-      # Адреса администрирования нового вуза по умолчанию; оператор меняет их в пульте.
-      ADMINISTRATION_API_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN:?Set ADMINISTRATION_PUBLIC_ORIGIN in .env}/api/v1
-      ADMINISTRATION_CLIENT_BASE_URL: ${ADMINISTRATION_PUBLIC_ORIGIN}
+      # Облачные сервисы: ключ вывода секретов, токены раннеров, публичные адреса.
+      CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Set CLOUD_BINDING_KEY in .env}
+      ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN:?Set ADMINISTRATION_PROVISIONING_TOKEN in .env}
+      SCHEDULE_PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN:?Set SCHEDULE_PROVISIONING_TOKEN in .env}
+      USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN:?Set USER_PROFILE_PROVISIONING_TOKEN in .env}
+      SHELL_ORIGIN: ${SHELL_ORIGIN:?Set SHELL_ORIGIN in .env}
+      ADMINISTRATION_PUBLIC_ORIGIN: ${ADMINISTRATION_PUBLIC_ORIGIN:?Set ADMINISTRATION_PUBLIC_ORIGIN in .env}
       REDIS_HOST: redis
       ALLOW_DEV_LOGIN: "false"
       SEED_DEMO_DATA: "false"
@@ -62,18 +66,70 @@ services:
       timeout: 5s
       retries: 3
 
-  # Сервисы вуза — администрирование, «Люди», расписание, курсовые — здесь не запускаются:
-  # у каждого вуза свои контейнеры со своим ключом (services/<сервис>/compose.yaml, test-data/coursework).
+  # Облачные сервисы: раннер на тип, внутри — отдельный процесс для каждого вуза (services/runner).
+  # Экземпляры и их ключи раннер получает у ядра своим токеном; данные вузов — в /data/<service_id>.
+  administration:
+    build: {context: ./services, dockerfile: administration/Dockerfile}
+    environment:
+      PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: ${SHELL_ORIGIN}
+      CORE_INTERNAL_URL: http://backend:8000
+      FRAME_ANCESTORS: https://web.max.ru
+      PASS_ENV: FRAME_ANCESTORS
+    volumes:
+      - administration-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  schedule:
+    build: {context: ./services, dockerfile: schedule/Dockerfile}
+    environment:
+      PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: ${SHELL_ORIGIN}
+      CORE_INTERNAL_URL: http://backend:8000
+    volumes:
+      - schedule-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  user-profile:
+    build: {context: ./services, dockerfile: user-profile/Dockerfile}
+    environment:
+      PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: ${SHELL_ORIGIN}
+      CORE_INTERNAL_URL: http://backend:8000
+    volumes:
+      - profile-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  # Курсовые и свои сервисы вуза — локальные: свой сервер вуза (test-data/coursework).
 
   web:
     depends_on:
       backend:
+        condition: service_healthy
+      administration:
+        condition: service_healthy
+      schedule:
+        condition: service_healthy
+      user-profile:
         condition: service_healthy
     build: ./frontend
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+      - "8444:8444"
       - "8445:8445"
     volumes:
       - ./web/configs/docker-nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -101,4 +157,7 @@ services:
 
 volumes:
   core-data:
+  administration-data:
+  schedule-data:
+  profile-data:
   redis-data:

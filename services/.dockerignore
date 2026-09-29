@@ -1,0 +1,6 @@
+connected/
+**/tests/
+**/__pycache__/
+**/*.pyc
+**/*.env
+**/letsencrypt/

@@ -314,7 +314,8 @@ def admin_page():
     c = cfg()
     html = (CLIENT_DIR / "admin.html").read_text(encoding="utf-8")
     for name, (hashed, _) in _asset_versions().items():
-        html = html.replace(f"/assets/{name}", f"/assets/{hashed}")
+        # Относительный путь: под раннером страница живёт на /<service_id>/admin, ресурсы — рядом.
+        html = html.replace(f"/assets/{name}", f"assets/{hashed}")
     boot = json.dumps({"shell_origin": c.shell_origin, "api_origin": c.public_origin,
                        "api_base_url": c.public_api_base_url})
     html = html.replace("__BOOT__", html_escape(boot, quote=True))

@@ -433,11 +433,15 @@
   // ------------------------------------------------------------------
   // Сервисы
   // ------------------------------------------------------------------
-  // Коды типов контракта регистрируются как есть (название и профили — из каталога ядра), остальные — custom.<код>.
+  // Коды типов контракта: schedule и user-profile (people) — облачные (одной кнопкой, адреса и ключ — платформа),
+  // coursework — локальный с адресами; любой другой код — свой сервис custom.<код>.
   const CONTRACT_TYPES = { schedule: 'schedule', people: 'user-profile', 'user-profile': 'user-profile', coursework: 'coursework' };
+  const CLOUD_TYPES = { schedule: 'Расписание', 'user-profile': 'Люди' };
   function registrationBody(code, name, profiles, apiUrl, clientUrl) {
     const c = code.trim().toLowerCase();
-    if (CONTRACT_TYPES[c]) return { service_type: CONTRACT_TYPES[c], deployment: 'local', api_base_url: apiUrl, client_base_url: clientUrl };
+    const type = CONTRACT_TYPES[c];
+    if (type && CLOUD_TYPES[type]) return { service_type: type, deployment: 'cloud' };
+    if (type) return { service_type: type, deployment: 'local', api_base_url: apiUrl, client_base_url: clientUrl };
     return { service_type: `custom.${c}`, deployment: 'local', titles: { ru: name }, supported_profiles: profiles,
       api_base_url: apiUrl, client_base_url: clientUrl };
   }
@@ -450,7 +454,18 @@
     const installed = new Set(services.map(s => s.service_type));
 
     if (manage) {
-      // Любой сервис вуза (расписание, «Люди», курсовые, свои) — по шагам CORE_API_SPEC.md §7.
+      // Облачные сервисы платформы — одной кнопкой: процесс вуза, адреса и ключ создаёт платформа.
+      const missing = Object.keys(CLOUD_TYPES).filter(t => !installed.has(t));
+      if (missing.length) {
+        parts.push(h('section', { class: 'card' }, h('h2', {}, 'Сервисы платформы'),
+          h('p', { class: 'muted' }, 'Работают на платформе, подключаются сразу и включены.'),
+          ...missing.map(t => h('div', { class: 'row' }, h('div', { class: 'row-main' }, h('strong', {}, CLOUD_TYPES[t]),
+            h('button', { class: 'primary', onclick: () => guarded(async () => {
+              await api('/services', { method: 'POST', body: { service_type: t, deployment: 'cloud' }, idempotencyKey: crypto.randomUUID() });
+              toast('Сервис подключён.');
+            }, reload) }, 'Подключить'))))));
+      }
+      // Локальный сервис вуза (курсовые, свои) — по шагам CORE_API_SPEC.md §7.
       const name = h('input', { placeholder: 'Например, Курсовые работы' });
       const code = h('input', { placeholder: 'coursework', autocomplete: 'off', spellcheck: false });
       const profiles = checkboxGroup('custom-profiles', Object.entries(PROFILES), ['student', 'teacher', 'admin']);
@@ -458,9 +473,8 @@
       const client = h('input', { placeholder: 'https://coursework.university.ru' });
       let key = crypto.randomUUID();
       parts.push(h('section', { class: 'card' }, h('h2', {}, 'Подключить свой сервис'),
-        h('p', { class: 'hint' }, 'Расписание (код schedule), «Люди» (people), курсовые (coursework) и любые свои сервисы работают ' +
-          'в своём контейнере вуза. Адрес должен быть на хосте, который одобрила поддержка платформы. ' +
-          'После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
+        h('p', { class: 'hint' }, 'Курсовые (код coursework) и любые свои сервисы работают на сервере вуза. Адрес должен быть ' +
+          'на хосте, который одобрила поддержка платформы. После регистрации выдайте ключ: сервис сам опубликует меню и роли.'),
         field('Название', name), field('Код', code, 'Латиница, цифры и -. Права сервиса будут вида <код>.<право>.'),
         h('p', {}, 'Кому доступен сервис:'), profiles,
         field('Адрес API', api_), field('Адрес клиента (origin)', client),
