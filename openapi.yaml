@@ -2,15 +2,10 @@ openapi: 3.1.1
 info:
   title: Вузы России — API ядра-бекенда
   version: 0.1.0
-  description: 'Предложенный контракт MVP от 2026-09-24. Не описание текущей реализации. Только операции ядра, включая
-    API, вызываемое backend сервисов. Доменные API других компонентов не входят. CORE_API_SPEC.md дополняет HTTP-контракт
-    правилами JWT, изоляции, транзакций и bootstrap. Private операции имеют отдельный server и AND-требование machine
-    + actor; на публичном ingress всегда 404. x-required-permission, x-required-machine-scope и x-network-access
-    — документационные extensions, не автоматическое обеспечение доступа. Форматы JSON: snake_case, UUID string,
-    UTC. Формат документа — OpenAPI 3.1.1 (https://spec.openapis.org/oas/v3.1.1.html).'
+  description: 'Формат документа — OpenAPI 3.1.1 (https://spec.openapis.org/oas/v3.1.1.html)'
 servers:
-- url: https://core.example
-  description: Публичный HTTPS origin ядра; заменить при развёртывании.
+- url: https://195.133.197.144/
+  description: Публичный HTTPS origin ядра.
 security:
 - CoreBearer: []
 tags:
