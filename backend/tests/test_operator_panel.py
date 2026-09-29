@@ -68,6 +68,8 @@ class OperatorPanel(unittest.TestCase):
         # Изменения без X-Operator отклоняются (защита от CSRF).
         self.assertEqual(op.post('/api/tools/ensure-invariants').status_code, 403)
         self.assertEqual(op.post('/api/tools/ensure-invariants', headers=W).status_code, 200)
+        # Модулей нет (папки OPERATOR_PLUGINS_DIR нет) — пульт работает, список модулей пуст.
+        self.assertEqual(op.get('/api/plugins').json(), {'items': []})
         # Подделанная cookie не проходит.
         forged = TestClient(operator_app, cookies={'operator_session': '9999999999.x.AAAA'})
         self.assertEqual(forged.get('/api/overview').status_code, 401)

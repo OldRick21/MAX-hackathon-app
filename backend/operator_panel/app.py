@@ -609,13 +609,6 @@ def audit(institution_id: Optional[str] = Query(None), before: Optional[int] = Q
     return {"items": items, "next_before": rows[49].id if len(rows) > 50 else None}
 
 
-@app.get("/api/test-data")
-def test_data_status(_: str = Depends(operator)):
-    """Состояние тестовых данных: сколько создано и идёт ли загрузка расписания."""
-    from services import test_data
-    return test_data.status()
-
-
 @app.post("/api/tools/{tool}")
 def tool(tool: str, payload: Any = Body(None), _: str = Depends(operator), db: Session = Depends(get_db)):
     """Команды manage.py, которые раньше запускались через docker compose exec."""
@@ -638,15 +631,6 @@ def tool(tool: str, payload: Any = Body(None), _: str = Depends(operator), db: S
         with contextlib.redirect_stdout(out):
             manage.import_groups(io.StringIO(json.dumps(payload)))
         message = out.getvalue().strip()
-    elif tool == "test-data-create":
-        from services import test_data
-        user_id = payload.get("user_id") if isinstance(payload, dict) else None
-        if user_id is not None and not is_uuid(user_id):
-            raise validation("Выберите пользователя из списка", "user_id")
-        message = test_data.create(payload, user_id)["message"]
-    elif tool == "test-data-delete":
-        from services import test_data
-        message = test_data.delete(STAFF)["message"]
     else:
         raise not_found("Команда не найдена")
     return {"message": message}
@@ -663,6 +647,54 @@ CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' 
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok"}
+
+
+# --------------------------------------------------------------------------
+# Модули пульта: необязательные дополнения из OPERATOR_PLUGINS_DIR (на сервере — том operator-plugins,
+# его наполняет scripts/deploy.sh). Модуль — папка с plugin.py (register(app, ctx)) и panel.js
+# (карточка раздела «Обслуживание»). Нет папки — пульт работает без модулей.
+# --------------------------------------------------------------------------
+
+PLUGINS_DIR = Path(os.environ.get("OPERATOR_PLUGINS_DIR", "/srv/plugins"))
+PLUGIN_ID = re.compile(r"^[a-z][a-z0-9-]{0,40}$")
+PLUGINS: list = []
+
+
+def load_plugins() -> None:
+    import importlib.util
+    if not PLUGINS_DIR.is_dir():
+        return
+    context = {"operator": operator, "staff": STAFF, "get_db": get_db}
+    for folder in sorted(PLUGINS_DIR.iterdir()):
+        source = folder / "plugin.py"
+        if not PLUGIN_ID.match(folder.name) or not source.is_file():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"operator_plugin_{folder.name.replace('-', '_')}", source)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.register(app, dict(context, plugin_id=folder.name))
+            PLUGINS.append({"id": folder.name, "title": getattr(module, "TITLE", folder.name),
+                            "panel": f"/plugins/{folder.name}/panel.js" if (folder / "panel.js").is_file() else None})
+            logger.info("operator plugin %s loaded", folder.name)
+        except Exception:  # noqa: BLE001 — сломанный модуль не должен ронять пульт
+            logger.exception("operator plugin %s failed to load", folder.name)
+
+
+@app.get("/api/plugins")
+def plugins(_: str = Depends(operator)):
+    return {"items": PLUGINS}
+
+
+@app.get("/plugins/{plugin_id}/panel.js")
+def plugin_panel(plugin_id: str, _: str = Depends(operator)):
+    path = PLUGINS_DIR / plugin_id / "panel.js"
+    if not any(x["id"] == plugin_id for x in PLUGINS) or not path.is_file():
+        return Response(status_code=404)
+    return FileResponse(path, media_type="text/javascript; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
+
+load_plugins()
 
 
 @app.get("/", response_class=HTMLResponse)

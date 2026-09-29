@@ -3,7 +3,7 @@
 # расписания, «Людей», администрирования (18100–18102) во временном каталоге, прогоняет
 # e2e.py и всё останавливает. Нужны Python-зависимости backend и сервисов.
 #   ./scripts/e2e/run.sh                 # основной сценарий e2e.py
-#   ./scripts/e2e/run.sh test_data.py    # другой сценарий из scripts/e2e
+#   ./scripts/e2e/run.sh test-data/operator-demo/e2e_check.py   # другой сценарий (путь от корня)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 S="$(mktemp -d)"
@@ -17,8 +17,11 @@ export DATABASE_URL="sqlite:///$S/core.db" JWT_ISSUER=https://core.test JWT_KEYR
   SERVICE_CONFIG_DIR="$S/connected" CLOUD_BINDING_KEY="$(key b)" ADMINISTRATION_PROVISIONING_TOKEN="$(key p)" \
   SCHEDULE_PROVISIONING_TOKEN="$(key s)" USER_PROFILE_PROVISIONING_TOKEN="$(key u)" SHELL_ORIGIN=https://shell.test \
   ADMINISTRATION_PUBLIC_ORIGIN=https://shell.test:8444 OPERATOR_PASSWORD='correct horse battery' \
-  OPERATOR_COOKIE_SECURE=false OPERATOR_HEALTH_TARGETS='{}' RUNNER_SCHEDULE_URL=http://127.0.0.1:18100
+  OPERATOR_COOKIE_SECURE=false OPERATOR_HEALTH_TARGETS='{}' RUNNER_SCHEDULE_URL=http://127.0.0.1:18100 \
+  OPERATOR_PLUGINS_DIR="$S/plugins"
 (cd "$ROOT/backend" && exec python -m uvicorn main:app --port 8000 >"$S/core.log" 2>&1) & pids+=($!)
+# Модули пульта — как на сервере: папки test-data/*/ с plugin.py.
+mkdir -p "$S/plugins"; for dir in "$ROOT"/test-data/*/; do [[ -f "$dir/plugin.py" ]] && ln -s "$dir" "$S/plugins/$(basename "$dir")"; done
 (cd "$ROOT/backend" && exec python -m uvicorn operator_panel.app:app --port 18500 >"$S/op.log" 2>&1) & pids+=($!)
 runner() {  # тип, переменная БД, файл БД, токен, порт
   mkdir -p "$S/run/$1"
@@ -30,4 +33,4 @@ runner schedule SCHEDULE_DB schedule.db "$(key s)" 18100
 runner user-profile PROFILE_DB profiles.db "$(key u)" 18101
 runner administration "" "" "$(key p)" 18102
 cd "$S"
-python3 "$ROOT/scripts/e2e/${1:-e2e.py}" || { echo "Логи: $S (сохранены)"; trap - EXIT; kill "${pids[@]}"; exit 1; }
+python3 "$ROOT/${1:-scripts/e2e/e2e.py}" || { echo "Логи: $S (сохранены)"; trap - EXIT; kill "${pids[@]}"; exit 1; }

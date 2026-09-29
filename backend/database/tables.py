@@ -288,15 +288,6 @@ class WidgetVisibility(table_class):
     by_admin = Column(Boolean, nullable=False, default=True)
 
 
-class TestDataRecord(table_class):
-    """Что создала кнопка «Тестовые данные» в пульте: удаляется ровно это и ничего больше."""
-    __tablename__ = "test_data_records"
-
-    kind = Column(String(20), primary_key=True)  # institution | user
-    object_id = Column(String(36), primary_key=True)
-    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
-
-
 class PurgedInstance(table_class):
     """Облачный экземпляр удалённого вуза: раннер его типа останавливает процесс и стирает данные
     /data/<service_id>. Запись живёт PURGE_RETENTION, чтобы раннер успел её получить."""

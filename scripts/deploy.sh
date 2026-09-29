@@ -90,7 +90,16 @@ if docker volume inspect "${PROJECT}_core-data" >/dev/null 2>&1; then
     ls -1dt /data/backups/*/ | tail -n +6 | xargs -r rm -rf
     echo "  копия базы ядра: том core-data, $dir"'
 fi
+# Модули пульта оператора: папки test-data/*/ с plugin.py (сейчас — тестовые данные). Нет папки —
+# том очищается и пульт работает без модулей; остальное приложение от них не зависит.
+docker volume create "${PROJECT}_operator-plugins" >/dev/null
+PLUGIN_SRC=()
+for dir in test-data/*/; do [[ -f "$dir/plugin.py" ]] && PLUGIN_SRC+=(-v "$ROOT/$dir:/src/$(basename "$dir"):ro"); done
+docker run --rm -v "${PROJECT}_operator-plugins:/plugins" "${PLUGIN_SRC[@]}" alpine:3 sh -c '
+  rm -rf /plugins/* && for d in /src/*/; do [ -d "$d" ] && cp -r "$d" /plugins/ && echo "  модуль пульта: $(basename "$d")"; done; true'
 docker compose up -d --build backend operator redis bot
+# Пульт читает модули при запуске: перезапуск подхватывает добавленные и убирает удалённые.
+docker compose restart operator >/dev/null
 for attempt in $(seq 1 60); do
   if docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)" >/dev/null 2>&1; then
     echo "Ядро готово: $CORE_URL"; break

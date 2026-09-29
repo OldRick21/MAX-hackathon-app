@@ -1,4 +1,8 @@
-"""Тестовые данные для демонстрации: вузы, группы, пользователи и расписание — кнопками пульта.
+"""Модуль пульта оператора «Тестовые данные»: вузы, группы, пользователи и расписание для демонстрации.
+
+Весь модуль — эта папка (test-data/operator-demo). Пульт загружает его из OPERATOR_PLUGINS_DIR, куда папку
+кладёт scripts/deploy.sh. Удалите папку — после следующего deploy.sh кнопок в пульте не будет, остальное
+приложение от модуля не зависит.
 
 Создание:
 1. В базе ядра — вузы (с администрированием, «Людьми» и расписанием, как у настоящих), группы,
@@ -19,14 +23,31 @@ import time
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
 
-from database.base import generate_uuid, utc_now
-from database.create_tables import session_local
+from typing import Any, Optional
+
+from fastapi import APIRouter, Body, Depends
+from sqlalchemy import Column, DateTime, String
+
+from database.base import generate_uuid, table_class, utc_now
+from database.create_tables import engine, session_local
 from database.tables import (Institution, JoinRequest, Membership, RoleAssignment, ServiceInstance, ServiceRole,
-                             StudyGroup, StudyGroupMember, TestDataRecord, User)
+                             StudyGroup, StudyGroupMember, User)
 from platform_core import registry
+from platform_core.concurrency import is_uuid
 from platform_core.errors import DomainError, validation
+
+TITLE = "Тестовые данные"
+
+
+class TestDataRecord(table_class):
+    """Что создал модуль: удаляется ровно это и ничего больше. Таблица создаётся при загрузке модуля."""
+    __tablename__ = "test_data_records"
+    __table_args__ = {"extend_existing": True}
+
+    kind = Column(String(20), primary_key=True)  # institution | user
+    object_id = Column(String(36), primary_key=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 log = logging.getLogger("test_data")
 
@@ -279,3 +300,30 @@ def delete(staff) -> dict:
         db.commit()
     _set(state="idle", message="Тестовых данных нет", progress="")
     return {"message": f"Удалено тестовых вузов: {removed_inst}, пользователей: {removed_users}."}
+
+
+# --------------------------------------------------------------------------
+# Подключение к пульту: register(app, ctx) вызывает загрузчик модулей пульта
+# --------------------------------------------------------------------------
+
+def register(app, ctx) -> None:
+    TestDataRecord.__table__.create(bind=engine, checkfirst=True)
+    router = APIRouter(prefix=f"/api/plugins/{ctx['plugin_id']}")
+    operator = ctx["operator"]
+
+    @router.get("/status")
+    def get_status(_: str = Depends(operator)):
+        return status()
+
+    @router.post("/create")
+    def post_create(payload: Any = Body(None), _: str = Depends(operator)):
+        user_id = payload.get("user_id") if isinstance(payload, dict) else None
+        if user_id is not None and not is_uuid(user_id):
+            raise validation("Выберите пользователя из списка", "user_id")
+        return create(payload, user_id)
+
+    @router.post("/delete")
+    def post_delete(_: str = Depends(operator)):
+        return delete(ctx["staff"])
+
+    app.include_router(router)

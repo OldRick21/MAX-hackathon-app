@@ -58,6 +58,8 @@ services:
       OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:?Set OPERATOR_PASSWORD in .env}
     volumes:
       - core-data:/data
+      # Необязательные модули пульта (например, test-data/operator-demo); наполняет scripts/deploy.sh.
+      - operator-plugins:/srv/plugins:ro
       - ./services/connected:/srv/services/connected
     ports:
       - "127.0.0.1:8500:8500"
@@ -163,6 +165,7 @@ services:
 
 volumes:
   core-data:
+  operator-plugins:
   administration-data:
   schedule-data:
   profile-data:
