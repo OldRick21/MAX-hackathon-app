@@ -1,7 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
 import type { WidgetView } from '../../api/types';
-import { serviceEntries, type ServiceEntry } from '../../components/layout/navigation';
+import { serviceEntries } from '../../components/layout/navigation';
 import { Button, Skeleton, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useInstitution } from '../../state/institution';
@@ -9,8 +8,6 @@ import { useBackend, useSession } from '../../state/session';
 import { formatShort, formatWeekday, now } from '../../utils/time';
 import s from './home.module.css';
 import { WidgetCard } from './widgets';
-
-type Cell = { kind: 'widget'; widget: WidgetView; span: number } | { kind: 'filler'; entry: ServiceEntry; span: number };
 
 /** Колонки сетки главной: 4 на широком экране, 2 на среднем, 1 на телефоне (WIDGETS_SPEC.md §8). */
 const COLUMN_QUERIES: [string, number][] = [['(min-width: 1100px)', 4], ['(min-width: 768px)', 2]];
@@ -26,31 +23,8 @@ function useColumns() {
   return columns;
 }
 
-/**
- * Раскладка без перестановки виджетов: wide занимает половину строки (на двух колонках — всю),
- * small — одну колонку. Место, которое остаётся в строке перед виджетом, не влезающим в неё, и хвост
- * последней строки занимают ярлыки облачных сервисов; оставшиеся ярлыки идут следом (только если
- * колонок больше одной — на телефоне ярлыков нет).
- */
-function layout(widgets: WidgetView[], fillers: ServiceEntry[], columns: number): Cell[] {
-  const cells: Cell[] = [];
-  const spare = columns > 1 ? [...fillers] : [];
-  let used = 0;
-  const fillRow = () => {
-    while (used > 0 && used < columns && spare.length) { cells.push({ kind: 'filler', entry: spare.shift()!, span: 1 }); used++; }
-    used = 0;
-  };
-  for (const widget of widgets) {
-    const span = widget.size === 'wide' ? Math.max(1, Math.min(columns, columns >= 4 ? columns / 2 : columns)) : 1;
-    if (used + span > columns) fillRow();
-    cells.push({ kind: 'widget', widget, span });
-    used += span;
-    if (used >= columns) used = 0;
-  }
-  fillRow();
-  for (const entry of spare) cells.push({ kind: 'filler', entry, span: 1 });
-  return cells;
-}
+/** Ширина виджета в колонках: wide — половина строки (на двух колонках — вся), small — одна колонка. */
+const spanOf = (w: WidgetView, columns: number) => (w.size === 'wide' ? (columns >= 4 ? columns / 2 : columns) : 1);
 
 export function HomeScreen() {
   const backend = useBackend();
@@ -83,9 +57,6 @@ export function HomeScreen() {
   const list = widgets.data ?? [];
   // Профиль — всегда первым (§8).
   const ordered = [...list.filter(w => w.kind === 'profile').slice(0, 1), ...list.filter(w => w.kind !== 'profile')];
-  // Ярлыки на десктопе — все облачные сервисы вуза, доступные профилю (по одному на раздел).
-  const cloud = new Set(services.filter(x => x.deployment === 'cloud').map(x => x.id));
-  const fillers = entries.filter(e => cloud.has(e.key.split(':')[0]));
   const columns = useColumns();
 
   const firstName = maxUser?.first_name || 'Пользователь';
@@ -108,15 +79,9 @@ export function HomeScreen() {
         <p className={s.caption}>Не удалось загрузить главную. <Button variant="ghost" size="small" onClick={widgets.reload}>Повторить</Button></p>
       ) : ordered.length ? (
         <div className={s.widgets} style={{ '--columns': columns } as CSSProperties}>
-          {layout(ordered, fillers, columns).map(cell => cell.kind === 'widget'
-            ? <WidgetCard key={`${cell.widget.service_id}:${cell.widget.widget_id}`} widget={cell.widget} span={cell.span}
-                to={routeOf(cell.widget)} tick={tick} />
-            : (
-              <Link key={cell.entry.key} to={cell.entry.to} className={s.filler}>
-                <span className={s.tileIcon}><cell.entry.Icon /></span>
-                <span className={s.tileText}><span className={s.tileName}>{cell.entry.name}</span><span className={s.tileDesc}>{cell.entry.desc}</span></span>
-              </Link>
-            ))}
+          {ordered.map(w => (
+            <WidgetCard key={`${w.service_id}:${w.widget_id}`} widget={w} span={spanOf(w, columns)} to={routeOf(w)} tick={tick} />
+          ))}
         </div>
       ) : (
         <div className={s.empty}>
