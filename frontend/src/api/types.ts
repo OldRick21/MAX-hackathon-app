@@ -126,7 +126,7 @@ export type Tone = 'normal' | 'muted' | 'accent' | 'warning' | 'danger';
 /** Данные виджета от сервиса (WIDGETS_SPEC.md §7); null — сервис ответил 204, карточку не показываем. */
 export type WidgetData =
   | { kind: 'profile'; user_id: UUID; title: string; lines: string[]; progress?: number; hint?: string }
-  | { kind: 'events'; day: string | null; items: { title: string; starts_at: string; ends_at: string; place?: string; status: 'scheduled' | 'cancelled' }[]; empty_text?: string }
+  | { kind: 'events'; day: string | null; items: { title: string; starts_at: string; ends_at: string; place?: string; status: 'scheduled' | 'cancelled' }[]; more?: number; empty_text?: string }
   | { kind: 'list'; items: { title: string; subtitle?: string; badge?: string; tone?: Tone }[]; total?: number; empty_text?: string }
   | { kind: 'stat'; value: number; unit?: string; caption?: string; tone?: Tone }
   | { kind: 'progress'; value: number; caption?: string; hint?: string }

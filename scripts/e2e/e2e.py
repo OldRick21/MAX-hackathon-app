@@ -105,7 +105,7 @@ def home(h, prof):
     r=c.get(f'/api/v1/institution/{iid}/widgets', params={'profile':prof}, headers=h)
     return {w['widget_id']: w for w in r.json().get('items', [])} if r.status_code==200 else r.status_code
 check('студент: профиль и «Сегодня»', wait(lambda: set(home(sh,'student'))=={'me','today'}), home(sh,'student'))
-check('администратор с ролью: профиль и «Занятия сегодня»', set(home(oh,'admin'))=={'me','today_admin'}, home(oh,'admin'))
+check('администратор с ролью: профиль, занятия дня по вузу и сводка', set(home(oh,'admin'))=={'me','today_admin','today_stats'}, home(oh,'admin'))
 w=home(sh,'student')['today']
 r=httpx.get(w['data_url'].replace('https://shell.test/schedule', f"http://127.0.0.1:{PORT['schedule']}"), headers=sth)
 check('данные «Сегодня» через раннер', r.status_code==200 and r.json()['kind']=='events', r.text[:200])
@@ -114,7 +114,7 @@ psh={'Authorization':'Bearer '+ps.json()['access_token']}
 r=httpx.get(me['data_url'].replace('https://shell.test/people', f"http://127.0.0.1:{PORT['user-profile']}"), headers=psh)
 check('карточка профиля: имя и группа', r.status_code==200 and r.json()['title']=='Анна Студентова' and 'ПИ-11' in ' '.join(r.json()['lines']), r.text[:200])
 wl=adm.get(f"/api/v1/administration/services/{svcs['schedule']}/widgets", headers=ah)
-check('админка видит виджеты расписания', wl.status_code==200 and {x['id'] for x in wl.json()['items']}=={'today','today_admin'}, wl.text[:200])
+check('админка видит виджеты расписания', wl.status_code==200 and {x['id'] for x in wl.json()['items']}=={'today','today_admin','today_stats'}, wl.text[:200])
 r=adm.put(f"/api/v1/administration/services/{svcs['schedule']}/widgets/today/visibility",
           headers={**ah,'If-Match':wl.headers.get('ETag')}, json={'visibility':{'student':False,'teacher':True}})
 check('администратор скрыл «Сегодня» у студентов', r.status_code==200, r.text[:200])

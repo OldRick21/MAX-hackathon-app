@@ -58,9 +58,13 @@ MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus':
         {'id': 'today', 'titles': {'ru': 'Сегодня', 'en': 'Today'}, 'kind': 'events', 'size': 'wide',
          'profiles': ['student', 'teacher'], 'required_permissions': [], 'data_path': '/schedule/widgets/today',
          'open_menu': 'schedule', 'order': 0},
-        {'id': 'today_admin', 'titles': {'ru': 'Занятия сегодня', 'en': 'Classes today'}, 'kind': 'stat', 'size': 'small',
-         'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'data_path': '/schedule/widgets/today-admin',
-         'open_menu': 'schedule_admin', 'order': 0}]}
+        # Администратору (с schedule.read_all) — занятия дня по всему вузу и отдельная сводка.
+        {'id': 'today_admin', 'titles': {'ru': 'Сегодня в вузе', 'en': 'Today at the university'}, 'kind': 'events',
+         'size': 'wide', 'profiles': ['admin'], 'required_permissions': ['schedule.read_all'],
+         'data_path': '/schedule/widgets/today-admin', 'open_menu': 'schedule_admin', 'order': 0},
+        {'id': 'today_stats', 'titles': {'ru': 'Занятия сегодня', 'en': 'Classes today'}, 'kind': 'stat', 'size': 'small',
+         'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'data_path': '/schedule/widgets/today-stats',
+         'open_menu': 'schedule_admin', 'order': 1}]}
 ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактор расписания', 'en': 'Schedule editor'},
           'allowed_profiles': ['admin'], 'permissions': ['schedule.read_all', 'schedule.write']},
          # Отличие от контракта: правку расписания администратор может включить и преподавателю.
@@ -671,11 +675,38 @@ def widget_today(ctx: Ctx = Depends(authenticate)):
                          'empty_text': 'На ближайшую неделю занятий нет'}, headers={'Cache-Control': 'no-store'})
 
 
-@app.get('/api/v1/schedule/widgets/today-admin')
-def widget_today_admin(ctx: Ctx = Depends(authenticate)):
-    """Сколько занятий сегодня в вузе и сколько из них отменено (admin с schedule.read_all)."""
+def need_admin_reader(ctx: Ctx):
     if ctx.profile != 'admin' or not ctx.reads_all:
         raise forbidden('Нужна роль «Редактор расписания»')
+
+
+@app.get('/api/v1/schedule/widgets/today-admin')
+def widget_today_admin(ctx: Ctx = Depends(authenticate)):
+    """Занятия сегодня по всему вузу (admin с schedule.read_all): первые 10 по времени, у каждого — группы."""
+    need_admin_reader(ctx)
+    today = datetime.now(TIMEZONE).date()
+    start, end = day_bounds(today)
+    with database() as db:
+        rows = db.execute('SELECT * FROM events WHERE institution_id=? AND service_id=? AND starts_at < ? AND ends_at > ? '
+                          'ORDER BY starts_at, id', (*ctx.tenant, end, start)).fetchall()
+        groups, _ = event_links(db, ctx, [r['id'] for r in rows[:10]])
+    names = {g['id']: g['name'] for g in core.groups(ctx.binding)} if rows else {}
+    items = []
+    for r in rows[:10]:
+        where = r['location'] or 'онлайн'
+        group_text = ', '.join(names.get(g, '—') for g in groups[r['id']])
+        items.append({'title': r['title'], 'starts_at': r['starts_at'], 'ends_at': r['ends_at'],
+                      'place': f'{where} · {group_text}'[:80] if group_text else where[:80], 'status': r['status']})
+    more = len(rows) - len(items)
+    return JSONResponse({'kind': 'events', 'day': today.isoformat() if rows else None, 'items': items,
+                         'empty_text': 'Сегодня занятий в вузе нет'} | ({'more': more} if more > 0 else {}),
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/v1/schedule/widgets/today-stats')
+def widget_today_stats(ctx: Ctx = Depends(authenticate)):
+    """Сколько занятий сегодня в вузе и сколько из них отменено (admin с schedule.read_all)."""
+    need_admin_reader(ctx)
     start, end = day_bounds(datetime.now(TIMEZONE).date())
     with database() as db:
         row = db.execute("SELECT COUNT(*) AS total, SUM(status='cancelled') AS cancelled FROM events "

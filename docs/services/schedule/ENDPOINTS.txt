@@ -14,3 +14,4 @@ GET /schedule
 GET /api/v1/schedule/widgets/today
 GET /api/v1/schedule/widgets/today-admin
 POST /api/v1/schedule/import
+GET /api/v1/schedule/widgets/today-stats

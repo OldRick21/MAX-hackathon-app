@@ -186,12 +186,23 @@ class Schedule(unittest.TestCase):
         self.assertEqual((t2_day['day'], [e['title'] for e in t2_day['items']]),
                          ((now.date() + timedelta(days=2)).isoformat(), ['Послезавтра Б']))
         self.assertEqual(self.c.get('/api/v1/schedule/widgets/today', headers=editor).status_code, 403)
-        stat = self.c.get('/api/v1/schedule/widgets/today-admin', headers=editor).json()
+        # Администратор с ролью редактора: занятия дня по всему вузу (с группами) и отдельная сводка.
+        day = self.c.get('/api/v1/schedule/widgets/today-admin', headers=editor).json()
+        self.assertEqual((day['kind'], [e['title'] for e in day['items']]), ('events', ['Сегодня А', 'Отменено']))
+        self.assertEqual(day['items'][0]['place'], '205 · ИВТ-21')
+        self.assertNotIn('more', day)
+        stat = self.c.get('/api/v1/schedule/widgets/today-stats', headers=editor).json()
         self.assertEqual((stat['kind'], stat['value'], stat['tone']), ('stat', 2, 'warning'))
         self.assertIn('отменено 1', stat['caption'])
-        self.assertEqual(self.c.get('/api/v1/schedule/widgets/today-admin', headers=plain_admin).status_code, 403)
-        self.assertEqual(self.c.get('/api/v1/schedule/widgets/today-admin', headers=t1).status_code, 403)
-        self.assertEqual({w['id'] for w in m.MANIFEST['widgets']}, {'today', 'today_admin'})
+        for path in ('today-admin', 'today-stats'):
+            self.assertEqual(self.c.get(f'/api/v1/schedule/widgets/{path}', headers=plain_admin).status_code, 403)
+            self.assertEqual(self.c.get(f'/api/v1/schedule/widgets/{path}', headers=t1).status_code, 403)
+        # Больше 10 занятий — первые 10 и «ещё N».
+        for i in range(10):
+            self.post(editor, self.event([GB], [T2], at(0, 14), at(0, 15), title=f'Доп {i}'))
+        day = self.c.get('/api/v1/schedule/widgets/today-admin', headers=editor).json()
+        self.assertEqual((len(day['items']), day['more']), (10, 2))
+        self.assertEqual({w['id'] for w in m.MANIFEST['widgets']}, {'today', 'today_admin', 'today_stats'})
 
     def test_import_one_format_many_file_types(self):
         """Одна таблица занятий в JSON, CSV из 1С (cp1251, «;»), TXT (табуляция), XML и XLSX даёт один результат."""

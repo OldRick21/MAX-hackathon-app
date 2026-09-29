@@ -275,6 +275,15 @@ export function createMockBackend(): Backend {
       return { kind: 'events', day: null, items: [], empty_text: 'На ближайшую неделю занятий нет' };
     }
     if (widget.widget_id === 'today_admin') {
+      const names = new Map((D.groups[inst] ?? []).map(g => [g.id, g.name]));
+      const today = events[inst].filter(e => Date.parse(e.starts_at) < day(1).getTime() && Date.parse(e.ends_at) > day(0).getTime())
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+      return { kind: 'events', day: today.length ? dayKey(day(0)) : null, empty_text: 'Сегодня занятий в вузе нет',
+        items: today.slice(0, 10).map(e => ({ title: e.title, starts_at: e.starts_at, ends_at: e.ends_at, status: e.status,
+          place: [e.location || 'онлайн', e.group_ids.map(g => names.get(g) ?? '—').join(', ')].filter(Boolean).join(' · ') })),
+        ...(today.length > 10 ? { more: today.length - 10 } : {}) };
+    }
+    if (widget.widget_id === 'today_stats') {
       const today = events[inst].filter(e => Date.parse(e.starts_at) < day(1).getTime() && Date.parse(e.ends_at) > day(0).getTime());
       const cancelled = today.filter(e => e.status === 'cancelled').length;
       return { kind: 'stat', value: today.length, unit: plural(today.length, 'занятие', 'занятия', 'занятий'), caption: `сегодня в вузе${cancelled ? `, отменено ${cancelled}` : ''}`,

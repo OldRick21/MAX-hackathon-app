@@ -76,9 +76,16 @@ dialog::backdrop { background: rgb(0 0 0 / .4); }
 .request-name { font-size: 1.1em; }
 .request .meta { margin: 0; }
 
-.widgets { margin-top: 12px; }
-.widgets h3 { font-size: 14px; margin: 0 0 6px; }
-.widget-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.widget-table th, .widget-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-.widget-table th:not(:first-child), .widget-table td:not(:first-child) { text-align: center; width: 18%; }
-.widget-table input[type=checkbox] { width: 18px; height: 18px; }
+.widgets { margin-top: 12px; display: grid; gap: 8px; }
+.widgets h3 { font-size: 14px; margin: 0; }
+.widget-row { display: grid; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+.widget-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; min-width: 0; }
+.widget-name small { overflow-wrap: anywhere; }
+.widget-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.widget-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--line);
+  border-radius: 999px; font-size: 13px; cursor: pointer; background: var(--card);
+}
+.widget-toggle:has(input:checked) { border-color: var(--accent); }
+.widget-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.widget-toggle.off { color: var(--muted); cursor: default; border-style: dashed; }

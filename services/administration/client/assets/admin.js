@@ -556,18 +556,15 @@
     let listed;
     try { listed = await api(`/services/${s.id}/widgets`); }
     catch (error) { box.append(h('p', { class: 'muted' }, `Не удалось загрузить виджеты: ${error.message}`)); return box; }
-    const profiles = ['student', 'teacher', 'admin'].filter(p => listed.data.items.some(w => w.profiles.includes(p)));
-    const table = h('table', { class: 'widget-table' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Виджет'), ...profiles.map(p => h('th', {}, PROFILES[p])))));
-    const body = h('tbody');
+    // Без таблицы: у каждого виджета — строка переключателей по профилям, которые переносятся на узком окне.
     for (const w of listed.data.items) {
-      const row = h('tr', {}, h('td', {}, title(w.titles), w.required_permissions.length
-        ? h('small', { class: 'muted' }, ` · нужны права: ${w.required_permissions.join(', ')}`) : ''));
-      for (const p of profiles) {
-        if (!w.profiles.includes(p)) { row.append(h('td', { class: 'muted' }, '—')); continue; }
-        if (!w.service_visibility[p]) { row.append(h('td', { class: 'muted', title: 'Выключен самим сервисом' }, 'выключен сервисом')); continue; }
-        const input = h('input', { type: 'checkbox', checked: w.visibility[p], disabled: !manage,
-          'aria-label': `${title(w.titles)}: ${PROFILES[p]}` });
+      const toggles = h('div', { class: 'widget-toggles' });
+      for (const p of ['student', 'teacher', 'admin'].filter(x => w.profiles.includes(x))) {
+        if (!w.service_visibility[p]) {
+          toggles.append(h('span', { class: 'widget-toggle off', title: 'Выключен самим сервисом' }, `${PROFILES[p]}: выключен сервисом`));
+          continue;
+        }
+        const input = h('input', { type: 'checkbox', checked: w.visibility[p], disabled: !manage });
         input.addEventListener('change', () => guarded(async () => {
           const fresh = await api(`/services/${s.id}/widgets`);
           const current = fresh.data.items.find(x => x.id === w.id);
@@ -575,12 +572,14 @@
             body: { visibility: { ...current.visibility, [p]: input.checked } } });
           toast(input.checked ? `«${title(w.titles)}» показывается: ${PROFILES[p]}.` : `«${title(w.titles)}» скрыт: ${PROFILES[p]}.`);
         }, reload));
-        row.append(h('td', {}, h('label', { class: 'switch' }, input)));
+        toggles.append(h('label', { class: 'widget-toggle' }, input, PROFILES[p]));
       }
-      body.append(row);
+      box.append(h('div', { class: 'widget-row' },
+        h('div', { class: 'widget-name' }, h('strong', {}, title(w.titles)),
+          w.required_permissions.length ? h('small', { class: 'muted' }, `нужны права: ${w.required_permissions.join(', ')}`) : ''),
+        toggles));
     }
-    table.append(body);
-    box.append(table, h('p', { class: 'hint' }, manage
+    box.append(h('p', { class: 'hint' }, manage
       ? 'Снимите отметку, чтобы скрыть виджет с главной у этого профиля. Меню сервиса при этом остаётся.'
       : 'Менять виджеты может администратор с правом services.manage.'));
     return box;

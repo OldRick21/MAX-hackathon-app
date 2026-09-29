@@ -247,7 +247,7 @@ Scope — `manifest:write` (тот же уровень доверия, что и
 }
 ```
 
-`day` — дата дня карточки в часовом поясе вуза или `null`; оболочка пишет «Сегодня» либо день недели. `status`: `scheduled` \| `cancelled` (отменённое зачёркнуто). Не более 10 элементов.
+`day` — дата дня карточки в часовом поясе вуза или `null`; оболочка пишет «Сегодня» либо день недели. `status`: `scheduled` \| `cancelled` (отменённое зачёркнуто). Не более 10 элементов; `more` (необязательно) — сколько событий дня не поместилось, оболочка пишет «Ещё N».
 
 **`list`** — короткий список (работы на проверке, последние заявки).
 
@@ -315,7 +315,8 @@ Scope — `manifest:write` (тот же уровень доверия, что и
 | Сервис | Виджет | kind, size | Профили | required_permissions | open_menu |
 | --- | --- | --- | --- | --- | --- |
 | Расписание | `today` — занятия дня (заменяет встроенный блок «Сегодня») | events, wide | student, teacher | — | `schedule` |
-| Расписание | `today_admin` — сколько занятий сегодня в вузе, сколько отменено | stat, small | admin | `schedule.read_all` | `schedule_admin` |
+| Расписание | `today_admin` — занятия дня по всему вузу, с группами | events, wide | admin | `schedule.read_all` | `schedule_admin` |
+| Расписание | `today_stats` — сколько занятий сегодня в вузе, сколько отменено | stat, small | admin | `schedule.read_all` | `schedule_admin` |
 | Расписание | `week_load` — пар на этой неделе | stat, small | teacher | — | `schedule` |
 | «Люди» | `me` — карточка своего профиля с заполненностью анкеты | profile, wide | student, teacher, admin | — | `home` |
 | Курсовые | `my_work` — статус своей работы | list, small | student | — | `coursework` |
@@ -337,7 +338,7 @@ Scope — `manifest:write` (тот же уровень доверия, что и
 | Ядро, OpenAPI | Схемы `WidgetDefinition`, `WidgetVisibility`, `WidgetView`, три операции |
 | SDK | Клиент ядра: `widgets()`, `set_widget_visibility()`; схемы данных §7 в SDK OpenAPI |
 | Оболочка | Главная строится только из `GET .../widgets` и шаблонов §7; встроенные карточка профиля, «Сегодня» и плитки сервисов удалены; ярлыки облачных сервисов заполняют пустоты на десктопе |
-| Расписание | Виджеты `today`, `today_admin`; `GET /api/v1/schedule/widgets/today`, `/today-admin` |
+| Расписание | Виджеты `today`, `today_admin`, `today_stats`; `GET /api/v1/schedule/widgets/today`, `/today-admin`, `/today-stats` |
 | «Люди» | Виджет `me`; `GET /api/v1/profile/widgets/me` |
 | Курсовые | Виджеты `my_work`, `to_review`, `all_works`; `GET /api/v1/coursework/widgets/...` |
 

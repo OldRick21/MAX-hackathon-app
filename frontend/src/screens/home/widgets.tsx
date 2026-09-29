@@ -122,6 +122,7 @@ function EventsBody({ data }: { data: Extract<WidgetData, { kind: 'events' }> })
   if (!data.items.length) return <p className={s.caption}>{data.empty_text || 'На ближайшую неделю занятий нет'}</p>;
   const t = now().getTime();
   return (
+    <>
     <ul className={s.lessons}>
       {data.items.map((e, i) => {
         const current = e.status !== 'cancelled' && Date.parse(e.starts_at) <= t && t < Date.parse(e.ends_at);
@@ -134,5 +135,7 @@ function EventsBody({ data }: { data: Extract<WidgetData, { kind: 'events' }> })
         );
       })}
     </ul>
+    {data.more ? <p className={s.caption}>Ещё {data.more}</p> : null}
+    </>
   );
 }

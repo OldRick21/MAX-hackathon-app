@@ -70,7 +70,15 @@ export function HomeScreen() {
   const widgets = useAsync(signal => backend.listWidgets(institution.id, profile, signal), [backend, institution.id, profile, tick]);
   const services = catalog.status === 'ready' ? catalog.value : [];
   const entries = serviceEntries(base, services);
-  const routeOf = (w: WidgetView) => (w.open_menu ? entries.find(e => e.key === `${w.service_id}:${w.open_menu}`)?.to ?? null : null);
+  const routeOf = (w: WidgetView) => {
+    if (!w.open_menu) return null;
+    const entry = entries.find(e => e.key === `${w.service_id}:${w.open_menu}`);
+    if (!entry) return null;
+    // Меню «Главная» сервиса «Люди» — своя анкета: встроенный экран открывает её по /users/me
+    // (в боковом меню этот сервис ведёт к списку участников).
+    if (w.service_type === 'user-profile' && w.open_menu === 'home') return `${base}/users/me`;
+    return entry.to;
+  };
 
   const list = widgets.data ?? [];
   // Профиль — всегда первым (§8).
