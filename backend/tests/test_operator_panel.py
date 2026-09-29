@@ -115,10 +115,11 @@ class OperatorPanel(unittest.TestCase):
         self.assertEqual(op.post(f'/api/applications/{app_id}/approve', headers=W).json()['error']['code'],
                          'APPLICATION_NOT_PENDING')
 
-        # Вуз напрямую, с владельцем. У вуза сразу есть только администрирование, остальные — свои сервисы.
+        # Вуз напрямую, с владельцем. У вуза сразу есть администрирование, «Люди» и расписание.
         created = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Горный'}, 'owner_user_id': support})
         self.assertEqual(created.status_code, 201, created.text)
-        self.assertEqual([s['service_type'] for s in created.json()['services']], ['administration'])
+        self.assertEqual(sorted(s['service_type'] for s in created.json()['services']),
+                         ['administration', 'schedule', 'user-profile'])
         names = {i['id']: i['titles']['ru'] for i in op.get('/api/institutions').json()['items']}
         self.assertEqual(names[inst], 'Политех СПб')
 
@@ -173,6 +174,105 @@ class OperatorPanel(unittest.TestCase):
         self.assertTrue(op.get(f'/api/audit?institution_id={inst}').json()['items'])
 
 
+    def test_delete_institution_removes_everything(self):
+        """Удаление вуза: в ядре не остаётся ни одной строки вуза и его сервисов, раннеры получают purge."""
+        from sqlalchemy import inspect, text
+        from database.create_tables import engine
+        from database.tables import (CloudBinding, IdempotencyRecord, InstitutionLocalHost, JoinRequest, Membership,
+                                     PurgedInstance, RoleAssignment, ServiceInstance, ServiceRole, StudyGroup,
+                                     StudyGroupMember)
+        from auth.models import ServiceCredential, ServiceSession
+        op = self.signed_in()
+        owner, owner_h = self.login_user('del_owner')
+        student, student_h = self.login_user('del_student')
+        other_owner, _ = self.login_user('keep_owner')
+        inst = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Удаляемый вуз'}, 'owner_user_id': owner}).json()['id']
+        keep = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Остающийся вуз'}, 'owner_user_id': other_owner}).json()['id']
+
+        # Вуз сразу получает администрирование, «Людей» и расписание.
+        services = {s['service_type']: s for s in op.get(f'/api/institutions/{inst}').json()['services']}
+        self.assertEqual(set(services), {'administration', 'schedule', 'user-profile'})
+        self.assertTrue(all(s['deployment'] == 'cloud' and s['enabled'] for s in services.values()))
+
+        # Наполняем вуз: студент, группа, заявка, роль с назначением, сессия сервиса, хост, idempotency.
+        with session_local() as db:
+            db.add(Membership(institution_id=inst, user_id=student, profiles=['student']))
+            group = StudyGroup(institution_id=inst, name='ИВТ-1', name_key='ивт-1')
+            db.add(group)
+            db.flush()
+            db.add(StudyGroupMember(institution_id=inst, user_id=student, group_id=group.id))
+            db.add(JoinRequest(institution_id=inst, user_id=other_owner, profile='student', full_name='Гость', status='pending'))
+            sched = services['schedule']['id']
+            db.add(ServiceRole(service_id=sched, code='viewer', titles={'ru': 'П'}, allowed_profiles=['student'],
+                               permissions=['schedule.read_all'], system=False))
+            db.add(RoleAssignment(service_id=sched, user_id=student, profile='student', roles=['viewer']))
+            db.add(InstitutionLocalHost(institution_id=inst, hostname='cw.example.ru', approved_by='test'))
+            db.commit()
+        session = self.core.post(f'/api/v1/institution/{inst}/service/{sched}/session', headers=student_h,
+                                 json={'profile': 'student'})
+        self.assertEqual(session.status_code, 201, session.text)
+
+        def leftovers():
+            with session_local() as db:
+                sids = [r[0] for r in db.query(ServiceInstance.id).filter(ServiceInstance.institution_id == inst)]
+                counts = {
+                    'services': len(sids),
+                    'memberships': db.query(Membership).filter_by(institution_id=inst).count(),
+                    'groups': db.query(StudyGroup).filter_by(institution_id=inst).count(),
+                    'group_members': db.query(StudyGroupMember).filter_by(institution_id=inst).count(),
+                    'join_requests': db.query(JoinRequest).filter_by(institution_id=inst).count(),
+                    'local_hosts': db.query(InstitutionLocalHost).filter_by(institution_id=inst).count(),
+                    'idempotency': db.query(IdempotencyRecord).filter_by(institution_id=inst).count(),
+                    'service_sessions': db.query(ServiceSession).filter_by(institution_id=inst).count(),
+                    'roles': db.query(ServiceRole).filter(ServiceRole.service_id.in_(all_sids)).count(),
+                    'assignments': db.query(RoleAssignment).filter(RoleAssignment.service_id.in_(all_sids)).count(),
+                    'credentials': db.query(ServiceCredential).filter(ServiceCredential.service_id.in_(all_sids)).count(),
+                    'bindings': db.query(CloudBinding).filter(CloudBinding.service_id.in_(all_sids)).count(),
+                }
+            return {k: v for k, v in counts.items() if v}
+        all_sids = [s['id'] for s in services.values()]
+        self.assertEqual(set(leftovers()) >= {'services', 'memberships', 'groups', 'group_members', 'join_requests',
+                                               'local_hosts', 'service_sessions', 'roles', 'assignments',
+                                               'credentials', 'bindings'}, True, leftovers())
+
+        # Подтверждение — точное название; неверное ничего не удаляет.
+        wrong = op.request('DELETE', f'/api/institutions/{inst}', headers=W, json={'confirm_title': 'Другой'})
+        self.assertEqual(wrong.status_code, 422)
+        self.assertEqual(op.request('DELETE', f'/api/institutions/{inst}', json={'confirm_title': 'Удаляемый вуз'}).status_code, 403)
+        deleted = op.request('DELETE', f'/api/institutions/{inst}', headers=W, json={'confirm_title': 'Удаляемый вуз'})
+        self.assertEqual(deleted.status_code, 204, deleted.text)
+
+        # В ядре не осталось ничего от вуза; в том числе по прямой проверке всех таблиц с institution_id/service_id.
+        self.assertEqual(leftovers(), {})
+        with engine.connect() as conn:
+            for table in inspect(engine).get_table_names():
+                cols = {c['name'] for c in inspect(engine).get_columns(table)}
+                if table in ('audit_events', 'purged_instances', 'institution_applications'):
+                    continue  # журнал и список очистки остаются намеренно
+                if 'institution_id' in cols:
+                    n = conn.execute(text(f'SELECT count(*) FROM {table} WHERE institution_id = :i'), {'i': inst}).scalar()
+                    self.assertEqual(n, 0, table)
+                if 'service_id' in cols:
+                    q = f"SELECT count(*) FROM {table} WHERE service_id IN ({','.join(repr(x) for x in all_sids)})"
+                    self.assertEqual(conn.execute(text(q)).scalar(), 0, table)
+            self.assertEqual(conn.execute(text('PRAGMA foreign_key_check')).fetchall(), [])
+
+        # Раннеры получают экземпляры вуза в purge и больше не получают их ключей.
+        for token, sid in (('p' * 48, services['administration']['id']), ('s' * 48, sched)):
+            listed = self.core.get('/api/v1/internal/provisioning/instances', headers={'Authorization': 'Bearer ' + token}).json()
+            self.assertIn(sid, listed['purge'])
+            self.assertNotIn(sid, [i['service_id'] for i in listed['items']])
+        with session_local() as db:
+            self.assertEqual({r.service_id for r in db.query(PurgedInstance).filter_by(institution_id=inst)}, set(all_sids))
+            self.assertTrue(db.query(AuditEvent).filter_by(action='institution.delete', target_id=inst).first())
+
+        # Выданные токены больше не действуют; вуз недоступен; пользователи и другой вуз целы.
+        self.assertEqual(self.core.get(f'/api/v1/institution/{inst}', headers=owner_h).status_code, 404)
+        self.assertEqual(self.core.get('/api/v1/auth/me', headers=student_h).status_code, 200)
+        self.assertEqual(op.get(f'/api/institutions/{inst}').status_code, 404)
+        self.assertEqual(op.get(f'/api/institutions/{keep}').status_code, 200)
+        self.assertEqual(len(op.get(f'/api/institutions/{keep}').json()['services']), 3)
+
     def test_health_checks_every_enabled_service(self):
         from unittest.mock import patch
         from operator_panel import app as panel
@@ -180,14 +280,14 @@ class OperatorPanel(unittest.TestCase):
         with session_local() as db:
             inst = registry.provision_institution(db, {'ru': 'Проверочный'}, 'ru')
             svc = registry.create_local_instance(db, inst.id, 'custom.schedule', 'https://schedule.check.ru/api/v1',
-                                                 'https://schedule.check.ru', {'ru': 'Расписание'}, ['student', 'admin'])
+                                                 'https://schedule.check.ru', {'ru': 'Своё расписание'}, ['student', 'admin'])
             svc.enabled = True
             off = registry.create_local_instance(db, inst.id, 'custom.people', 'https://people.check.ru/api/v1',
                                                  'https://people.check.ru', {'ru': 'Люди'}, ['admin'])
             db.commit()
         with patch.dict(os.environ, {'OPERATOR_HEALTH_TARGETS': ''}):
             targets = panel._health_targets()
-        self.assertEqual(targets[next(k for k in targets if k.endswith('Расписание'))], 'https://schedule.check.ru/api/v1/health')
+        self.assertEqual(targets[next(k for k in targets if k.endswith('Своё расписание'))], 'https://schedule.check.ru/api/v1/health')
         self.assertIn('Ядро', targets)
         self.assertNotIn('https://people.check.ru/api/v1/health', targets.values())  # выключенный не проверяется
         self.assertTrue(any(v.startswith('https://admin.platform.example/') and v.endswith('/api/v1/health') for v in targets.values()))

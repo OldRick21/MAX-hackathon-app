@@ -30,6 +30,17 @@ MENU = {'id': 'books', 'titles': {'ru': 'Книги'}, 'entrypoint_path': '/book
         'required_permissions': [], 'order': 0}
 
 
+def bare_institution(db, titles):
+    """Вуз, как в базе до автоустановки облачных сервисов: только администрирование."""
+    from platform_core import registry
+    inst = registry.provision_institution(db, titles, 'ru')
+    for service in db.query(ServiceInstance).filter(ServiceInstance.institution_id == inst.id,
+                                                    ServiceInstance.service_type.in_(['schedule', 'user-profile'])):
+        db.delete(service)
+    db.flush()
+    return inst
+
+
 class CustomServices(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -150,7 +161,7 @@ class CustomServices(unittest.TestCase):
     def test_startup_gives_admins_every_service(self):
         from platform_core import registry
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Старый вуз'}, 'ru')
+            inst = bare_institution(db, {'ru': 'Старый вуз'})
             old = ServiceInstance(id=str(uuid.uuid4()), institution_id=inst.id, service_type='custom.old', deployment='local',
                                   enabled=True, protected=False, api_base_url='https://old.example.ru/api/v1',
                                   client_base_url='https://old.example.ru', supported_profiles=['student'], manifest={})
@@ -164,7 +175,7 @@ class CustomServices(unittest.TestCase):
         from database.tables import CloudBinding, ServiceCredential
         from platform_core import registry
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Вуз с облаком'}, 'ru')
+            inst = bare_institution(db, {'ru': 'Вуз с облаком'})
             legacy = ServiceInstance(id=str(uuid.uuid4()), institution_id=inst.id, service_type='schedule', deployment='cloud',
                                      enabled=True, protected=False, api_base_url='https://195.133.197.144/schedule/api/v1',
                                      client_base_url='https://195.133.197.144', supported_profiles=['student', 'teacher', 'admin'],
@@ -188,7 +199,7 @@ class CustomServices(unittest.TestCase):
         from platform_core import registry
         from services import platform_ops
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Облако'}, 'ru').id
+            inst = bare_institution(db, {'ru': 'Облако'}).id
             db.commit()
             service, created = platform_ops.install_cloud_service(db, inst, 'schedule')
             again, created_again = platform_ops.install_cloud_service(db, inst, 'schedule')
@@ -213,7 +224,7 @@ class CustomServices(unittest.TestCase):
         from database.tables import CloudBinding, ServiceCredential
         from platform_core import registry
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Был контейнер'}, 'ru').id
+            inst = bare_institution(db, {'ru': 'Был контейнер'}).id
             old = registry.create_local_instance(db, inst, 'user-profile', 'https://people.university.ru/api/v1',
                                                  'https://people.university.ru', None, ['admin', 'student'])
             cred, _ = registry.issue_credential(db, old)
@@ -228,7 +239,7 @@ class CustomServices(unittest.TestCase):
     def test_intermediate_custom_types_become_contract_types(self):
         from platform_core import registry
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Промежуточный'}, 'ru')
+            inst = bare_institution(db, {'ru': 'Промежуточный'})
             ids = {}
             for old in ('custom.schedule', 'custom.people', 'custom.coursework'):
                 ids[old] = registry.create_local_instance(db, inst.id, old, 'https://x.university.ru/api/v1',
@@ -244,7 +255,7 @@ class CustomServices(unittest.TestCase):
         from platform_core import registry
         user, _ = self.login('teacher')
         with session_local() as db:
-            inst = registry.provision_institution(db, {'ru': 'Сужение ролей'}, 'ru').id
+            inst = bare_institution(db, {'ru': 'Сужение ролей'}).id
             svc = registry.create_local_instance(db, inst, 'schedule', 'https://s.university.ru/api/v1', 'https://s.university.ru',
                                                  None, ['admin', 'teacher', 'student'])
             svc_id = svc.id

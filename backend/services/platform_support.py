@@ -15,12 +15,14 @@ from sqlalchemy.orm import Session
 from database.tables import (
     ApplicationStatus,
     AuditEvent,
+    IdempotencyRecord,
     Institution,
     InstitutionApplication,
     InstitutionLocalHost,
     InstitutionStatus,
     Membership,
     PlatformStaff,
+    PurgedInstance,
     ServiceInstance,
     User,
     utc_now,
@@ -269,6 +271,38 @@ def list_institutions(db: Session, staff: StaffContext, limit, cursor) -> Result
 def get_institution(db: Session, staff: StaffContext, institution_id: str) -> Result:
     inst = _institution(db, institution_id)
     return Result(institution_view(db, inst), etag=_etag(db, inst))
+
+
+def delete_institution(db: Session, staff: StaffContext, institution_id: str, payload) -> Result:
+    """Полное удаление вуза оператором: подтверждение — точное русское название вуза.
+
+    Удаляются членства, группы, заявки, экземпляры сервисов с ролями, ключами и сессиями.
+    Облачные экземпляры попадают в список очистки: раннеры останавливают процессы вуза и стирают
+    их данные. Локальные сервисы работают на серверах вуза — их ключи отзываются удалением.
+    Журнал платформы сохраняет запись об удалении.
+    """
+    body = _body(payload, {"confirm_title"}, {"confirm_title"})
+    inst = registry.lock_institution(db, _institution(db, institution_id).id)
+    title = (inst.titles or {}).get("ru", "")
+    if not isinstance(body["confirm_title"], str) or body["confirm_title"].strip() != title:
+        raise validation("Для подтверждения введите точное название вуза", "confirm_title")
+    services = db.query(ServiceInstance).filter(ServiceInstance.institution_id == inst.id).all()
+    for service in services:
+        if service.deployment == "cloud" and not db.get(PurgedInstance, service.id):
+            db.add(PurgedInstance(service_id=service.id, service_type=service.service_type, institution_id=inst.id))
+    registry.revoke_service_sessions(db, institution_id=inst.id)
+    db.query(IdempotencyRecord).filter(IdempotencyRecord.institution_id == inst.id).delete(synchronize_session=False)
+    members = db.query(Membership).filter(Membership.institution_id == inst.id).count()
+    staff.audit(db, "institution.delete", "institution", inst.id,
+                {"titles": inst.titles, "members": members,
+                 "services": [{"id": s.id, "service_type": s.service_type, "deployment": s.deployment} for s in services]},
+                inst.id)
+    db.flush()
+    # Каскад в БД: членства, группы, заявки, экземпляры, роли, ключи, привязки, сессии.
+    db.query(Institution).filter(Institution.id == inst.id).delete(synchronize_session=False)
+    db.expunge_all()
+    db.info['export_services'] = True  # файлы настроек сервисов пересобираются после commit
+    return Result(status=204)
 
 
 def set_status(db: Session, staff: StaffContext, institution_id: str, payload, if_match: Optional[str]) -> Result:

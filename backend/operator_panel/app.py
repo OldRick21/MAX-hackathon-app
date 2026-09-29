@@ -407,6 +407,17 @@ def institution(institution_id: str, _: str = Depends(operator), db: Session = D
                         headers={"ETag": platform_support._etag(db, inst)})
 
 
+@app.delete("/api/institutions/{institution_id}")
+def delete_institution(institution_id: str, payload: Any = Body(None), _: str = Depends(operator),
+                       db: Session = Depends(get_db)):
+    """Удалить вуз полностью: данные в ядре, процессы и данные облачных сервисов вуза в раннерах."""
+    def remove():
+        result = platform_support.delete_institution(db, STAFF, institution_id, payload)
+        db.commit()
+        return result
+    return run(db, remove)
+
+
 @app.patch("/api/institutions/{institution_id}/status")
 def set_status(institution_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
                _: str = Depends(operator), db: Session = Depends(get_db)):

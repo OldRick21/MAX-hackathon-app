@@ -9,6 +9,7 @@
 - Остальные запускаются лениво, по первому запросу, и останавливаются после простоя (IDLE_SECONDS).
 - Упавший процесс поднимается следующим запросом; смена ключа (revision) перезапускает процесс.
 - Удалённый экземпляр останавливается; его данные остаются в /data/<service_id>.
+- Экземпляры удалённого вуза (список purge от ядра) останавливаются, их данные стираются.
 
 Переменные: CORE_INTERNAL_URL, PROVISIONING_TOKEN, SHELL_ORIGIN, DATA_DIR=/data, DB_ENV/DB_FILE
 (куда процессу класть свою БД), APP_MODULE=app.main:app, IDLE_SECONDS=900, POLL_SECONDS=15,
@@ -19,6 +20,7 @@ import hashlib
 import logging
 import os
 import re
+import shutil
 import signal
 import sys
 import time
@@ -140,8 +142,9 @@ async def sync_instances(client: httpx.AsyncClient) -> None:
     response = await client.get(f"{CORE}/api/v1/internal/provisioning/instances",
                                 headers={"Authorization": f"Bearer {TOKEN}"})
     response.raise_for_status()
+    data = response.json()
     seen = set()
-    for b in response.json()["items"]:
+    for b in data["items"]:
         sid = b["service_id"]
         seen.add(sid)
         inst = instances.get(sid)
@@ -159,6 +162,17 @@ async def sync_instances(client: httpx.AsyncClient) -> None:
         if sid not in seen:
             await stop(instances.pop(sid))
             log.info("instance %s removed", sid)
+    for sid in data.get("purge") or []:
+        if isinstance(sid, str) and UUID_RE.match(sid) and sid not in seen:
+            purge(sid)
+
+
+def purge(service_id: str) -> None:
+    """Стирает данные экземпляра удалённого вуза. Повтор безопасен: каталога уже нет."""
+    path = DATA / service_id
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+        log.info("instance %s purged", service_id)
 
 
 async def safe_start(inst: Instance) -> None:

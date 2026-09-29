@@ -362,7 +362,11 @@ def provision_institution(db: Session, titles: dict, default_locale: str, status
     inst = Institution(id=generate_uuid(), titles=titles, default_locale=default_locale, status=status)
     db.add(inst)
     db.flush()
+    # Вуз сразу получает администрирование (защищённое), «Людей» и расписание — облачные сервисы
+    # платформы; их администратор вуза может выключить или удалить.
     create_admin_instance(db, inst.id)
+    for service_type in catalog.CLOUD_INSTALLABLE:
+        create_cloud_instance(db, inst.id, service_type)
     return inst
 
 

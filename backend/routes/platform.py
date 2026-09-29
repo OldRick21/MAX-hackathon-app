@@ -173,9 +173,11 @@ def cloud_instances(authorization: Optional[str] = Header(None), db: Session = D
     """Облачные экземпляры типа раннера с ключами (CLOUD_RUNTIME_SPEC §2).
 
     Токен раннера определяет тип: чужие типы этим токеном не видны. Секрет выводится из
-    CLOUD_BINDING_KEY и не хранится в БД.
+    CLOUD_BINDING_KEY и не хранится в БД. purge — экземпляры удалённых вузов: раннер останавливает
+    их процессы и стирает данные.
     """
-    from database.tables import CloudBinding, ServiceCredential, ServiceInstance
+    from datetime import timedelta
+    from database.tables import CloudBinding, PurgedInstance, ServiceCredential, ServiceInstance, utc_now
     from platform_core.concurrency import constant_time_token_match, derive_binding_secret, split_bearer
     from settings.config import settings
     scheme, token = split_bearer(authorization)
@@ -198,4 +200,8 @@ def cloud_instances(authorization: Optional[str] = Header(None), db: Session = D
                       "client_base_url": service.client_base_url, "client_id": binding.client_id,
                       "client_secret": derive_binding_secret(settings.CLOUD_BINDING_KEY, credential.id),
                       "revision": binding.revision})
-    return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
+    # Очистку раннер повторяет безопасно; записи старше срока хранения удаляются.
+    db.query(PurgedInstance).filter(PurgedInstance.created_at < utc_now() - timedelta(days=30)).delete()
+    db.commit()
+    purge = [row.service_id for row in db.query(PurgedInstance).filter(PurgedInstance.service_type == service_type)]
+    return JSONResponse({"items": items, "purge": purge}, headers={"Cache-Control": "no-store"})

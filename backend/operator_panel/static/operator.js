@@ -14,7 +14,7 @@
   const ACTIONS = {
     'application.submit': 'Подана заявка на подключение вуза', 'application.approve': 'Заявка вуза одобрена',
     'application.reject': 'Заявка вуза отклонена', 'application.withdraw': 'Заявка вуза отозвана',
-    'institution.provision': 'Вуз подключён', 'institution.status': 'Изменён статус вуза', 'institution.update': 'Изменены настройки вуза',
+    'institution.provision': 'Вуз подключён', 'institution.delete': 'Вуз удалён', 'institution.status': 'Изменён статус вуза', 'institution.update': 'Изменены настройки вуза',
     'institution.local_hosts': 'Изменены одобренные хосты', 'institution.initial_owner': 'Назначен владелец',
     'owner.initial_assign': 'Назначен владелец', 'staff.grant': 'Выданы права поддержки', 'staff.revoke': 'Отозваны права поддержки', 'user.delete': 'Удалён пользователь',
     'member.add': 'Добавлен участник', 'member.remove': 'Удалён участник', 'member.profiles.replace': 'Изменены профили',
@@ -391,7 +391,25 @@
         h('section', { class: 'card stack' }, h('h2', {}, 'Хосты своих сервисов'),
           h('p', { class: 'muted small m0' }, 'DNS-имена, на которых вуз может подключать свои (локальные) сервисы. По одному в строке. Сервисы на удалённых хостах выключатся.'),
           hosts, h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => act(() => api(`/institutions/${i.id}/local-hosts`, { method: 'PUT', etag,
-            body: { hostnames: hosts.value.split(/[\s,]+/).map(x => x.trim()).filter(Boolean) } }), 'Хосты сохранены.') }, 'Сохранить')))));
+            body: { hostnames: hosts.value.split(/[\s,]+/).map(x => x.trim()).filter(Boolean) } }), 'Хосты сохранены.') }, 'Сохранить'))),
+        h('section', { class: 'card stack' }, h('h2', {}, 'Удаление вуза'),
+          h('p', { class: 'muted m0' }, 'Удаляются участники, группы, заявки, роли и сервисы вуза. Процессы облачных сервисов вуза (администрирование, расписание, «Люди») останавливаются, их данные стираются. Отменить нельзя.'),
+          h('div', { class: 'actions' }, h('button', { class: 'danger', onclick: () => deleteInstitution(i) }, 'Удалить вуз…')))));
+  }
+
+  async function deleteInstitution(i) {
+    const name = i.titles?.ru || '';
+    const input = h('input', { autocomplete: 'off', placeholder: name });
+    const local = (i.services || []).filter(s => s.deployment === 'local');
+    const ok = await dialog('Удалить вуз навсегда?', [
+      h('p', {}, 'Будут удалены все данные вуза в ядре и данные его облачных сервисов. Участники потеряют доступ сразу.'),
+      local.length ? h('p', { class: 'muted small' }, `Свои сервисы вуза на его серверах (${local.map(s => s.title).join(', ')}) потеряют ключи; их серверы вуз останавливает сам.`) : '',
+      field(`Введите название вуза: «${name}»`, input)], 'Удалить навсегда', { danger: true });
+    if (!ok) return;
+    await act(async () => {
+      await api(`/institutions/${i.id}`, { method: 'DELETE', body: { confirm_title: input.value.trim() } });
+      location.hash = '#/institutions';
+    }, 'Вуз удалён.');
   }
 
   async function instRequests(body, i) {

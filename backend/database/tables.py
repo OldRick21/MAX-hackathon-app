@@ -273,6 +273,17 @@ class InstitutionLocalHost(table_class):
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
+class PurgedInstance(table_class):
+    """Облачный экземпляр удалённого вуза: раннер его типа останавливает процесс и стирает данные
+    /data/<service_id>. Запись живёт PURGE_RETENTION, чтобы раннер успел её получить."""
+    __tablename__ = "purged_instances"
+
+    service_id = Column(String(36), primary_key=True)
+    service_type = Column(String(50), nullable=False, index=True)
+    institution_id = Column(String(36), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
 class CloudBinding(table_class):
     """Привязка облачного экземпляра к credential (CLOUD_RUNTIME_SPEC.md §2).
 

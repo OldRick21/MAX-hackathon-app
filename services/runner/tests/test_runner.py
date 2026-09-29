@@ -16,6 +16,7 @@ _tmp = tempfile.TemporaryDirectory()
 TOKEN = 't' * 40
 A, B = '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'
 INSTANCES = {}
+PURGE = []
 
 
 class Core(BaseHTTPRequestHandler):
@@ -24,7 +25,7 @@ class Core(BaseHTTPRequestHandler):
 
     def do_GET(self):
         ok = self.path == '/api/v1/internal/provisioning/instances' and self.headers.get('Authorization') == f'Bearer {TOKEN}'
-        body = json.dumps({'items': list(INSTANCES.values())} if ok else {}).encode()
+        body = json.dumps({'items': list(INSTANCES.values()), 'purge': PURGE} if ok else {}).encode()
         self.send_response(200 if ok else 404)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -94,6 +95,12 @@ class Runner(unittest.TestCase):
             del INSTANCES[B]
             self.assertTrue(wait(lambda: B not in runner.instances))
             self.assertEqual(c.get(f'/{B}/echo/').status_code, 404)
+            self.assertTrue(Path(f'{_tmp.name}/data/{B}').is_dir())  # данные удалённого экземпляра остаются
+
+            # Вуз удалён: экземпляр в списке purge — данные стираются.
+            PURGE.append(B)
+            self.assertTrue(wait(lambda: not Path(f'{_tmp.name}/data/{B}').exists()), 'data not purged')
+            self.assertTrue(Path(f'{_tmp.name}/data/{A}').is_dir())
 
 
 if __name__ == '__main__':

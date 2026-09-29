@@ -143,7 +143,20 @@ class AdministrationFlow(unittest.TestCase):
         r = self.c.patch(admin_path, headers={**owner_h, "If-Match": self.etag(admin_path, owner_h)},
                          json={"enabled": False})
         self.assertEqual(r.json()["error"]["code"], "PROTECTED_RESOURCE")
-        # Расписание — облачный сервис одной кнопкой: адреса и ключ задаёт платформа, установка идемпотентна.
+        # «Люди» и расписание вуз получает сразу; в отличие от администрирования их можно выключить и удалить.
+        preinstalled = {s["service_type"]: s for s in self.c.get(f"{base}/services", headers=owner_h).json()["items"]}
+        self.assertTrue({"administration", "schedule", "user-profile"} <= set(preinstalled))
+        people_path = f"{base}/services/{preinstalled['user-profile']['id']}"
+        r = self.c.patch(people_path, headers={**owner_h, "If-Match": self.etag(people_path, owner_h)}, json={"enabled": False})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertFalse(r.json()["enabled"])
+        # Включить снова можно, когда процесс сервиса опубликовал меню (в тесте раннера нет).
+        r = self.c.patch(people_path, headers={**owner_h, "If-Match": self.etag(people_path, owner_h)}, json={"enabled": True})
+        self.assertEqual(r.json()["error"]["code"], "MANIFEST_REQUIRED")
+        auto_path = f"{base}/services/{preinstalled['schedule']['id']}"
+        r = self.c.delete(auto_path, headers={**owner_h, "If-Match": self.etag(auto_path, owner_h)})
+        self.assertEqual(r.status_code, 204, r.text)
+        # Удалённое расписание ставится снова одной кнопкой: адреса и ключ задаёт платформа, установка идемпотентна.
         key = str(uuid.uuid4())
         body = {"service_type": "schedule", "deployment": "cloud"}
         first = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=body)
