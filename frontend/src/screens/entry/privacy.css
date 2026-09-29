@@ -1,11 +1,110 @@
-.privacy-card { max-width: 720px; margin: 2rem auto; padding: 1.5rem; background: var(--color-surface, white); color: var(--color-text, #172234); border-radius: 16px; line-height: 1.6; }
-.privacy-card h1,.privacy-card h2 { margin-bottom: 1rem; }
-.privacy-card p,.privacy-card details,.privacy-card label { display: block; margin: 1rem 0; }
-.privacy-card button { padding: .7rem 1rem; border: 1px solid #77859a; border-radius: 8px; cursor: pointer; }
-.privacy-card button:disabled { opacity: .5; cursor: default; }
-.privacy-actions { display: flex; gap: .75rem; flex-wrap: wrap; }
-.privacy-text { white-space: pre-wrap; }
-.privacy-card textarea { display: block; width: 100%; min-height: 90px; }
-.privacy-launch { position: fixed; right: 1rem; bottom: 1rem; z-index: 40; padding: .6rem; border-radius: 10px; background: white; color: #172234; border: 1px solid #77859a; }
-.privacy-overlay { position: fixed; inset: 0; background: #0008; z-index: 100; overflow-y: auto; padding: 1rem; }
-.privacy-receipt { overflow-wrap: anywhere; }
+/* Экраны и настройки ПД используют те же токены, ритм и компоненты, что и остальной интерфейс. */
+.privacy-consent {
+  width: min(81.3rem, 100%); display: grid; gap: 2.4rem; padding: 3.2rem;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-card);
+  box-shadow: var(--shadow-soft);
+}
+.privacy-heading { display: flex; align-items: flex-start; gap: 2rem; }
+.privacy-heading-icon {
+  flex: none; display: grid; place-items: center; width: 6.4rem; height: 6.4rem;
+  border-radius: 2rem; color: var(--accent-dark); background: var(--accent-soft);
+}
+.privacy-heading-icon svg { width: 3.2rem; height: 3.2rem; }
+.privacy-heading h1 { font-family: var(--font-accent); font-weight: 500; font-size: 3.2rem; line-height: 1.25; }
+.privacy-heading p { margin-top: .8rem; color: var(--text-2); font-size: 2rem; line-height: 1.45; text-wrap: pretty; }
+
+.privacy-note, .privacy-feedback, .privacy-status {
+  padding: 1.4rem 1.8rem; border-radius: var(--r-control); background: var(--accent-soft);
+  color: var(--accent-dark); font-size: 1.8rem; line-height: 1.45;
+}
+.privacy-feedback-error { background: var(--error-soft); color: var(--error); }
+.privacy-status { background: var(--success-soft); color: var(--success-text); }
+.privacy-loading, .privacy-modal-loading { border: 1px solid var(--line-soft); border-radius: var(--r-large); }
+.privacy-loading > *, .privacy-modal-loading > * { padding: 3.2rem; }
+
+.privacy-documents { display: grid; gap: 1.2rem; }
+.privacy-disclosure { border: 1px solid var(--line-soft); border-radius: var(--r-control); background: var(--surface-muted); overflow: clip; }
+.privacy-disclosure summary {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 1.6rem;
+  min-height: 5.6rem; padding: 1.4rem 5rem 1.4rem 1.8rem; cursor: pointer;
+  font-size: 1.9rem; font-weight: 600; list-style: none; transition: background-color var(--dur-fast) var(--ease);
+}
+.privacy-disclosure summary::-webkit-details-marker { display: none; }
+.privacy-disclosure summary:hover { background: var(--surface-hover); }
+.privacy-disclosure summary::after {
+  content: ''; position: absolute; right: 2rem; width: 1rem; height: 1rem;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-.2rem); transition: transform var(--dur) var(--ease);
+}
+.privacy-disclosure[open] summary::after { transform: rotate(225deg) translate(-.2rem, -.2rem); }
+.privacy-disclosure summary small { color: var(--text-2); font-size: 1.5rem; font-weight: 500; }
+.privacy-document {
+  max-height: 28rem; overflow: auto; padding: 1.8rem; border-top: 1px solid var(--line-soft);
+  background: var(--surface); overscroll-behavior: contain;
+}
+.privacy-document p { margin: 0; }
+.privacy-text { white-space: pre-wrap; color: var(--text-2); font-size: 1.7rem; line-height: 1.6; }
+
+.privacy-check {
+  display: flex; align-items: flex-start; gap: 1.4rem; padding: 1.8rem;
+  border: 1px solid var(--line); border-radius: var(--r-control); cursor: pointer;
+  font-size: 1.8rem; line-height: 1.45; transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.privacy-check:hover, .privacy-check:has(input:checked) { border-color: var(--accent); background: var(--accent-tint); }
+.privacy-check input { flex: none; width: 2.4rem; height: 2.4rem; margin: .1rem 0 0; accent-color: var(--accent); }
+.privacy-actions { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.privacy-receipt {
+  display: block; margin-top: 1.2rem; padding: 1.2rem 1.4rem; border-radius: 1rem;
+  background: var(--surface-muted); color: var(--text); font-size: 1.5rem; overflow-wrap: anywhere; user-select: all;
+}
+
+/* Ненавязчивая точка входа находится в потоке Главной и не может перекрыть нижнюю навигацию. */
+.privacy-home-footer { margin-top: 3.2rem; padding-top: 1.6rem; border-top: 1px solid var(--line-soft); }
+.privacy-launch {
+  display: inline-flex; align-items: center; gap: 1rem; padding: .8rem 1rem; margin-left: -.8rem;
+  border: 0; border-radius: 1.2rem; background: transparent; color: var(--text-2); text-align: left;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.privacy-launch:hover { color: var(--text); background: var(--accent-soft); }
+.privacy-launch > svg:first-child { width: 2.2rem; height: 2.2rem; color: var(--accent-dark); }
+.privacy-launch > svg:last-child { width: 1.8rem; height: 1.8rem; }
+.privacy-launch span { display: grid; gap: .1rem; }
+.privacy-launch strong { font-size: 1.6rem; font-weight: 600; }
+.privacy-launch small { font-size: 1.3rem; color: var(--text-2); }
+
+.privacy-modal-intro { color: var(--text-2); line-height: 1.5; }
+.privacy-request { display: grid; gap: 1.4rem; padding-top: .4rem; }
+.privacy-danger-zone {
+  display: grid; gap: 1.6rem; padding: 2rem; border: 1px solid var(--line-soft);
+  border-radius: var(--r-large); background: var(--surface-muted);
+}
+.privacy-danger-zone h3 { font-family: var(--font-accent); font-size: 1.9rem; font-weight: 500; }
+.privacy-danger-zone p { margin-top: .6rem; color: var(--text-2); font-size: 1.7rem; line-height: 1.45; }
+.privacy-confirm { padding-top: 1.4rem; border-top: 1px solid var(--line-soft); }
+.privacy-confirm > p { margin: 0 0 1.2rem; color: var(--error); font-weight: 600; }
+
+@media (max-width: 767px) {
+  .privacy-consent { gap: 1.6rem; padding: 2rem 1.6rem; border-radius: 2rem; }
+  .privacy-heading { gap: 1.2rem; }
+  .privacy-heading-icon { width: 4.8rem; height: 4.8rem; border-radius: 1.4rem; }
+  .privacy-heading-icon svg { width: 2.6rem; height: 2.6rem; }
+  .privacy-heading h1 { font-size: 2rem; }
+  .privacy-heading p { margin-top: .5rem; font-size: 1.4rem; }
+  .privacy-note, .privacy-feedback, .privacy-status { padding: 1.2rem 1.4rem; font-size: 1.4rem; }
+  .privacy-disclosure summary { min-height: 4.8rem; padding: 1.2rem 4.4rem 1.2rem 1.4rem; font-size: 1.5rem; }
+  .privacy-disclosure summary::after { right: 1.7rem; width: .8rem; height: .8rem; }
+  .privacy-disclosure summary small { font-size: 1.2rem; }
+  .privacy-document { max-height: 24rem; padding: 1.4rem; }
+  .privacy-text { font-size: 1.4rem; }
+  .privacy-check { gap: 1rem; padding: 1.4rem; font-size: 1.4rem; }
+  .privacy-check input { width: 2rem; height: 2rem; }
+  .privacy-consent > .privacy-actions { display: grid; grid-template-columns: 1fr; }
+  .privacy-consent > .privacy-actions > * { width: 100%; }
+  .privacy-confirm .privacy-actions > * { flex: 1; }
+  .privacy-home-footer { margin-top: 2.4rem; padding-top: 1.2rem; }
+  .privacy-launch { width: 100%; }
+  .privacy-launch > svg:last-child { margin-left: auto; }
+  .privacy-danger-zone { padding: 1.6rem; }
+  .privacy-danger-zone h3 { font-size: 1.6rem; }
+  .privacy-danger-zone p { font-size: 1.4rem; }
+}

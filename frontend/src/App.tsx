@@ -1,5 +1,5 @@
 import { PlatformScreen } from './platform/PlatformScreen';
-import { ConsentScreen, ErasureScreen, PrivacySettings } from './screens/entry/Privacy';
+import { ConsentScreen, ErasureScreen } from './screens/entry/Privacy';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ErrorState, ToastHost } from './components/ui';
@@ -68,14 +68,14 @@ function Gate() {
     case 'error': return <SessionProblemScreen title="Не удалось войти" text={phase.message} />;
     case 'ready':
       return (
-        <><PrivacySettings /><Routes>
+        <Routes>
           <Route path="/" element={<Root />} />
           <Route path="/join" element={<JoinScreen />} />
           <Route path="/applications" element={<PlatformScreen />} />
           <Route path="/institution" element={<Root />} />
           <Route path="/institution/:institutionId/*" element={<InstitutionRoute />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes></>
+        </Routes>
       );
   }
 }

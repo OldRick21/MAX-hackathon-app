@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { request } from '../../api/http';
+import { IconArrowRight, IconLock } from '../../components/icons/ui';
+import { Button, LoadingState, Modal, TextArea } from '../../components/ui';
 import { useSession } from '../../state/session';
+import { Frame } from './EntryScreens';
 import './privacy.css';
 
 type Document = { version: string; text: string; policy: string; demo: boolean };
+
+function PrivacyDetails({ title, meta, children, open = false }: {
+  title: string; meta?: string; children: ReactNode; open?: boolean;
+}) {
+  return (
+    <details className="privacy-disclosure" open={open}>
+      <summary>
+        <span>{title}</span>
+        {meta && <small>{meta}</small>}
+      </summary>
+      <div className="privacy-document">{children}</div>
+    </details>
+  );
+}
 
 export function ConsentScreen() {
   const { accept } = useSession();
@@ -23,18 +40,47 @@ export function ConsentScreen() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Не удалось сохранить согласие'); }
     finally { setBusy(false); }
   }
-  return <main className="privacy-card">
-    <h1>Персональные данные</h1>
-    <p>Для работы приложения требуется ваше согласие. Создание аккаунта произойдёт после подтверждения.</p>
-    {doc?.demo && <p role="note">Демонстрационный текст для хакатона: сведения об операторе ещё не заполнены.</p>}
-    {doc && <><details open><summary>Согласие · {doc.version}</summary><p className="privacy-text">{doc.text}</p></details>
-      <details><summary>Политика обработки данных</summary><p className="privacy-text">{doc.policy}</p></details>
-      <label><input type="checkbox" checked={checked} onChange={e => { setChecked(e.target.checked); setDeclined(false); }} /> Я даю согласие на обработку персональных данных по приведённому тексту.</label></>}
-    <div className="privacy-actions"><button disabled={!doc || !checked || busy} onClick={proceed}>{busy ? 'Сохраняем…' : 'Согласиться и продолжить'}</button>
-      <button disabled={busy} onClick={() => { setDeclined(true); setChecked(false); }}>Отказаться</button></div>
-    {declined && <p role="status">Аккаунт не создан. Можно закрыть приложение или вернуться к согласию.</p>}
-    {error && <p role="alert">{error}</p>}
-  </main>;
+  return (
+    <Frame>
+      <main className="privacy-consent">
+        <div className="privacy-heading">
+          <span className="privacy-heading-icon" aria-hidden="true"><IconLock /></span>
+          <div>
+            <h1>Персональные данные</h1>
+            <p>Ознакомьтесь с документами и подтвердите согласие, чтобы продолжить работу в приложении.</p>
+          </div>
+        </div>
+
+        {doc?.demo && <p className="privacy-note" role="note">Демонстрационный текст для хакатона: сведения об операторе ещё не заполнены.</p>}
+
+        {!doc && !error && <div className="privacy-loading"><LoadingState text="Загружаем документы…" /></div>}
+        {doc && (
+          <div className="privacy-documents">
+            <PrivacyDetails title="Согласие на обработку данных" meta={doc.version} open>
+              <p className="privacy-text">{doc.text}</p>
+            </PrivacyDetails>
+            <PrivacyDetails title="Политика обработки данных">
+              <p className="privacy-text">{doc.policy}</p>
+            </PrivacyDetails>
+          </div>
+        )}
+
+        {doc && (
+          <label className="privacy-check">
+            <input type="checkbox" checked={checked} onChange={e => { setChecked(e.target.checked); setDeclined(false); }} />
+            <span>Я даю согласие на обработку персональных данных в соответствии с приведённым текстом.</span>
+          </label>
+        )}
+
+        <div className="privacy-actions">
+          <Button disabled={!doc || !checked} loading={busy} onClick={proceed}>Согласиться и продолжить</Button>
+          <Button variant="ghost" disabled={busy} onClick={() => { setDeclined(true); setChecked(false); }}>Отказаться</Button>
+        </div>
+        {declined && <p className="privacy-feedback" role="status">Аккаунт не создан. Можно закрыть приложение или вернуться к согласию.</p>}
+        {error && <p className="privacy-feedback privacy-feedback-error" role="alert">{error}</p>}
+      </main>
+    </Frame>
+  );
 }
 
 export function ErasureScreen({ receipt }: { receipt: string }) {
@@ -50,9 +96,24 @@ export function ErasureScreen({ receipt }: { receipt: string }) {
     void check(); const timer = setInterval(check, 5000);
     return () => { alive = false; clearInterval(timer); };
   }, [receipt]);
-  return <main className="privacy-card"><h1>Состояние отзыва согласия</h1><p>После подтверждения сервером все сессии завершаются. Повторный вход не отменяет удаление старых данных.</p>
-    <p role="status">{status}</p><details><summary>Квитанция для проверки удаления</summary><p>Сохраните её и не передавайте другим.</p><code className="privacy-receipt">{receipt}</code></details>
-    <button onClick={() => { sessionStorage.removeItem('privacy-erasure-receipt'); location.reload(); }}>Вернуться ко входу</button></main>;
+  return (
+    <Frame>
+      <main className="privacy-consent privacy-erasure">
+        <div className="privacy-heading">
+          <span className="privacy-heading-icon" aria-hidden="true"><IconLock /></span>
+          <div><h1>Отзыв согласия</h1><p>Сервер завершает сессии и удаляет данные из подключённых хранилищ.</p></div>
+        </div>
+        <p className="privacy-status" role="status">{status}</p>
+        <PrivacyDetails title="Квитанция для проверки удаления">
+          <p>Сохраните её и не передавайте другим.</p>
+          <code className="privacy-receipt">{receipt}</code>
+        </PrivacyDetails>
+        <div className="privacy-actions">
+          <Button variant="secondary" onClick={() => { sessionStorage.removeItem('privacy-erasure-receipt'); location.reload(); }}>Вернуться ко входу</Button>
+        </div>
+      </main>
+    </Frame>
+  );
 }
 
 export function PrivacySettings() {
@@ -63,14 +124,16 @@ export function PrivacySettings() {
   const [message, setMessage] = useState('');
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loadingDoc, setLoadingDoc] = useState(false);
   async function show() {
-    setOpen(true);
+    setOpen(true); setFeedback(''); setLoadingDoc(true);
     try { setDoc(await backend?.coreCall?.('/api/v1/privacy/me')); }
     catch { setFeedback('Не удалось загрузить подтверждение согласия.'); }
+    finally { setLoadingDoc(false); }
   }
   async function revoke() {
     if (!backend?.coreCall || busy) return;
-    setBusy(true);
+    setBusy(true); setFeedback('');
     // Persist the capability before sending: a lost response must not lose the receipt.
     const receipt = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('privacy-erasure-receipt', receipt);
@@ -89,22 +152,62 @@ export function PrivacySettings() {
   }
   async function sendRequest() {
     if (!backend?.coreCall || !message.trim()) return;
-    setBusy(true);
+    setBusy(true); setFeedback('');
     try {
       const r = await backend.coreCall<{ id: string }>('/api/v1/privacy/requests', { method: 'POST', body: { message } });
       setFeedback(`Обращение зарегистрировано: ${r.id}`); setMessage('');
     } catch { setFeedback('Не удалось зарегистрировать обращение.'); }
     finally { setBusy(false); }
   }
-  return <><button className="privacy-launch" onClick={show}>Персональные данные</button>
-    {open && <div className="privacy-overlay"><section className="privacy-card" role="dialog" aria-modal="true" aria-label="Персональные данные">
-      <button onClick={() => setOpen(false)} disabled={busy}>Закрыть</button><h2>Персональные данные</h2>
-      {doc && <details><summary>Моё согласие · {new Date(doc.accepted_at).toLocaleDateString('ru')}</summary><p className="privacy-text">{doc.text}</p></details>}
-      <label>Запрос сведений или исправления<textarea value={message} maxLength={2000} onChange={e => setMessage(e.target.value)} /></label>
-      <button disabled={busy || !message.trim() || !backend?.coreCall} onClick={sendRequest}>Отправить обращение</button>
-      <p>Отзыв завершит все сессии и запустит удаление ваших данных из всех вузов и сервисов.</p>
-      {!confirm ? <button disabled={!backend?.coreCall} onClick={() => setConfirm(true)}>Отозвать согласие</button>
-        : <div className="privacy-actions"><button disabled={busy} onClick={revoke}>Подтверждаю отзыв и удаление</button><button disabled={busy} onClick={() => setConfirm(false)}>Отмена</button></div>}
-      {feedback && <p role="status">{feedback}</p>}
-    </section></div>}</>;
+  const close = () => { if (!busy) { setOpen(false); setConfirm(false); } };
+  return (
+    <section className="privacy-home-footer" aria-label="Настройки персональных данных">
+      <button type="button" className="privacy-launch" onClick={show}>
+        <IconLock aria-hidden="true" />
+        <span><strong>Персональные данные</strong><small>Согласие и обращения</small></span>
+        <IconArrowRight aria-hidden="true" />
+      </button>
+      {open && (
+        <Modal title="Персональные данные" onClose={close} busy={busy}>
+          <p className="privacy-modal-intro">Здесь можно посмотреть принятое согласие, направить обращение или отозвать согласие на обработку данных.</p>
+
+          {loadingDoc ? <div className="privacy-modal-loading"><LoadingState text="Загружаем согласие…" /></div> : doc && (
+            <PrivacyDetails title="Моё согласие" meta={new Date(doc.accepted_at).toLocaleDateString('ru')}>
+              <p className="privacy-text">{doc.text}</p>
+            </PrivacyDetails>
+          )}
+
+          <div className="privacy-request">
+            <TextArea
+              label="Запрос сведений или исправления"
+              hint="Опишите, какие сведения хотите получить или исправить. До 2000 символов."
+              value={message}
+              maxLength={2000}
+              onChange={e => setMessage(e.target.value)}
+            />
+            <div><Button variant="secondary" size="small" loading={busy} disabled={!message.trim() || !backend?.coreCall} onClick={sendRequest}>Отправить обращение</Button></div>
+          </div>
+
+          <section className="privacy-danger-zone">
+            <div>
+              <h3>Отозвать согласие</h3>
+              <p>Все сессии завершатся, а удаление данных запустится во всех вузах и сервисах.</p>
+            </div>
+            {!confirm ? (
+              <Button variant="danger" size="small" disabled={!backend?.coreCall} onClick={() => setConfirm(true)}>Отозвать согласие</Button>
+            ) : (
+              <div className="privacy-confirm">
+                <p>Это действие нельзя отменить. Продолжить?</p>
+                <div className="privacy-actions">
+                  <Button variant="danger" size="small" loading={busy} onClick={revoke}>Подтвердить отзыв</Button>
+                  <Button variant="ghost" size="small" disabled={busy} onClick={() => setConfirm(false)}>Отмена</Button>
+                </div>
+              </div>
+            )}
+          </section>
+          {feedback && <p className="privacy-feedback" role="status">{feedback}</p>}
+        </Modal>
+      )}
+    </section>
+  );
 }
