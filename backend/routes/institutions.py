@@ -149,25 +149,24 @@ def list_my_groups(
     session_data=Depends(get_current_core_session),
     db: Session = Depends(get_db)
 ):
-    """Учебные группы для интерфейса (CORE_API_SPEC.md §7.1): студенту — только своя группа,
-    преподавателю и администратору — все группы вуза с составом.
+    """Учебные группы для интерфейса (CORE_API_SPEC.md §7.1): все группы вуза любому профилю.
+    Состав — преподавателю и администратору; студенту — только своей группы (отличие от контракта:
+    там студенту видна лишь своя группа, здесь — все, чтобы смотреть расписание любой).
 
     Тому, кто ведёт группы (groups.manage), дополнительно: can_manage, ETag групп и список студентов вуза для выбора состава.
     """
     user, _ = session_data
     _member(db, institution_id, user.id, profile)
     mine = registry.user_group_ids(db, institution_id, user.id)
-    query = db.query(StudyGroup).filter(StudyGroup.institution_id == institution_id)
-    if profile == "student":
-        query = query.filter(StudyGroup.id.in_(mine))
-    groups = query.order_by(StudyGroup.name_key).all()
+    groups = db.query(StudyGroup).filter(StudyGroup.institution_id == institution_id).order_by(StudyGroup.name_key).all()
     members = {}
     for row in db.query(StudyGroupMember).filter(StudyGroupMember.institution_id == institution_id):
         members.setdefault(row.group_id, []).append(row.user_id)
     manage = manages_groups(db, institution_id, user.id, profile)
     items = []
     for g in groups:
-        item = {"id": g.id, "name": g.name, "user_ids": sorted(members.get(g.id, []))}
+        shown = profile != "student" or g.id in mine
+        item = {"id": g.id, "name": g.name, "user_ids": sorted(members.get(g.id, [])) if shown else []}
         if manage:
             item.update(etag=institution_admin._group_tag(g), members_etag=institution_admin._members_tag(g))
         items.append(item)

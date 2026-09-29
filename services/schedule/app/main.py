@@ -456,14 +456,11 @@ def service_view(locale: Optional[str] = Query(None, max_length=8), ctx: Ctx = D
 # --------------------------------------------------------------------------
 
 def visible_groups(ctx: Ctx) -> list:
-    """Контракт: студент — своя текущая группа; преподаватель — названия групп вуза; admin — с schedule.read_all.
-
-    Группы берутся из ядра (machine API groups:read), своя группа студента — из group_ids introspection.
+    """Студенту и преподавателю — все группы вуза (отличие от контракта: там студенту только своя);
+    admin — с schedule.read_all. Группы берутся из ядра (machine API groups:read).
     """
-    if ctx.profile == 'teacher' or ctx.reads_all:
+    if ctx.profile in ('student', 'teacher') or ctx.reads_all:
         groups = core.groups(ctx.binding)
-    elif ctx.profile == 'student':
-        groups = [g for g in core.groups(ctx.binding) if g['id'] in ctx.group_ids] if ctx.group_ids else []
     else:
         raise forbidden('Нужна роль «Редактор расписания»')
     return sorted(groups, key=lambda g: g['id'])
@@ -527,14 +524,8 @@ def load_event(db, ctx: Ctx, event_id: str):
 
 
 def sees_event(db, ctx: Ctx, event: dict) -> bool:
-    """Контракт: студент — занятия своей группы, преподаватель — свои, admin — с schedule.read_all."""
-    if ctx.reads_all:
-        return True
-    if ctx.profile == 'teacher':
-        return ctx.sub in event['teacher_ids']
-    if ctx.profile == 'student':
-        return any(g in event['group_ids'] for g in ctx.group_ids)
-    return False
+    """Студенту и преподавателю видны все занятия вуза (отличие от контракта), admin — с schedule.read_all."""
+    return ctx.reads_all or ctx.profile in ('student', 'teacher')
 
 
 def event_response(ctx, row, value, status=200, extra=None):
@@ -599,8 +590,9 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
     link = ('EXISTS (SELECT 1 FROM {t} x WHERE x.institution_id=e.institution_id AND x.service_id=e.service_id '
             'AND x.event_id=e.id AND x.{c}=?)')
     with database() as db:
-        # Видимость по профилю; фильтры ниже только сужают её (контракт §2).
-        if not ctx.reads_all:
+        # Без фильтра студенту — его группа, преподавателю — его занятия; с фильтром группы или
+        # преподавателя — любые занятия вуза (отличие от контракта §2: там фильтр видимость не расширяет).
+        if not ctx.reads_all and not group_id and not teacher_id:
             if ctx.profile == 'teacher':
                 sql.append('AND ' + link.format(t='event_teachers', c='user_id'))
                 args.append(ctx.sub)

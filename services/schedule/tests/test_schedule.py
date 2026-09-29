@@ -88,13 +88,11 @@ class Schedule(unittest.TestCase):
         teacher, student, loner = self.as_(T1, 'teacher'), self.as_(ST1, 'student'), self.as_(ST2, 'student')
         plain_admin, editor = self.as_(ADMIN, 'admin'), self.as_(EDITOR, 'admin', EDITOR_PERMS)
         names = lambda h: [g['name'] for g in self.c.get('/api/v1/schedule/groups', headers=h).json()['items']]
-        # Контракт: студент — только своя группа, без группы — пустой список; преподаватель и редактор — все.
+        # Отличие от контракта: все группы видны и студенту (даже без группы), и преподавателю, и редактору.
         by_id = [g['name'] for g in sorted(GROUPS, key=lambda g: g['id'])]  # контракт: порядок id ASC
-        self.assertEqual(names(teacher), by_id)
-        self.assertEqual(names(editor), by_id)
-        self.assertEqual(names(student), ['ИВТ-21'])
-        self.assertEqual(names(loner), [])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{GB}', headers=student).status_code, 404)
+        for who in (teacher, editor, student, loner):
+            self.assertEqual(names(who), by_id)
+        self.assertEqual(self.c.get(f'/api/v1/schedule/groups/{GB}', headers=student).status_code, 200)
         self.assertEqual(self.c.get('/api/v1/schedule/groups', headers=plain_admin).status_code, 403)
         # Группы ведёт ядро: изменяющих операций над группами в сервисе нет.
         self.assertEqual(self.c.post('/api/v1/schedule/groups', headers=editor, json={'name': 'x'}).status_code, 405)
@@ -128,15 +126,17 @@ class Schedule(unittest.TestCase):
                                                   end='2026-09-29T07:30:00+03:00')).json()
         self.assertEqual(other['starts_at'], '2026-09-29T03:00:00Z')
 
-        # §4.1–4.2 Видимость: студент — своя группа, преподаватель — свои, редактор — все; фильтр не расширяет.
+        # Видимость: без фильтра студенту — своя группа, преподавателю — свои занятия; с фильтром группы
+        # или преподавателя — любые занятия вуза (отличие от контракта §4.1–4.2).
         self.assertEqual([e['id'] for e in self.week(st1).json()['items']], [event['id']])
         self.assertEqual([e['id'] for e in self.week(t1).json()['items']], [event['id']])
-        self.assertEqual(self.week(t1, teacher_id=T2).json()['items'], [])
-        self.assertEqual(self.week(st1, group_id=GB).json()['items'], [])
+        self.assertEqual([e['id'] for e in self.week(t1, teacher_id=T2).json()['items']], [other['id']])
+        self.assertEqual([e['id'] for e in self.week(st1, group_id=GB).json()['items']], [other['id']])
+        self.assertEqual([e['id'] for e in self.week(st2, group_id=GB).json()['items']], [other['id']])
         self.assertEqual(len(self.week(editor).json()['items']), 2)
         self.assertEqual([e['id'] for e in self.week(editor, group_id=GB).json()['items']], [other['id']])
-        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=st1).status_code, 404)
-        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=t1).status_code, 404)
+        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=st1).status_code, 200)
+        self.assertEqual(self.c.get(f'/api/v1/schedule/events/{other["id"]}', headers=t1).status_code, 200)
         self.assertEqual(self.week(plain_admin).status_code, 403)
         # Write не подразумевает read: без schedule.read_all занятие для правки не найти.
         self.assertEqual(self.week(writer_only).status_code, 403)

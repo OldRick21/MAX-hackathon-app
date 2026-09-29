@@ -14,6 +14,7 @@
 Всё созданное записывается в test_data_records. Удаление стирает ровно эти вузы (как «Удалить вуз»:
 данные сервисов в раннерах тоже) и этих пользователей. Реальные вузы и люди не затрагиваются.
 """
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ from database.create_tables import engine, session_local
 from database.tables import (Institution, JoinRequest, Membership, RoleAssignment, ServiceInstance, ServiceRole,
                              StudyGroup, StudyGroupMember, User)
 from platform_core import registry
+import privacy
 from platform_core.concurrency import is_uuid
 from platform_core.errors import DomainError, validation
 
@@ -104,6 +106,9 @@ def _user(db, name: str, institution_id: str, profile: str, rng: random.Random, 
     db.add(user)
     db.flush()
     db.add(TestDataRecord(kind="user", object_id=user.id))
+    # Ядро пускает в сервисы только давших согласие; вымышленный человек получает его сразу.
+    db.add(privacy.Consent(user_id=user.id, version=privacy.VERSION, document=privacy.TEXT,
+                           document_hash=hashlib.sha256(privacy.TEXT.encode()).hexdigest()))
     db.add(JoinRequest(institution_id=institution_id, user_id=user.id, full_name=name,
                        profile="student" if profile == "student" else "teacher", group_id=group.id if group else None,
                        group_name=group.name if group else None, status="approved", reviewed_at=utc_now()))
@@ -292,6 +297,10 @@ def delete(staff) -> dict:
             user = db.get(User, record.object_id)
             if user and not db.query(Membership).filter_by(user_id=user.id).first():
                 platform_ops.delete_user(db, user.id)
+                # Согласие настоящих людей переживает удаление (доказательство); у вымышленных — нет.
+                consent = db.get(privacy.Consent, user.id)
+                if consent:
+                    db.delete(consent)
                 removed_users += 1
             if not user or not db.query(Membership).filter_by(user_id=record.object_id).first():
                 db.query(TestDataRecord).filter_by(kind="user", object_id=record.object_id).delete()

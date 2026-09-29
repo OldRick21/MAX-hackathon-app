@@ -20,7 +20,7 @@ op = httpx.Client(base_url='http://127.0.0.1:18500', timeout=60); W = {'X-Operat
 P = '/api/plugins/operator-demo'
 op.post('/api/login', json={'password': 'correct horse battery'})
 db = lambda: sqlite3.connect(f'{S}/core.db')
-before = {t: db().execute(f'select count(*) from {t}').fetchone()[0] for t in ('institutions', 'users', 'memberships')}
+before = {t: db().execute(f'select count(*) from {t}').fetchone()[0] for t in ('institutions', 'users', 'memberships', 'privacy_consents')}
 r = op.post(f'{P}/create', headers=W, json={'institutions': 2, 'students': 5})
 check('модуль загружен в пульт', any(x['id'] == 'operator-demo' for x in op.get('/api/plugins').json()['items']))
 check('создание запущено', r.status_code == 200, r.text[:300])
@@ -42,7 +42,7 @@ r = op.post(f'{P}/delete', headers=W, json={})
 check('удаление', r.status_code == 200, r.text[:200])
 st = op.get(f'{P}/status').json()
 check('тестовых данных не осталось', (st['institutions'], st['users']) == (0, 0), st)
-after = {t: db().execute(f'select count(*) from {t}').fetchone()[0] for t in ('institutions', 'users', 'memberships')}
-check('настоящие данные не тронуты (вузы, пользователи, членства как до создания)', after == before, (before, after))
+after = {t: db().execute(f'select count(*) from {t}').fetchone()[0] for t in ('institutions', 'users', 'memberships', 'privacy_consents')}
+check('настоящие данные не тронуты (вузы, пользователи, членства, согласия как до создания)', after == before, (before, after))
 check('данные расписания в раннере стёрты', wait(lambda: not any(os.path.exists(f'{S}/data/schedule/{sid}') for sid in sched), 30))
 print(f'\nИТОГО: {sum(ok_all)}/{len(ok_all)} проверок пройдено')

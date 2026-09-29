@@ -73,17 +73,19 @@ export function GroupsScreen() {
         <ul className={s.groupList}>
           {shown.map(g => {
             const expanded = open.has(g.id);
+            // Студенту видны все группы, но состав — только своей: у чужих ядро его не отдаёт.
+            const roster = profile !== 'student' || my_group_ids.includes(g.id);
             return (
               <li key={g.id} className={`${p.card} ${s.groupCard}`}>
                 <button type="button" className={s.groupHead} aria-expanded={expanded} onClick={() => toggle(g.id)}>
                   <span className={s.groupName}>{g.name}</span>
                   {my_group_ids.includes(g.id) && <Badge tone="accent">Моя группа</Badge>}
-                  <span className={`${p.muted} ${s.groupCount}`}>{g.user_ids.length} {plural(g.user_ids.length)}</span>
+                  {roster && <span className={`${p.muted} ${s.groupCount}`}>{g.user_ids.length} {plural(g.user_ids.length)}</span>}
                   <IconChevron className={s.chevron} data-open={expanded} />
                 </button>
                 <div className={s.groupBody} data-open={expanded}>
                   <div className={s.groupBodyInner}>
-                    {expanded && (g.user_ids.length ? (
+                    {expanded && roster && (g.user_ids.length ? (
                       <ul className={s.memberList}>
                         {g.user_ids.map(id => <li key={id}>{nameOf(id)}</li>)}
                       </ul>

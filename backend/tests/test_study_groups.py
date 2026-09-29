@@ -100,9 +100,9 @@ class StudyGroups(unittest.TestCase):
         clash = self.c.put(f'{base}/{other}/members', headers={**p, 'If-Match': other_tag}, json={'user_ids': [s1, s2]})
         self.assertEqual(clash.json()['error']['code'], 'STUDENT_ALREADY_GROUPED')
 
-        # Приложение: студенту — только своя группа с составом (CORE_API_SPEC.md §7.1).
+        # Приложение: студенту — все группы вуза, состав — только своей (отличие от CORE_API_SPEC.md §7.1).
         mine = self.c.get(f'/api/v1/institution/{inst}/groups', params={'profile': 'student'}, headers=s1_core).json()
-        self.assertEqual({g['name']: g['user_ids'] for g in mine['items']}, {'ИВТ-21': [s1]})
+        self.assertEqual({g['name']: g['user_ids'] for g in mine['items']}, {'ИВТ-21': [s1], 'ИВТ-22': []})
         self.assertEqual(mine['my_group_ids'], [group])
         self.assertFalse(mine['can_manage'])
         self.assertNotIn('students', mine)

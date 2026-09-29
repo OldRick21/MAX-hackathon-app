@@ -21,7 +21,9 @@ ready = wait(lambda: httpx.get(CORE+'/api/v1/health').status_code == 200
 if not ready:
     raise SystemExit('стек не поднялся за 90 секунд')
 def login(n):
-    t=c.post('/api/v1/auth/token', json={'username':n}).json(); h={'Authorization':'Bearer '+t['access_token']}
+    ch=c.post('/api/v1/privacy/challenge').json()  # вход — только с согласием на обработку данных
+    t=c.post('/api/v1/auth/token', json={'username':n, 'consent_version':ch['version'], 'consent_challenge':ch['challenge']}).json()
+    h={'Authorization':'Bearer '+t['access_token']}
     return c.get('/api/v1/auth/me', headers=h).json()['id'], h, t
 op=httpx.Client(base_url='http://127.0.0.1:18500', timeout=20); W={'X-Operator':'1'}
 check('вход в пульт', op.post('/api/login', json={'password':'correct horse battery'}).status_code==200)
