@@ -13,7 +13,7 @@ os.environ.update(DATABASE_URL=f"sqlite:///{_tmp.name}/test.db", JWT_ISSUER="htt
                   MAX_BOT_TOKEN="integration-test-token", ALLOW_DEV_LOGIN="false",
                   CLOUD_BINDING_KEY="b" * 48, ADMINISTRATION_PROVISIONING_TOKEN="p" * 48,
                   SCHEDULE_PROVISIONING_TOKEN="s" * 48, USER_PROFILE_PROVISIONING_TOKEN="u" * 48,
-                  SEED_DEMO_DATA="false", ALLOW_FAKE_REDIS="true", REDIS_PORT="1")
+                  SEED_DEMO_DATA="false", ALLOW_FAKE_REDIS="true", RATE_LIMIT_LOGIN="0", RATE_LIMIT_REFRESH="0", RATE_LIMIT_MACHINE_EXCHANGE="0", RATE_LIMIT_USER="0", RATE_LIMIT_CREDENTIAL="0", REDIS_PORT="1")
 from fastapi.testclient import TestClient
 from main import app
 

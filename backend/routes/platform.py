@@ -6,12 +6,12 @@
 """
 from typing import Any, Optional
 
-from fastapi import APIRouter, Body, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from database.create_tables import get_db
-from auth.dependencies import get_current_core_session
+from auth.dependencies import get_current_core_session, json_body
 from platform_core.errors import DomainError
 from routes.private_admin import respond
 from services import platform_support as svc
@@ -57,8 +57,8 @@ def my_applications(session_data=Depends(get_current_core_session), db: Session 
 
 
 @router_platform.post("/api/v1/institution-applications")
-def submit_application(request: Request, payload: Any = Body(None),
-                       session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+def submit_application(request: Request, session_data=Depends(get_current_core_session), db: Session = Depends(get_db),
+                       payload: Any = Depends(json_body)):
     user, _ = session_data
     return respond(svc.submit_application(db, user, payload, getattr(request.state, "request_id", None)))
 
@@ -83,8 +83,8 @@ def my_join_requests(session_data=Depends(get_current_core_session), db: Session
 
 
 @router_platform.post("/api/v1/join-requests")
-def submit_join_requests(payload: Any = Body(None), session_data=Depends(get_current_core_session),
-                         db: Session = Depends(get_db)):
+def submit_join_requests(session_data=Depends(get_current_core_session),
+                         db: Session = Depends(get_db), payload: Any = Depends(json_body)):
     user, _ = session_data
     return respond(join_requests.submit(db, user, payload))
 
@@ -112,15 +112,15 @@ def get_application(application_id: str, staff: svc.StaffContext = Depends(staff
 
 
 @router_platform.post("/api/v1/platform/applications/{application_id}/approve")
-def approve_application(application_id: str, payload: Any = Body(None),
-                        staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
+def approve_application(application_id: str, staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db),
+                        payload: Any = Depends(json_body)):
     return staff_mutation(db, staff, "application.approve", application_id,
                           lambda: svc.approve_application(db, staff, application_id, payload))
 
 
 @router_platform.post("/api/v1/platform/applications/{application_id}/reject")
-def reject_application(application_id: str, payload: Any = Body(None),
-                       staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
+def reject_application(application_id: str, staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db),
+                       payload: Any = Depends(json_body)):
     return staff_mutation(db, staff, "application.reject", application_id,
                           lambda: svc.reject_application(db, staff, application_id, payload))
 
@@ -138,23 +138,24 @@ def get_institution(institution_id: str, staff: svc.StaffContext = Depends(staff
 
 
 @router_platform.patch("/api/v1/platform/institutions/{institution_id}")
-def set_status(institution_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-               staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
+def set_status(institution_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+               staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db),
+               payload: Any = Depends(json_body)):
     return staff_mutation(db, staff, "institution.status", institution_id,
                           lambda: svc.set_status(db, staff, institution_id, payload, if_match))
 
 
 @router_platform.put("/api/v1/platform/institutions/{institution_id}/local-hosts")
-def replace_local_hosts(institution_id: str, payload: Any = Body(None),
-                        if_match: Optional[str] = Header(None, alias="If-Match"),
-                        staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
+def replace_local_hosts(institution_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                        staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db),
+                        payload: Any = Depends(json_body)):
     return staff_mutation(db, staff, "institution.local_hosts", institution_id,
                           lambda: svc.replace_local_hosts(db, staff, institution_id, payload, if_match))
 
 
 @router_platform.post("/api/v1/platform/institutions/{institution_id}/initial-owner")
-def assign_initial_owner(institution_id: str, payload: Any = Body(None),
-                         staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db)):
+def assign_initial_owner(institution_id: str, staff: svc.StaffContext = Depends(staff_context), db: Session = Depends(get_db),
+                         payload: Any = Depends(json_body)):
     return staff_mutation(db, staff, "institution.initial_owner", institution_id,
                           lambda: svc.assign_initial_owner(db, staff, institution_id, payload))
 

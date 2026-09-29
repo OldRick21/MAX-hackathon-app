@@ -1,18 +1,19 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from auth.service import AuthService
-from platform_core import registry
+from platform_core import ratelimit, registry
 from auth.schemas import AuthTokenRequest, RefreshRequest, CreateServiceSession
-from auth.dependencies import get_current_core_session
-from auth.dependencies import basic_scheme, RequireMachineScope
+from auth.dependencies import basic_scheme, get_current_core_session, json_body, validated, RequireMachineScope
 from auth.schemas import MachineTokenRequest, IntrospectionRequest
 
 router = APIRouter()
 
 @router.post("/api/v1/auth/token")
-def login_with_max(body: AuthTokenRequest, db: Session = Depends(get_db)):
-    """Вход через MAX / dev-логин с созданием сессии ядра."""
+def login_with_max(request: Request, db: Session = Depends(get_db), payload=Depends(json_body)):
+    """Вход через MAX / dev-логин с созданием сессии ядра. Лимит — на IP (до разбора тела)."""
+    ratelimit.hit("login", request.headers.get("x-real-ip") or (request.client.host if request.client else None))
+    body = validated(AuthTokenRequest, payload)
     return AuthService.login_or_register(body, db)
 
 
@@ -44,13 +45,14 @@ def get_current_user(session_data=Depends(get_current_core_session)):
 def create_service_session(
     institution_id: str,
     service_id: str,
-    body: CreateServiceSession,
     response: Response,
     session_data=Depends(get_current_core_session),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload=Depends(json_body),
 ):
-    """Выдать пару JWT токенов для одного экземпляра сервиса и профиля."""
+    """Выдать пару JWT токенов для одного экземпляра сервиса и профиля (тело — после авторизации)."""
     user, core_session = session_data
+    body = validated(CreateServiceSession, payload)
     result = AuthService.create_service_session(
         user=user,
         core_session=core_session,
@@ -63,14 +65,19 @@ def create_service_session(
     return result
 
 
+def machine_client(credentials=Depends(basic_scheme), db: Session = Depends(get_db)):
+    return AuthService.verify_client(credentials, db)
+
+
 @router.post("/api/v1/internal/auth/token")
 def issue_machine_token(
-    body: MachineTokenRequest,
-    credentials = Depends(basic_scheme),
-    db: Session = Depends(get_db)
+    cred=Depends(machine_client),
+    db: Session = Depends(get_db),
+    payload=Depends(json_body),
 ):
-    """Обмен Basic Auth client_id:client_secret на Machine JWT."""
-    return AuthService.issue_machine_token(credentials, body, db)
+    """Обмен Basic Auth client_id:client_secret на Machine JWT; тело проверяется после ключа."""
+    validated(MachineTokenRequest, payload)
+    return AuthService.issue_machine_token(cred, db)
 
 
 @router.get("/api/v1/internal/auth/jwks")
@@ -82,11 +89,12 @@ def get_access_jwks(response: Response):
 
 @router.post("/api/v1/internal/auth/introspect")
 def introspect_service_access(
-    body: IntrospectionRequest,
     machine_claims = Depends(RequireMachineScope("tokens:introspect")),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    payload=Depends(json_body),
 ):
     """Проверка валидности service JWT и возврат актуальных прав из БД."""
+    body = validated(IntrospectionRequest, payload)
     return AuthService.introspect_service_token(body.token, machine_claims, db)
 
 

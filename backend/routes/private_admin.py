@@ -5,10 +5,11 @@
 """
 from typing import Any, Callable, Optional
 
-from fastapi import APIRouter, Body, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from auth.dependencies import json_body
 from database.create_tables import get_db
 from auth.authorization import ActorContext, private_actor
 from platform_core.errors import DomainError
@@ -51,8 +52,9 @@ def get_institution(ctx: ActorContext = Depends(private_actor), db: Session = De
 
 
 @router_private.patch("")
-def patch_institution(payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                      ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def patch_institution(if_match: Optional[str] = Header(None, alias="If-Match"),
+                      ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                      payload: Any = Depends(json_body)):
     return mutate(db, ctx, "institution.update", ctx.institution_id,
                   lambda: svc.patch_institution(db, ctx, payload, if_match))
 
@@ -77,7 +79,8 @@ def list_members(limit: Optional[int] = Query(None), cursor: Optional[str] = Que
 
 
 @router_private.post("/members")
-def add_member(payload: Any = Body(None), ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def add_member(ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+               payload: Any = Depends(json_body)):
     target = payload.get("user_id") if isinstance(payload, dict) else None
     return mutate(db, ctx, "member.add", str(target), lambda: svc.add_member(db, ctx, payload))
 
@@ -94,15 +97,16 @@ def remove_member(user_id: str, if_match: Optional[str] = Header(None, alias="If
 
 
 @router_private.put("/members/{user_id}/profiles")
-def replace_profiles(user_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                     ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def replace_profiles(user_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                     ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                     payload: Any = Depends(json_body)):
     return mutate(db, ctx, "member.profiles.replace", user_id,
                   lambda: svc.replace_profiles(db, ctx, user_id, payload, if_match))
 
 
 @router_private.put("/members/{user_id}/group")
-def set_member_group(user_id: str, payload: Any = Body(None), ctx: ActorContext = Depends(private_actor),
-                     db: Session = Depends(get_db)):
+def set_member_group(user_id: str, ctx: ActorContext = Depends(private_actor),
+                     db: Session = Depends(get_db), payload: Any = Depends(json_body)):
     return mutate(db, ctx, "member.group.set", user_id, lambda: svc.set_member_group(db, ctx, user_id, payload))
 
 
@@ -120,8 +124,8 @@ def approve_join_request(request_id: str, ctx: ActorContext = Depends(private_ac
 
 
 @router_private.post("/join-requests/{request_id}/reject")
-def reject_join_request(request_id: str, payload: Any = Body(None), ctx: ActorContext = Depends(private_actor),
-                        db: Session = Depends(get_db)):
+def reject_join_request(request_id: str, ctx: ActorContext = Depends(private_actor),
+                        db: Session = Depends(get_db), payload: Any = Depends(json_body)):
     return mutate(db, ctx, "join_request.reject", request_id,
                   lambda: join_requests.reject(db, ctx, request_id, payload))
 
@@ -135,7 +139,8 @@ def list_groups(limit: Optional[int] = Query(None), cursor: Optional[str] = Quer
 
 
 @router_private.post("/groups")
-def create_group(payload: Any = Body(None), ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def create_group(ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                 payload: Any = Depends(json_body)):
     return mutate(db, ctx, "group.create", ctx.institution_id, lambda: svc.create_group(db, ctx, payload))
 
 
@@ -145,8 +150,9 @@ def get_group(group_id: str, ctx: ActorContext = Depends(private_actor), db: Ses
 
 
 @router_private.patch("/groups/{group_id}")
-def rename_group(group_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                 ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def rename_group(group_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                 ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                 payload: Any = Depends(json_body)):
     return mutate(db, ctx, "group.rename", group_id, lambda: svc.rename_group(db, ctx, group_id, payload, if_match))
 
 
@@ -162,8 +168,9 @@ def get_group_members(group_id: str, ctx: ActorContext = Depends(private_actor),
 
 
 @router_private.put("/groups/{group_id}/members")
-def replace_group_members(group_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                          ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def replace_group_members(group_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                          ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                          payload: Any = Depends(json_body)):
     return mutate(db, ctx, "group.members.replace", group_id,
                   lambda: svc.replace_group_members(db, ctx, group_id, payload, if_match))
 
@@ -177,8 +184,9 @@ def list_services(limit: Optional[int] = Query(None), cursor: Optional[str] = Qu
 
 
 @router_private.post("/services")
-def install_service(payload: Any = Body(None), idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-                    ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def install_service(idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+                    ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                    payload: Any = Depends(json_body)):
     target = payload.get("service_type") if isinstance(payload, dict) else None
     return mutate(db, ctx, "service.install", str(target),
                   lambda: svc.install_service(db, ctx, payload, idempotency_key))
@@ -190,8 +198,9 @@ def get_service(service_id: str, ctx: ActorContext = Depends(private_actor), db:
 
 
 @router_private.patch("/services/{service_id}")
-def patch_service(service_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                  ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def patch_service(service_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                  ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                  payload: Any = Depends(json_body)):
     return mutate(db, ctx, "service.update", service_id,
                   lambda: svc.patch_service(db, ctx, service_id, payload, if_match))
 
@@ -204,8 +213,9 @@ def uninstall_service(service_id: str, if_match: Optional[str] = Header(None, al
 
 
 @router_private.put("/services/{service_id}/manifest")
-def replace_manifest(service_id: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                     ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def replace_manifest(service_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                     ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                     payload: Any = Depends(json_body)):
     return mutate(db, ctx, "service.manifest.replace", service_id,
                   lambda: svc.replace_manifest(db, ctx, service_id, payload, if_match))
 
@@ -219,8 +229,8 @@ def list_roles(service_id: str, limit: Optional[int] = Query(None), cursor: Opti
 
 
 @router_private.post("/services/{service_id}/roles")
-def create_role(service_id: str, payload: Any = Body(None),
-                ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def create_role(service_id: str, ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                payload: Any = Depends(json_body)):
     return mutate(db, ctx, "role.create", service_id, lambda: svc.create_role(db, ctx, service_id, payload))
 
 
@@ -230,8 +240,9 @@ def get_role(service_id: str, role_code: str, ctx: ActorContext = Depends(privat
 
 
 @router_private.patch("/services/{service_id}/roles/{role_code}")
-def patch_role(service_id: str, role_code: str, payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-               ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def patch_role(service_id: str, role_code: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+               ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+               payload: Any = Depends(json_body)):
     return mutate(db, ctx, "role.update", f"{service_id}:{role_code}",
                   lambda: svc.patch_role(db, ctx, service_id, role_code, payload, if_match))
 
@@ -250,9 +261,9 @@ def get_assignments(service_id: str, user_id: str, profile: str,
 
 
 @router_private.put("/services/{service_id}/users/{user_id}/profiles/{profile}/roles")
-def replace_assignments(service_id: str, user_id: str, profile: str, payload: Any = Body(None),
-                        if_match: Optional[str] = Header(None, alias="If-Match"),
-                        ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+def replace_assignments(service_id: str, user_id: str, profile: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                        ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                        payload: Any = Depends(json_body)):
     return mutate(db, ctx, "assignments.replace", f"{service_id}:{user_id}:{profile}",
                   lambda: svc.replace_assignments(db, ctx, service_id, user_id, profile, payload, if_match))
 

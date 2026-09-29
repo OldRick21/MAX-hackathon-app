@@ -15,6 +15,13 @@ class Settings(AuthSettings):
     ADMINISTRATION_PUBLIC_ORIGIN: str = "https://admin.platform.example"
     # Ограничение числа одновременных заявок одного пользователя.
     MAX_PENDING_APPLICATIONS_PER_USER: int = 3
+    # Лимиты запросов в окно RATE_LIMIT_WINDOW_SECONDS (CORE_API_SPEC.md §3); 0 — без лимита.
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+    RATE_LIMIT_LOGIN: int = 10            # на IP
+    RATE_LIMIT_REFRESH: int = 30          # на сессию
+    RATE_LIMIT_MACHINE_EXCHANGE: int = 30  # на client_id
+    RATE_LIMIT_USER: int = 120            # прочие запросы пользователя
+    RATE_LIMIT_CREDENTIAL: int = 600      # прочие запросы с machine token
 
     def cloud_urls(self, service_type: str, service_id: str):
         """Адреса облачного экземпляра: у каждого вуза свой путь /<service_id>/ в раннере типа."""

@@ -13,7 +13,7 @@ _tmp = tempfile.TemporaryDirectory()
 os.environ.update(
     DATABASE_URL=f'sqlite:///{_tmp.name}/core.db', JWT_ISSUER='https://core.test',
     JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='custom-secret-' * 4, MAX_BOT_TOKEN='',
-    ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', REDIS_PORT='1',
+    ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='false', ALLOW_FAKE_REDIS='true', RATE_LIMIT_LOGIN='0', RATE_LIMIT_REFRESH='0', RATE_LIMIT_MACHINE_EXCHANGE='0', RATE_LIMIT_USER='0', RATE_LIMIT_CREDENTIAL='0', REDIS_PORT='1',
     CLOUD_BINDING_KEY='b' * 48, ADMINISTRATION_PROVISIONING_TOKEN='p' * 48, SERVICE_CONFIG_DIR='',
     SCHEDULE_PROVISIONING_TOKEN='s' * 48, USER_PROFILE_PROVISIONING_TOKEN='u' * 48,
 )
@@ -279,6 +279,37 @@ class CustomServices(unittest.TestCase):
             self.assertTrue({'assignments.replace', 'role.update', 'role.delete'} <= set(actions), actions)
             self.assertTrue(all(e.machine_credential_id for e in db.query(AuditEvent).filter(
                 AuditEvent.institution_id == inst, AuditEvent.actor_kind == 'service')))
+
+    def test_rate_limits_and_auth_before_body(self):
+        from platform_core import ratelimit
+        from settings.config import settings
+        # Тело не разбирается до авторизации: без токена — 401, с токеном и битым JSON — 400.
+        _, headers = self.login('limits')
+        bad = {'Content-Type': 'application/json'}
+        url = '/api/v1/institution/00000000-0000-4000-8000-000000000001/service/00000000-0000-4000-8000-000000000002/session'
+        self.assertEqual(self.c.post(url, content=b'{bad', headers=bad).status_code, 401)
+        self.assertEqual(self.c.post(url, content=b'{bad', headers={**bad, **headers}).status_code, 400)
+        self.assertEqual(self.c.post('/api/v1/internal/auth/token', content=b'{bad', headers=bad).status_code, 401)
+
+        saved = (settings.RATE_LIMIT_LOGIN, settings.RATE_LIMIT_USER)
+        settings.RATE_LIMIT_LOGIN, settings.RATE_LIMIT_USER = 2, 3
+        ratelimit.reset()
+        try:
+            # Вход: лимит на IP, ответ одинаковый для любых учётных данных, с Retry-After.
+            codes = [self.c.post('/api/v1/auth/token', json={'username': f'rl{i}'}, headers={'X-Real-IP': '203.0.113.9'})
+                     for i in range(3)]
+            self.assertEqual([r.status_code for r in codes], [200, 200, 429])
+            self.assertEqual(codes[2].json()['error']['code'], 'RATE_LIMITED')
+            self.assertTrue(1 <= int(codes[2].headers['Retry-After']) <= settings.RATE_LIMIT_WINDOW_SECONDS)
+            other_ip = self.c.post('/api/v1/auth/token', json={'username': 'rl9'}, headers={'X-Real-IP': '203.0.113.10'})
+            self.assertEqual(other_ip.status_code, 200)
+            # Прочие запросы: лимит на проверенного пользователя.
+            me = [self.c.get('/api/v1/auth/me', headers=headers).status_code for _ in range(4)]
+            self.assertEqual(me, [200, 200, 200, 429])
+        finally:
+            settings.RATE_LIMIT_LOGIN, settings.RATE_LIMIT_USER = saved
+            ratelimit.reset()
+
 
 if __name__ == '__main__':
     unittest.main()

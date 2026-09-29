@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from database.tables import Institution
 from auth.dependencies import bearer_scheme
-from platform_core import catalog, registry
+from platform_core import catalog, ratelimit, registry
 from platform_core.concurrency import is_uuid
 from platform_core.errors import DomainError
 import jwt
@@ -90,6 +90,7 @@ def private_actor(
     if not machine_context:
         raise DomainError(401, 'UNAUTHENTICATED', 'Machine credential or institution inactive')
     credential, _ = machine_context
+    ratelimit.hit("credential", credential.id)
     institution = db.get(Institution, institution_id)
     if institution.status != 'active':
         raise DomainError(409, 'RESOURCE_INACTIVE', 'Institution is not active')

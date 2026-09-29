@@ -13,11 +13,15 @@ from auth.security import hash_password, verify_password, security, timestamp
 from auth.state import alive, lock_core, revoke_core, core_state, service_state, machine_scopes
 from auth.max_validation import validate_max_init_data
 from settings.config import settings
-from platform_core import registry
+from platform_core import ratelimit, registry
 
 
 def invalid_refresh():
     return DomainError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token недействителен, истёк или уже использован')
+
+
+def invalid_client():
+    return DomainError(401, 'INVALID_CLIENT', 'Неверный ключ сервиса', headers={'WWW-Authenticate': 'Basic realm="core-service"'})
 
 
 def decode_refresh(token, kind):
@@ -170,6 +174,7 @@ class AuthService:
     @staticmethod
     def refresh_core_session(refresh_token_str, db):
         claims = decode_refresh(refresh_token_str, 'core_refresh')
+        ratelimit.hit('refresh', claims['sid'])
         lock_core(db, claims['sid'])
         state = core_state(db, claims)
         if not state:
@@ -232,6 +237,7 @@ class AuthService:
     @staticmethod
     def refresh_service_session(service_id, institution_id, refresh_token_str, db):
         claims = decode_refresh(refresh_token_str, 'service_refresh')
+        ratelimit.hit('refresh', claims['sid'])
         if claims['service_id'] != service_id or claims['institution_id'] != institution_id:
             raise invalid_refresh()
         lock_core(db, claims['parent_sid'])
@@ -265,13 +271,19 @@ class AuthService:
         db.commit()
 
     @staticmethod
-    def issue_machine_token(credentials, req_body, db):
-        failure = DomainError(401, 'INVALID_CLIENT', 'Неверный ключ сервиса', headers={'WWW-Authenticate': 'Basic realm="core-service"'})
+    def verify_client(credentials, db):
+        """HTTP Basic ключа сервиса; проверяется до разбора тела. Лимит — на client_id."""
         if not credentials:
-            raise failure
+            raise invalid_client()
+        ratelimit.hit('machine_exchange', credentials.username)
         cred = db.query(ServiceCredential).filter_by(client_id=credentials.username).first()
         if not cred or cred.revoked_at is not None or not verify_password(credentials.password, cred.hashed_secret):
-            raise failure
+            raise invalid_client()
+        return cred
+
+    @staticmethod
+    def issue_machine_token(cred, db):
+        failure = invalid_client()
         service = db.get(ServiceInstance, cred.service_id)
         if not service:
             raise failure

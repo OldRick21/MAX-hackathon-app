@@ -13,7 +13,8 @@ _tmp = tempfile.TemporaryDirectory()
 os.environ.update(DATABASE_URL=f'sqlite:///{_tmp.name}/jwt.db', JWT_ISSUER='https://core.test',
                   JWT_KEYRING_PATH=f'{_tmp.name}/keys.json', CURSOR_SECRET_KEY='c' * 48,
                   ALLOW_DEV_LOGIN='true', SEED_DEMO_DATA='true', CLOUD_BINDING_KEY='b' * 48,
-                  ADMINISTRATION_PROVISIONING_TOKEN='p' * 48, SERVICE_CONFIG_DIR='')
+                  ADMINISTRATION_PROVISIONING_TOKEN='p' * 48, SERVICE_CONFIG_DIR='', RATE_LIMIT_LOGIN='0',
+                  RATE_LIMIT_REFRESH='0', RATE_LIMIT_MACHINE_EXCHANGE='0', RATE_LIMIT_USER='0', RATE_LIMIT_CREDENTIAL='0')
 
 import jwt
 from fastapi.testclient import TestClient

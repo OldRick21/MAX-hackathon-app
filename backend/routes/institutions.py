@@ -1,11 +1,11 @@
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from database.tables import Institution, Membership, ServiceInstance, StudyGroup, StudyGroupMember
 from auth.authorization import ActorContext
-from auth.dependencies import get_current_core_session
+from auth.dependencies import get_current_core_session, json_body
 from platform_core import registry
 from platform_core.concurrency import check_limit, decode_cursor, encode_cursor
 from platform_core.errors import DomainError
@@ -201,16 +201,16 @@ def _group_change(db: Session, ctx: ActorContext, fn):
 
 
 @router.post("/api/v1/institution/{institution_id}/groups")
-def create_group(institution_id: str, request: Request, profile: Profile = PROFILE_QUERY, payload: Any = Body(None),
-                 session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+def create_group(institution_id: str, request: Request, profile: Profile = PROFILE_QUERY, session_data=Depends(get_current_core_session), db: Session = Depends(get_db),
+                 payload: Any = Depends(json_body)):
     ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
     return _group_change(db, ctx, lambda: institution_admin.create_group(db, ctx, payload))
 
 
 @router.patch("/api/v1/institution/{institution_id}/groups/{group_id}")
-def rename_group(institution_id: str, group_id: str, request: Request, profile: Profile = PROFILE_QUERY, payload: Any = Body(None),
-                 if_match: Optional[str] = Header(None, alias="If-Match"),
-                 session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+def rename_group(institution_id: str, group_id: str, request: Request, profile: Profile = PROFILE_QUERY, if_match: Optional[str] = Header(None, alias="If-Match"),
+                 session_data=Depends(get_current_core_session), db: Session = Depends(get_db),
+                 payload: Any = Depends(json_body)):
     ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
     return _group_change(db, ctx, lambda: institution_admin.rename_group(db, ctx, group_id, payload, if_match))
 
@@ -225,8 +225,9 @@ def delete_group(institution_id: str, group_id: str, request: Request, profile: 
 
 @router.put("/api/v1/institution/{institution_id}/groups/{group_id}/members")
 def replace_group_members(institution_id: str, group_id: str, request: Request, profile: Profile = PROFILE_QUERY,
-                          payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                          session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+                          if_match: Optional[str] = Header(None, alias="If-Match"),
+                          session_data=Depends(get_current_core_session), db: Session = Depends(get_db),
+                          payload: Any = Depends(json_body)):
     ctx = _group_actor(db, request, institution_id, session_data[0].id, profile)
     return _group_change(db, ctx, lambda: institution_admin.replace_group_members(db, ctx, group_id, payload, if_match))
 

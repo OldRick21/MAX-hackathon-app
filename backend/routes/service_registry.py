@@ -1,10 +1,10 @@
 """Machine API своего экземпляра (CORE_API_SPEC.md §5, §7). Логика — services/service_registry.py."""
 from typing import Any, Callable, Optional
 
-from fastapi import APIRouter, Body, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy.orm import Session
 
-from auth.dependencies import RequireMachineScope
+from auth.dependencies import RequireMachineScope, json_body
 from database.create_tables import get_db
 from platform_core.errors import DomainError
 from routes.private_admin import respond
@@ -40,8 +40,9 @@ def get_own_manifest(service_id: str, ctx=Depends(machine("manifest:write")), db
 
 
 @router.put(BASE + "/manifest")
-def replace_own_manifest(service_id: str, ctx=Depends(machine("manifest:write")), payload: Any = Body(None),
-                         if_match: Optional[str] = Header(None, alias="If-Match"), db: Session = Depends(get_db)):
+def replace_own_manifest(service_id: str, ctx=Depends(machine("manifest:write")),
+                         if_match: Optional[str] = Header(None, alias="If-Match"), db: Session = Depends(get_db),
+                         payload: Any = Depends(json_body)):
     """Заменить имя и меню: нет If-Match — 428, устаревший — 412."""
     return mutate(db, ctx, "service.manifest.publish", service_id,
                   lambda: svc.replace_manifest(db, ctx, service_id, payload, if_match))
@@ -81,8 +82,8 @@ def list_own_roles(service_id: str, limit: Optional[int] = Query(None), cursor: 
 
 
 @router.post(BASE + "/roles", status_code=201)
-def create_own_role(service_id: str, ctx=Depends(machine("roles:write")), payload: Any = Body(None),
-                    db: Session = Depends(get_db)):
+def create_own_role(service_id: str, ctx=Depends(machine("roles:write")), db: Session = Depends(get_db),
+                    payload: Any = Depends(json_body)):
     """Создать роль своего экземпляра: 201 с Location и ETag."""
     return mutate(db, ctx, "role.create", service_id, lambda: svc.create_role(db, ctx, service_id, payload))
 
@@ -94,8 +95,8 @@ def get_own_role(service_id: str, role_code: str, ctx=Depends(machine("roles:rea
 
 
 @router.patch(BASE + "/roles/{role_code}")
-def update_own_role(service_id: str, role_code: str, ctx=Depends(machine("roles:write")), payload: Any = Body(None),
-                    if_match: Optional[str] = Header(None, alias="If-Match"), db: Session = Depends(get_db)):
+def update_own_role(service_id: str, role_code: str, ctx=Depends(machine("roles:write")), if_match: Optional[str] = Header(None, alias="If-Match"), db: Session = Depends(get_db),
+                    payload: Any = Depends(json_body)):
     """Изменить имя, профили или права роли; сужение профилей при назначениях — 409 ROLE_IN_USE."""
     return mutate(db, ctx, "role.update", f"{service_id}:{role_code}",
                   lambda: svc.update_role(db, ctx, service_id, role_code, payload, if_match))
@@ -118,8 +119,8 @@ def get_own_assignments(service_id: str, user_id: str, profile: str, ctx=Depends
 
 @router.put(BASE + "/users/{user_id}/profiles/{profile}/roles")
 def replace_own_assignments(service_id: str, user_id: str, profile: str, ctx=Depends(machine("assignments:write")),
-                            payload: Any = Body(None), if_match: Optional[str] = Header(None, alias="If-Match"),
-                            db: Session = Depends(get_db)):
+                            if_match: Optional[str] = Header(None, alias="If-Match"),
+                            db: Session = Depends(get_db), payload: Any = Depends(json_body)):
     """Атомарно заменить набор ролей участника в профиле (If-Match обязателен)."""
     return mutate(db, ctx, "assignments.replace", f"{service_id}:{user_id}:{profile}",
                   lambda: svc.replace_assignments(db, ctx, service_id, user_id, profile, payload, if_match))
