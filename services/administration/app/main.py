@@ -216,6 +216,8 @@ OPERATIONS = [
     ("PATCH", "/services/{service_id}", "services.manage", True, False, True),
     ("DELETE", "/services/{service_id}", "services.manage", True, False, False),
     ("PUT", "/services/{service_id}/manifest", "services.manage", True, False, True),
+    ("GET", "/services/{service_id}/widgets", "services.read", False, False, False),
+    ("PUT", "/services/{service_id}/widgets/{widget_id}/visibility", "services.manage", True, False, True),
     ("GET", "/services/{service_id}/roles", "services.read", False, False, False),
     ("POST", "/services/{service_id}/roles", "roles.manage", False, False, True),
     ("GET", "/services/{service_id}/roles/{role_code}", "services.read", False, False, False),
@@ -230,6 +232,7 @@ OPERATIONS = [
 
 PARAM_RULES = {
     "user_id": UUID_RE, "service_id": UUID_RE, "request_id": UUID_RE, "credential_id": UUID_RE, "group_id": UUID_RE, "role_code": CODE_RE,
+    "widget_id": CODE_RE,
     "profile": re.compile(r"^(admin|teacher|student)$"),
 }
 

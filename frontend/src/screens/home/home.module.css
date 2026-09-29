@@ -1,30 +1,38 @@
-/* Главная — рабочая панель: приветствие, профиль и занятия рядом, ниже плитки сервисов. */
+/* Главная — только виджеты сервисов (docs/services/sdk/WIDGETS_SPEC.md §8): приветствие и сетка карточек.
+   Широкий экран — две колонки, wide во всю строку; телефон — одна колонка. */
 
 .head { display: flex; align-items: baseline; gap: 1.6rem; flex-wrap: wrap; }
 .greeting { font-family: var(--font-accent); font-weight: 500; font-size: 3.4rem; line-height: 1.2; letter-spacing: -.005em; }
 .subtitle { font-size: 2.2rem; color: var(--text-2); }
-.subtitle::first-letter, .dayTitle::first-letter { text-transform: uppercase; }
+.subtitle::first-letter, .widgetTitle::first-letter { text-transform: uppercase; }
 
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 2.4rem; margin-top: 2.8rem; align-items: start; }
+.widgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.4rem; margin-top: 2.8rem; align-items: stretch; }
 
-.profileCard {
+.widget {
   --home-avatar: 11rem;
-  display: flex; align-items: center; gap: 2.4rem; padding: 2.4rem;
+  display: flex; flex-direction: column; gap: 1.6rem; min-width: 0; padding: 2.4rem;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-large);
-  color: inherit; text-decoration: none; transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  color: inherit; text-decoration: none; animation: rise var(--dur) var(--ease) both;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-a.profileCard:hover { border-color: var(--accent); box-shadow: var(--shadow-accent); }
-.photo { border-radius: 2rem; }
-.profileText { min-width: 0; display: grid; gap: .6rem; }
+.wide { grid-column: 1 / -1; }
+.clickable:hover { border-color: var(--accent); box-shadow: var(--shadow-accent); }
+.widgetTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; line-height: 1.25; }
+.caption { font-size: 1.9rem; line-height: 1.4; color: var(--text-2); }
+.skeleton { display: grid; gap: 1rem; }
+@keyframes rise { from { opacity: 0; transform: translateY(.6rem); } to { opacity: 1; transform: none; } }
+
+/* profile */
+.profile { display: flex; align-items: center; gap: 2.4rem; min-width: 0; }
+.photo { border-radius: 2rem; flex: none; }
+.profileText { min-width: 0; flex: 1; display: grid; gap: .6rem; }
 .name { font-family: var(--font-accent); font-weight: 500; font-size: 2.6rem; line-height: 1.25; overflow-wrap: anywhere; }
 .meta { font-size: 2rem; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
 .uni { font-size: 1.8rem; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
+.profile .progress { margin-top: .8rem; max-width: 48rem; }
 
-.dayCard { padding: 2.4rem; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-large); }
-.dayHead { display: flex; align-items: baseline; justify-content: space-between; gap: 1.6rem; }
-.dayTitle { font-family: var(--font-accent); font-weight: 500; font-size: 2.4rem; line-height: 1.25; }
-.dayCaption { margin-top: 1.6rem; font-size: 2rem; color: var(--text-2); }
-.lessons { list-style: none; margin: 1.6rem 0 0; padding: 0; display: grid; gap: .4rem; }
+/* events */
+.lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
 .lesson {
   display: grid; grid-template-columns: 13rem minmax(0, 1fr) auto; gap: 1.6rem; align-items: baseline;
   padding: 1rem 1.2rem; border-radius: 1rem; font-size: 2rem; line-height: 1.4;
@@ -36,50 +44,76 @@ a.profileCard:hover { border-color: var(--accent); box-shadow: var(--shadow-acce
 .cancelled .subject, .cancelled .time { text-decoration: line-through; color: var(--text-2); }
 .now { box-shadow: inset 3px 0 0 var(--accent); }
 .now .time { color: var(--accent); }
-.more { font-size: 1.8rem; font-weight: 600; color: var(--accent-dark); text-decoration: none; white-space: nowrap; }
-.more:hover { text-decoration: underline; }
 
-.services { margin-top: 3.2rem; }
-.sectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 1.6rem; }
-.sectionTitle { font-size: 1.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
-.tiles { list-style: none; margin: 1.4rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(30rem, 1fr)); gap: 1.2rem; }
-.tile {
-  display: flex; align-items: center; gap: 1.6rem; padding: 1.6rem;
-  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 1.6rem;
+/* list */
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: .8rem; }
+.listItem { display: flex; align-items: center; justify-content: space-between; gap: 1.2rem; }
+.listText { min-width: 0; display: grid; }
+.listTitle { font-size: 2rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listSub { font-size: 1.7rem; color: var(--text-2); }
+.badge { flex: none; font-size: 1.6rem; padding: .2rem 1rem; border-radius: 999px; border: 1px solid var(--line); color: var(--text-2); }
+
+/* stat */
+.stat { display: flex; align-items: baseline; gap: 1.4rem; }
+.statValue { font-family: var(--font-accent); font-size: 5.6rem; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.statText { display: grid; gap: .2rem; min-width: 0; }
+.statUnit { font-size: 2rem; font-weight: 600; }
+
+/* progress */
+.progress { display: grid; gap: .8rem; }
+.progressHead { display: flex; justify-content: space-between; gap: 1rem; font-size: 1.9rem; color: var(--text-2); }
+.progressValue { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.bar { height: 1rem; border-radius: 999px; background: var(--surface-muted); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--dur) var(--ease); }
+
+/* notice */
+.notice { display: grid; gap: .6rem; }
+.noticeTitle { font-size: 2.1rem; font-weight: 600; }
+
+/* тон значения или метки */
+.tone_accent { color: var(--accent-dark); border-color: var(--accent); }
+.tone_warning { color: var(--warning, #b7791f); border-color: var(--warning, #b7791f); }
+.tone_danger { color: var(--danger, #c53030); border-color: var(--danger, #c53030); }
+.tone_muted { color: var(--text-2); }
+
+/* Ярлык облачного сервиса в свободной половине строки (только десктоп). */
+.filler {
+  display: flex; align-items: center; gap: 1.6rem; padding: 2.4rem; min-width: 0;
+  background: var(--surface); border: 1px dashed var(--line); border-radius: var(--r-large);
   color: inherit; text-decoration: none; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
 }
-.tile:hover { border-color: var(--accent); background: var(--surface-hover); }
+.filler:hover { border-color: var(--accent); background: var(--surface-hover); }
 .tileIcon { flex: none; width: 5.2rem; height: 5.2rem; border-radius: 1.4rem; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-dark); }
 .tileIcon svg { width: 2.8rem; height: 2.8rem; }
 .tileText { min-width: 0; display: grid; }
 .tileName { font-weight: 600; font-size: 2rem; }
 .tileDesc { font-size: 1.7rem; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-@media (max-width: 1100px) and (min-width: 768px) {
-  .grid { grid-template-columns: 1fr; }
-}
+.empty { margin-top: 2.8rem; display: grid; gap: 1rem; }
+.empty code { word-break: break-all; }
+
+@media (prefers-reduced-motion: reduce) { .widget { animation: none; } }
 
 @media (max-width: 767px) {
   .greeting { font-size: 2.4rem; }
   .subtitle { font-size: 1.5rem; }
-  .grid { grid-template-columns: 1fr; gap: 1.2rem; margin-top: 1.6rem; }
-  .profileCard { --home-avatar: 7.2rem; gap: 1.4rem; padding: 1.4rem; border-radius: 1.6rem; }
+  .widgets { grid-template-columns: 1fr; gap: 1.2rem; margin-top: 1.6rem; }
+  .filler { display: none; }
+  .widget { --home-avatar: 7.2rem; gap: 1rem; padding: 1.6rem; border-radius: 1.6rem; }
+  .widgetTitle { font-size: 1.7rem; }
+  .caption { font-size: 1.4rem; }
+  .profile { gap: 1.4rem; }
   .photo { border-radius: 1.6rem; }
   .name { font-size: 1.8rem; }
   .meta { font-size: 1.4rem; }
   .uni { font-size: 1.3rem; }
-  .dayCard { padding: 1.6rem; border-radius: 1.6rem; }
-  .dayTitle { font-size: 1.7rem; }
-  .dayCaption { font-size: 1.4rem; }
-  .more { font-size: 1.4rem; }
   .lesson { grid-template-columns: auto minmax(0, 1fr); font-size: 1.4rem; gap: .2rem 1.2rem; padding: .8rem 1rem; }
   .room { grid-column: 2; text-align: left; }
-  .services { margin-top: 2rem; }
-  .sectionTitle { font-size: 1.2rem; }
-  .tiles { grid-template-columns: 1fr; gap: .8rem; margin-top: 1rem; }
-  .tile { padding: 1.2rem; gap: 1.2rem; border-radius: 1.4rem; }
-  .tileIcon { width: 4rem; height: 4rem; border-radius: 1.2rem; }
-  .tileIcon svg { width: 2.2rem; height: 2.2rem; }
-  .tileName { font-size: 1.5rem; }
-  .tileDesc { font-size: 1.3rem; }
+  .listTitle { font-size: 1.5rem; }
+  .listSub, .badge { font-size: 1.3rem; }
+  .statValue { font-size: 4rem; }
+  .statUnit { font-size: 1.5rem; }
+  .progressHead { font-size: 1.4rem; }
+  .bar { height: .8rem; }
+  .noticeTitle { font-size: 1.6rem; }
 }

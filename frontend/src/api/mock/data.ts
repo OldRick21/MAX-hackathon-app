@@ -1,6 +1,6 @@
 // Вымышленные данные для разработки без сервера. Формат — строго как в контрактах API.
 
-import type { Group, InstitutionView, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission } from '../types';
+import type { Group, InstitutionView, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission, WidgetKind } from '../types';
 import { addDays, dayKey, mskToIso, now, startOfWeek } from '../../utils/time';
 
 export const ME = '6f1c2a4e-3b7d-4c1e-9a52-0d4e8b7a1c01';
@@ -191,10 +191,10 @@ const basic = (menus: string[]) => ({ roles: [], permissions: [], menus });
 
 export const serviceSeeds: Record<string, ServiceSeed[]> = {
   [INST_MEPHI]: [
-    svc('5e000000-0000-4000-8000-000000000101', 'user-profile', 'Люди', 'local', 'people.university.example',
+    svc('5e000000-0000-4000-8000-000000000101', 'user-profile', 'Люди', 'cloud', 'people.university.example',
       [m('home', 'Главная', '/home'), m('users', 'Пользователи', '/users', 10)],
       { student: basic(['home', 'users']), teacher: basic(['home', 'users']) }),
-    svc('5e000000-0000-4000-8000-000000000102', 'schedule', 'Расписание', 'local', 'schedule.university.example',
+    svc('5e000000-0000-4000-8000-000000000102', 'schedule', 'Расписание', 'cloud', 'schedule.university.example',
       [m('schedule', 'Расписание', '/schedule')],
       { student: basic(['schedule']), teacher: basic(['schedule']) }),
     svc('5e000000-0000-4000-8000-000000000103', 'coursework', 'Курсовые работы', 'local', 'coursework.mephi.example',
@@ -202,10 +202,10 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
       { student: basic(['coursework']), teacher: basic(['coursework']) }),
   ],
   [INST_MTUCI]: [
-    svc('5e000000-0000-4000-8000-000000000201', 'user-profile', 'Люди', 'local', 'people.university.example',
+    svc('5e000000-0000-4000-8000-000000000201', 'user-profile', 'Люди', 'cloud', 'people.university.example',
       [m('home', 'Главная', '/home'), m('users', 'Пользователи', '/users', 10)],
       { teacher: basic(['home', 'users']), admin: { roles: ['profile_editor'], permissions: ['profiles.manage'], menus: ['home', 'users'] } }),
-    svc('5e000000-0000-4000-8000-000000000202', 'schedule', 'Расписание', 'local', 'schedule.university.example',
+    svc('5e000000-0000-4000-8000-000000000202', 'schedule', 'Расписание', 'cloud', 'schedule.university.example',
       [m('schedule', 'Расписание', '/schedule'), m('schedule_admin', 'Расписание', '/schedule')],
       { teacher: basic(['schedule']),
         admin: { roles: ['schedule_editor'], permissions: ['schedule.read_all', 'schedule.write'], menus: ['schedule_admin'] } }),
@@ -218,3 +218,18 @@ export const serviceSeeds: Record<string, ServiceSeed[]> = {
       { teacher: basic(['coursework']), admin: basic(['coursework']) }),
   ],
 };
+
+/** Виджеты сервисов (как в их manifest, docs/services/sdk/WIDGETS_SPEC.md §9). */
+export const widgetSeeds: { type: string; id: string; title: string; kind: WidgetKind; size: 'small' | 'wide'; profiles: Profile[];
+  perms: string[]; path: string; open: string; order: number }[] = [
+  { type: 'user-profile', id: 'me', title: 'Мой профиль', kind: 'profile', size: 'wide', profiles: ['student', 'teacher', 'admin'],
+    perms: [], path: '/profile/widgets/me', open: 'home', order: 0 },
+  { type: 'schedule', id: 'today', title: 'Сегодня', kind: 'events', size: 'wide', profiles: ['student', 'teacher'],
+    perms: [], path: '/schedule/widgets/today', open: 'schedule', order: 0 },
+  { type: 'schedule', id: 'today_admin', title: 'Занятия сегодня', kind: 'stat', size: 'small', profiles: ['admin'],
+    perms: ['schedule.read_all'], path: '/schedule/widgets/today-admin', open: 'schedule_admin', order: 0 },
+  { type: 'coursework', id: 'my_work', title: 'Моя курсовая', kind: 'list', size: 'small', profiles: ['student'],
+    perms: [], path: '/coursework/widgets/my-work', open: 'coursework', order: 0 },
+  { type: 'coursework', id: 'to_review', title: 'На проверке', kind: 'stat', size: 'small', profiles: ['teacher'],
+    perms: [], path: '/coursework/widgets/to-review', open: 'coursework', order: 0 },
+];

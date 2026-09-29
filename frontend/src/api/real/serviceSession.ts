@@ -26,7 +26,8 @@ export class ServiceSession {
   private pair: Pair | null = null;
   private pending: Promise<Pair> | null = null;
   private disposed = false;
-  readonly apiBase: string;
+  /** Может быть пустым, если сессию первым открыл виджет главной: экраны дописывают адрес (real/index.ts). */
+  apiBase: string;
 
   constructor(private core: CoreSession, readonly service: ServiceView) {
     this.apiBase = service.api_base_url.replace(/\/+$/, '');
@@ -77,6 +78,16 @@ export class ServiceSession {
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 401 || (opts.method ?? 'GET') !== 'GET') throw e;
       return request<T>(this.url(path), { ...opts, token: await this.token(true) });
+    }
+  }
+
+  /** GET по готовому адресу сервиса (данные виджета): один повтор с новой сессией на 401. */
+  async getUrl<T>(url: string, signal?: AbortSignal) {
+    try {
+      return await request<T>(url, { token: await this.token(), signal });
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 401) throw e;
+      return request<T>(url, { token: await this.token(true), signal });
     }
   }
 

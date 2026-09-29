@@ -249,6 +249,35 @@ def list_my_services(institution_id: str, profile: Profile = PROFILE_QUERY, loca
                  visible, lambda c: c["id"], limit, cursor)
 
 
+@router.get("/api/v1/institution/{institution_id}/widgets")
+def list_my_widgets(institution_id: str, profile: Profile = PROFILE_QUERY, locale: Locale = LOCALE_QUERY,
+                    session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):
+    """Виджеты главного экрана для профиля (docs/services/sdk/WIDGETS_SPEC.md §6)."""
+    from platform_core import widgets
+    user, _ = session_data
+    _active(_member(db, institution_id, user.id, profile))
+    services = db.query(ServiceInstance).filter(ServiceInstance.institution_id == institution_id,
+                                                ServiceInstance.enabled == True,  # noqa: E712
+                                                ServiceInstance.deleted_at.is_(None)).all()
+    entries = []
+    for service in services:
+        if profile not in (service.supported_profiles or []):
+            continue
+        card = service_card(db, service, user.id, profile, locale)
+        visible_menus = {m["id"] for m in card["menus"]}
+        service_rank = min((m["order"] for m in card["menus"]), default=10001)
+        for w in widgets.visible_for(db, service, profile, card["permissions"]):
+            name, used = localized(w["titles"], locale, w["id"])
+            entries.append(((service_rank, card["display_name"], w["order"], w["id"]), {
+                "service_id": service.id, "service_type": service.service_type, "widget_id": w["id"],
+                "display_name": name, "locale": used, "kind": w["kind"], "size": w["size"],
+                "data_url": service.api_base_url.rstrip("/") + w["data_path"],
+                "open_menu": w["open_menu"] if w["open_menu"] in visible_menus else None, "order": w["order"],
+            }))
+    entries.sort(key=lambda e: e[0])
+    return {"items": [e[1] for e in entries[:widgets.MAX_HOME_WIDGETS]], "next_cursor": None}
+
+
 @router.get("/api/v1/institution/{institution_id}")
 def get_my_institution(institution_id: str, locale: Locale = LOCALE_QUERY,
                        session_data=Depends(get_current_core_session), db: Session = Depends(get_db)):

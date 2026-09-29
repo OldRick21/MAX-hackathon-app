@@ -97,6 +97,31 @@ export interface ServiceView {
   menus: MenuView[];
 }
 
+/** Виджет главного экрана из ядра (docs/services/sdk/WIDGETS_SPEC.md §6). */
+export type WidgetKind = 'profile' | 'events' | 'list' | 'stat' | 'progress' | 'notice';
+export interface WidgetView {
+  service_id: UUID;
+  service_type: string;
+  widget_id: string;
+  display_name: string;
+  locale: Locale;
+  kind: WidgetKind;
+  size: 'small' | 'wide';
+  data_url: string;
+  open_menu: string | null;
+  order: number;
+}
+
+export type Tone = 'normal' | 'muted' | 'accent' | 'warning' | 'danger';
+/** Данные виджета от сервиса (WIDGETS_SPEC.md §7); null — сервис ответил 204, карточку не показываем. */
+export type WidgetData =
+  | { kind: 'profile'; user_id: UUID; title: string; lines: string[]; progress?: number; hint?: string }
+  | { kind: 'events'; day: string | null; items: { title: string; starts_at: string; ends_at: string; place?: string; status: 'scheduled' | 'cancelled' }[]; empty_text?: string }
+  | { kind: 'list'; items: { title: string; subtitle?: string; badge?: string; tone?: Tone }[]; total?: number; empty_text?: string }
+  | { kind: 'stat'; value: number; unit?: string; caption?: string; tone?: Tone }
+  | { kind: 'progress'; value: number; caption?: string; hint?: string }
+  | { kind: 'notice'; title: string; text?: string; tone?: Tone };
+
 export interface CoreTokenPair {
   access_token: string;
   refresh_token: string;

@@ -88,6 +88,30 @@ check('админка видит три сервиса', r.status_code==200 and 
 check('студент не попадает в администрирование', session(sh,'administration','admin').status_code in (403,404))
 check('private API ядра снаружи без ключа закрыт', c.get(f'/api/v1/institution/{iid}/internal').status_code in (401,404))
 
+print('5a. Виджеты главного экрана')
+def home(h, prof):
+    r=c.get(f'/api/v1/institution/{iid}/widgets', params={'profile':prof}, headers=h)
+    return {w['widget_id']: w for w in r.json().get('items', [])} if r.status_code==200 else r.status_code
+check('студент: профиль и «Сегодня»', wait(lambda: set(home(sh,'student'))=={'me','today'}), home(sh,'student'))
+check('администратор с ролью: профиль и «Занятия сегодня»', set(home(oh,'admin'))=={'me','today_admin'}, home(oh,'admin'))
+w=home(sh,'student')['today']
+r=httpx.get(w['data_url'].replace('https://shell.test/schedule', f"http://127.0.0.1:{PORT['schedule']}"), headers=sth)
+check('данные «Сегодня» через раннер', r.status_code==200 and r.json()['kind']=='events', r.text[:200])
+me=home(sh,'student')['me']
+psh={'Authorization':'Bearer '+ps.json()['access_token']}
+r=httpx.get(me['data_url'].replace('https://shell.test/people', f"http://127.0.0.1:{PORT['user-profile']}"), headers=psh)
+check('карточка профиля: имя и группа', r.status_code==200 and r.json()['title']=='Анна Студентова' and 'ПИ-11' in ' '.join(r.json()['lines']), r.text[:200])
+wl=adm.get(f"/api/v1/administration/services/{svcs['schedule']}/widgets", headers=ah)
+check('админка видит виджеты расписания', wl.status_code==200 and {x['id'] for x in wl.json()['items']}=={'today','today_admin'}, wl.text[:200])
+r=adm.put(f"/api/v1/administration/services/{svcs['schedule']}/widgets/today/visibility",
+          headers={**ah,'If-Match':wl.headers.get('ETag')}, json={'visibility':{'student':False,'teacher':True}})
+check('администратор скрыл «Сегодня» у студентов', r.status_code==200, r.text[:200])
+check('у студента «Сегодня» пропал, у преподавателя остался', 'today' not in home(sh,'student') and 'today' in home(th,'teacher'))
+wl=adm.get(f"/api/v1/administration/services/{svcs['schedule']}/widgets", headers=ah)
+adm.put(f"/api/v1/administration/services/{svcs['schedule']}/widgets/today/visibility",
+        headers={**ah,'If-Match':wl.headers.get('ETag')}, json={'visibility':{'student':True,'teacher':True}})
+check('вернули студентам', 'today' in home(sh,'student'))
+
 print('6. Выключение сервиса')
 sp=f"/api/v1/administration/services/{svcs['schedule']}"
 tag=adm.get(sp, headers=ah).headers.get('ETag')

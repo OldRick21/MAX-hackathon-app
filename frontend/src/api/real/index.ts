@@ -6,6 +6,7 @@ import { ApiError, newIdempotencyKey, request, toApiError } from '../http';
 import { loadBridge, maxUserInfo, openExternal, waitInitData } from '../max';
 import type {
   Group, GroupDirectory, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
+  WidgetData, WidgetView,
 } from '../types';
 import { CoreSession, listAll } from './core';
 import { openServiceFrame } from './frame';
@@ -46,6 +47,7 @@ export function createRealBackend(): Backend {
     const key = `${s.id}:${s.profile}`;
     let ss = sessions.get(key);
     if (!ss) { ss = new ServiceSession(core, s); sessions.set(key, ss); }
+    else if (!ss.apiBase && s.api_base_url) ss.apiBase = s.api_base_url.replace(/\/+$/, '');
     return ss;
   };
 
@@ -209,6 +211,22 @@ export function createRealBackend(): Backend {
         return core.call<Page<ServiceView>>(`/api/v1/institution/${id}/service?${params}`, { signal });
       }, s => s.id);
       return items.map(s => ({ ...s, menus: [...s.menus].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)) }));
+    },
+    async listWidgets(id, profile, signal) {
+      const params = new URLSearchParams({ profile, locale: 'ru' });
+      return (await core.call<Page<WidgetView>>(`/api/v1/institution/${id}/widgets?${params}`, { signal })).items;
+    },
+    async widgetData(institutionId, profile, widget, signal) {
+      // Сессия экземпляра общая с его экранами (ключ id:profile); адрес данных — только из ответа ядра.
+      const ss = session({ id: widget.service_id, institution_id: institutionId, profile, api_base_url: '' } as ServiceView);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 3000);
+      signal?.addEventListener('abort', () => ctrl.abort(), { once: true });
+      try {
+        const data = (await ss.getUrl<WidgetData | null>(widget.data_url, ctrl.signal)).data;
+        if (data && data.kind !== widget.kind) throw new ApiError('Виджет ответил в другом формате.');
+        return data;
+      } finally { clearTimeout(timer); }
     },
     listGroups: (id, profile, signal) => core.call<GroupDirectory>(`/api/v1/institution/${id}/groups?profile=${profile}`, { signal }),
     async createGroup(id, profile, name) {

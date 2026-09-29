@@ -15,6 +15,7 @@ import uuid
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import List, Literal, Optional
 from uuid import UUID
@@ -40,6 +41,8 @@ SECRET = os.environ.get('SERVICE_CLIENT_SECRET', '')
 API_BASE = os.environ.get('SERVICE_API_BASE_URL', '').rstrip('/')
 CLIENT_BASE = os.environ.get('SERVICE_CLIENT_BASE_URL', '').rstrip('/')
 DB = os.environ.get('SCHEDULE_DB', '/data/schedule.db')
+# Часовой пояс вуза: по нему виджет решает, что такое «сегодня».
+TIMEZONE = ZoneInfo(os.environ.get('SCHEDULE_TIMEZONE', 'Europe/Moscow'))
 core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
 
 # Меню и роль — по контракту (SPEC §1); сервис публикует их сам. groups.manage в роль не входит:
@@ -48,7 +51,15 @@ MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus':
     {'id': 'schedule', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
      'profiles': ['student', 'teacher'], 'required_permissions': [], 'order': 0},
     {'id': 'schedule_admin', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
-     'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'order': 0}]}
+     'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'order': 0}],
+    # Виджеты главного экрана (docs/services/sdk/WIDGETS_SPEC.md §9).
+    'widgets': [
+        {'id': 'today', 'titles': {'ru': 'Сегодня', 'en': 'Today'}, 'kind': 'events', 'size': 'wide',
+         'profiles': ['student', 'teacher'], 'required_permissions': [], 'data_path': '/schedule/widgets/today',
+         'open_menu': 'schedule', 'order': 0},
+        {'id': 'today_admin', 'titles': {'ru': 'Занятия сегодня', 'en': 'Classes today'}, 'kind': 'stat', 'size': 'small',
+         'profiles': ['admin'], 'required_permissions': ['schedule.read_all'], 'data_path': '/schedule/widgets/today-admin',
+         'open_menu': 'schedule_admin', 'order': 0}]}
 ROLES = [{'code': 'schedule_editor', 'titles': {'ru': 'Редактор расписания', 'en': 'Schedule editor'},
           'allowed_profiles': ['admin'], 'permissions': ['schedule.read_all', 'schedule.write']},
          # Отличие от контракта: правку расписания администратор может включить и преподавателю.
@@ -611,6 +622,75 @@ def list_events(from_: str = Query(..., alias='from', max_length=64), to: str = 
     items = [event_json(r, groups[r['id']], teachers[r['id']]) for r in page]
     next_cursor = make_cursor(scope, [page[-1]['starts_at'], page[-1]['id']]) if len(rows) > limit else None
     return {'items': items, 'next_cursor': next_cursor}
+
+
+# --------------------------------------------------------------------------
+# Виджеты главного экрана (WIDGETS_SPEC.md §7): сводка из тех же данных и с теми же правами
+# --------------------------------------------------------------------------
+
+def day_bounds(day) -> tuple:
+    start = datetime(day.year, day.month, day.day, tzinfo=TIMEZONE).astimezone(timezone.utc)
+    fmt = '%Y-%m-%dT%H:%M:%SZ'
+    return start.strftime(fmt), (start + timedelta(days=1)).strftime(fmt)
+
+
+def own_events(db, ctx: Ctx, start: str, end: str) -> list:
+    """Занятия пользователя в [start, end): студенту — его группы, преподавателю — где он ведёт."""
+    sql = 'SELECT e.* FROM events e WHERE e.institution_id=? AND e.service_id=? AND e.starts_at < ? AND e.ends_at > ? AND '
+    if ctx.profile == 'teacher':
+        sql += ('EXISTS (SELECT 1 FROM event_teachers x WHERE x.institution_id=e.institution_id '
+                'AND x.service_id=e.service_id AND x.event_id=e.id AND x.user_id=?)')
+        args = [*ctx.tenant, end, start, ctx.sub]
+    else:
+        if not ctx.group_ids:
+            return []
+        marks = ','.join('?' * len(ctx.group_ids))
+        sql += ('EXISTS (SELECT 1 FROM event_groups x WHERE x.institution_id=e.institution_id '
+                f'AND x.service_id=e.service_id AND x.event_id=e.id AND x.group_id IN ({marks}))')
+        args = [*ctx.tenant, end, start, *ctx.group_ids]
+    return db.execute(sql + ' ORDER BY e.starts_at, e.id LIMIT 50', args).fetchall()
+
+
+@app.get('/api/v1/schedule/widgets/today')
+def widget_today(ctx: Ctx = Depends(authenticate)):
+    """Занятия сегодня, иначе ближайшего учебного дня в пределах недели."""
+    if ctx.profile not in ('student', 'teacher'):
+        raise forbidden('Виджет для студентов и преподавателей')
+    today = datetime.now(TIMEZONE).date()
+    day, rows = None, []
+    with database() as db:
+        for shift in range(7):  # сегодняшние пары показываются до конца дня, даже прошедшие
+            found = own_events(db, ctx, *day_bounds(today + timedelta(days=shift)))
+            if found:
+                day, rows = today + timedelta(days=shift), found
+                break
+    items = [{'title': r['title'], 'starts_at': r['starts_at'], 'ends_at': r['ends_at'],
+              'place': r['location'] or 'онлайн', 'status': r['status']} for r in rows[:10]]
+    return JSONResponse({'kind': 'events', 'day': day.isoformat() if day else None, 'items': items,
+                         'empty_text': 'На ближайшую неделю занятий нет'}, headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/v1/schedule/widgets/today-admin')
+def widget_today_admin(ctx: Ctx = Depends(authenticate)):
+    """Сколько занятий сегодня в вузе и сколько из них отменено (admin с schedule.read_all)."""
+    if ctx.profile != 'admin' or not ctx.reads_all:
+        raise forbidden('Нужна роль «Редактор расписания»')
+    start, end = day_bounds(datetime.now(TIMEZONE).date())
+    with database() as db:
+        row = db.execute("SELECT COUNT(*) AS total, SUM(status='cancelled') AS cancelled FROM events "
+                         'WHERE institution_id=? AND service_id=? AND starts_at < ? AND ends_at > ?',
+                         (*ctx.tenant, end, start)).fetchone()
+    total, cancelled = row['total'] or 0, row['cancelled'] or 0
+    caption = 'сегодня в вузе' + (f', отменено {cancelled}' if cancelled else '')
+    return JSONResponse({'kind': 'stat', 'value': total, 'unit': plural(total, 'занятие', 'занятия', 'занятий'),
+                         'caption': caption, 'tone': 'warning' if cancelled else 'normal'},
+                        headers={'Cache-Control': 'no-store'})
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
 
 
 @app.post('/api/v1/schedule/events', status_code=201)

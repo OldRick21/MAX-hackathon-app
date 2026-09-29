@@ -221,6 +221,22 @@ class Coursework(unittest.TestCase):
         self.assertNotEqual(evil.headers.get('access-control-allow-origin'), 'https://evil.test')
 
 
+    def test_home_widgets(self):
+        """Виджеты главной: своя работа студента, очередь преподавателя, сводка менеджера — с правами списка."""
+        st1, st2, t1, t2 = self.as_(ST1, 'student'), self.as_(ST2, 'student'), self.as_(T1, 'teacher'), self.as_(T2, 'teacher')
+        manager, plain_admin = self.as_(ADMIN, 'admin', ['coursework.manage']), self.as_(ADMIN, 'admin')
+        self.assertEqual(self.upload(st1, title='Анализ TLS').status_code, 201)
+        self.assertEqual(self.upload(st2, title='Чужая работа', teacher=T2).status_code, 201)
+        mine = self.c.get('/api/v1/coursework/widgets/my-work', headers=st1).json()
+        self.assertEqual((mine['kind'], mine['total'], [i['title'] for i in mine['items']], mine['items'][0]['badge']),
+                         ('list', 1, ['Анализ TLS'], 'на проверке'))
+        queue = self.c.get('/api/v1/coursework/widgets/to-review', headers=t1).json()
+        self.assertEqual((queue['kind'], queue['value'], queue['unit'], queue['tone']), ('stat', 1, 'работа', 'warning'))
+        self.assertEqual(self.c.get('/api/v1/coursework/widgets/all', headers=manager).json()['value'], 2)
+        for path, h in (('my-work', t1), ('to-review', st1), ('all', plain_admin), ('all', t2)):
+            self.assertEqual(self.c.get(f'/api/v1/coursework/widgets/{path}', headers=h).status_code, 403, path)
+        self.assertEqual([w['id'] for w in m.MANIFEST['widgets']], ['my_work', 'to_review', 'all_works'])
+
     def test_no_non_contract_endpoints(self):
         student = self.as_(ST1, 'student')
         for path in ('/api/v1/coursework/me', '/api/v1/coursework/teachers'):

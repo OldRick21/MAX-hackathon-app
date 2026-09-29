@@ -4,7 +4,7 @@
 import type {
   AcademicCardPatch, EventInput, Group, GroupDirectory, GroupEntry, InstitutionView, JoinOption, JoinRequest, JoinRequestItem, MaxUserInfo, Page,
   Profile, ProfileCard,
-  ReviewInput, ScheduleEvent, SelfCardPatch, ServiceView, Submission, SubmissionStatus, User, Versioned,
+  ReviewInput, ScheduleEvent, SelfCardPatch, ServiceView, Submission, SubmissionStatus, User, Versioned, WidgetData, WidgetView,
 } from './types';
 
 export interface ScheduleApi {
@@ -71,6 +71,10 @@ export interface Backend {
   withdrawJoinRequest(id: string): Promise<JoinRequest>;
   getProfiles(institutionId: string, signal?: AbortSignal): Promise<Profile[]>;
   listServices(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<ServiceView[]>;
+  /** Виджеты главного экрана профиля (ядро фильтрует по включению и правам). */
+  listWidgets(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<WidgetView[]>;
+  /** Данные виджета из API сервиса (service session экземпляра); null — показывать нечего. Таймаут 3 с. */
+  widgetData(institutionId: string, profile: Profile, widget: WidgetView, signal?: AbortSignal): Promise<WidgetData | null>;
   /** Учебные группы из ядра: все группы вуза с составом — любому участнику. */
   listGroups(institutionId: string, profile: Profile, signal?: AbortSignal): Promise<GroupDirectory>;
   /** Правка групп — любой администратор вуза. */

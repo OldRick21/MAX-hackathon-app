@@ -220,6 +220,21 @@ def replace_manifest(service_id: str, if_match: Optional[str] = Header(None, ali
                   lambda: svc.replace_manifest(db, ctx, service_id, payload, if_match))
 
 
+@router_private.get("/services/{service_id}/widgets")
+def list_widgets(service_id: str, ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db)):
+    """Виджеты экземпляра: включение сервисом (только чтение) и администратором вуза."""
+    return respond(svc.list_widgets(db, ctx, service_id))
+
+
+@router_private.put("/services/{service_id}/widgets/{widget_id}/visibility")
+def set_widget_visibility(service_id: str, widget_id: str, if_match: Optional[str] = Header(None, alias="If-Match"),
+                          ctx: ActorContext = Depends(private_actor), db: Session = Depends(get_db),
+                          payload: Any = Depends(json_body)):
+    """Включить или выключить виджет для профилей на уровне вуза."""
+    return mutate(db, ctx, "widget.visibility", f"{service_id}:{widget_id}",
+                  lambda: svc.set_widget_visibility(db, ctx, service_id, widget_id, payload, if_match))
+
+
 # --- Роли ---
 
 @router_private.get("/services/{service_id}/roles")

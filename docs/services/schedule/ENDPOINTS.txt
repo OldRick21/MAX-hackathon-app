@@ -11,3 +11,5 @@ GET /api/v1/schedule/events/{event_id}
 PUT /api/v1/schedule/events/{event_id}
 DELETE /api/v1/schedule/events/{event_id}
 GET /schedule
+GET /api/v1/schedule/widgets/today
+GET /api/v1/schedule/widgets/today-admin

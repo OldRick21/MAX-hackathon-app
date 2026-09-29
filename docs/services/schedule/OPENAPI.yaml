@@ -12,6 +12,8 @@ servers:
 security:
 - ServiceBearer: []
 tags:
+- name: Home widgets
+  description: Данные виджетов главного экрана (docs/services/sdk/WIDGETS_SPEC.md).
 - name: Schedule groups
 - name: Schedule events
 - name: Client
@@ -627,6 +629,80 @@ paths:
               schema:
                 type: string
       security: []
+  /api/v1/schedule/widgets/today:
+    servers:
+    - url: https://schedule.platform.example
+    get:
+      tags:
+      - Home widgets
+      operationId: getScheduleWidgetToday
+      summary: Виджет «Сегодня»
+      description: 'Студент — занятия своей группы, преподаватель — свои; сегодня или ближайший учебный день в пределах недели (часовой пояс вуза). Администратору — 403.'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetData'
+        '204':
+          description: Показывать нечего — карточка скрыта.
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      security:
+      - ServiceBearer: []
+  /api/v1/schedule/widgets/today-admin:
+    servers:
+    - url: https://schedule.platform.example
+    get:
+      tags:
+      - Home widgets
+      operationId: getScheduleWidgetTodayAdmin
+      summary: Виджет «Занятия сегодня»
+      description: 'Число занятий сегодня в вузе и отменённых; admin с schedule.read_all.'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WidgetData'
+        '204':
+          description: Показывать нечего — карточка скрыта.
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      security:
+      - ServiceBearer: []
 components:
   securitySchemes:
     ServiceBearer:
@@ -873,6 +949,86 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    WidgetTone:
+      type: string
+      enum: [normal, muted, accent, warning, danger]
+    WidgetData:
+      description: Данные виджета главного экрана по шаблону kind (docs/services/sdk/WIDGETS_SPEC.md §7). Тело до 16 KB; 204 — карточку не показывать.
+      oneOf:
+      - type: object
+        additionalProperties: false
+        required: [kind, user_id, title, lines]
+        properties:
+          kind: {const: profile}
+          user_id: {$ref: '#/components/schemas/UUID'}
+          title: {type: string, maxLength: 120}
+          lines: {type: array, maxItems: 3, items: {type: string, maxLength: 80}}
+          progress: {type: integer, minimum: 0, maximum: 100}
+          hint: {type: string, maxLength: 80}
+      - type: object
+        additionalProperties: false
+        required: [kind, day, items]
+        properties:
+          kind: {const: events}
+          day: {type: [string, 'null'], format: date}
+          items:
+            type: array
+            maxItems: 10
+            items:
+              type: object
+              additionalProperties: false
+              required: [title, starts_at, ends_at, status]
+              properties:
+                title: {type: string, maxLength: 120}
+                starts_at: {type: string, format: date-time}
+                ends_at: {type: string, format: date-time}
+                place: {type: string, maxLength: 80}
+                status: {type: string, enum: [scheduled, cancelled]}
+          empty_text: {type: string, maxLength: 300}
+      - type: object
+        additionalProperties: false
+        required: [kind, items]
+        properties:
+          kind: {const: list}
+          items:
+            type: array
+            maxItems: 5
+            items:
+              type: object
+              additionalProperties: false
+              required: [title]
+              properties:
+                title: {type: string, maxLength: 120}
+                subtitle: {type: string, maxLength: 80}
+                badge: {type: string, maxLength: 80}
+                tone: {$ref: '#/components/schemas/WidgetTone'}
+          total: {type: integer, minimum: 0}
+          empty_text: {type: string, maxLength: 300}
+      - type: object
+        additionalProperties: false
+        required: [kind, value]
+        properties:
+          kind: {const: stat}
+          value: {type: number}
+          unit: {type: string, maxLength: 80}
+          caption: {type: string, maxLength: 80}
+          tone: {$ref: '#/components/schemas/WidgetTone'}
+      - type: object
+        additionalProperties: false
+        required: [kind, value]
+        properties:
+          kind: {const: progress}
+          value: {type: integer, minimum: 0, maximum: 100}
+          caption: {type: string, maxLength: 80}
+          hint: {type: string, maxLength: 80}
+      - type: object
+        additionalProperties: false
+        required: [kind, title]
+        properties:
+          kind: {const: notice}
+          title: {type: string, maxLength: 120}
+          text: {type: string, maxLength: 300}
+          tone: {$ref: '#/components/schemas/WidgetTone'}
     ErrorResponse:
       type: object
       additionalProperties: false

@@ -273,6 +273,21 @@ class InstitutionLocalHost(table_class):
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
+class WidgetVisibility(table_class):
+    """Включение виджета главного экрана для профиля (docs/services/sdk/WIDGETS_SPEC.md §4).
+
+    Два независимых выключателя: by_service меняет backend сервиса (machine API), by_admin —
+    администратор вуза (private API). Виджет показывается, только если включены оба.
+    """
+    __tablename__ = "widget_visibility"
+
+    service_id = Column(String(36), ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
+    widget_id = Column(String(64), primary_key=True)
+    profile = Column(String(20), primary_key=True)
+    by_service = Column(Boolean, nullable=False, default=True)
+    by_admin = Column(Boolean, nullable=False, default=True)
+
+
 class PurgedInstance(table_class):
     """Облачный экземпляр удалённого вуза: раннер его типа останавливает процесс и стирает данные
     /data/<service_id>. Запись живёт PURGE_RETENTION, чтобы раннер успел её получить."""

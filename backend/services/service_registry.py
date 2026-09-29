@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from database.tables import Membership, RoleAssignment, ServiceInstance, ServiceRole, StudyGroup, StudyGroupMember
-from platform_core import catalog, registry
+from platform_core import catalog, registry, widgets
 from platform_core.concurrency import check_limit, compute_etag, decode_cursor, encode_cursor, is_uuid, require_if_match
 from platform_core.errors import DomainError, not_found, protected, validation
 from services.institution_admin import Result, _body, assignment_view, role_view
@@ -80,7 +80,9 @@ def replace_manifest(db: Session, ctx: MachineContext, service_id: str, payload,
     if service.enabled and not manifest["menus"]:
         raise DomainError(409, "MANIFEST_REQUIRED", "У включённого сервиса должен остаться хотя бы один пункт меню")
     service.manifest = manifest
-    ctx.audit(db, "service.manifest.publish", "service", service.id, {"menus": [m["id"] for m in manifest["menus"]]})
+    widgets.sync(db, service)
+    ctx.audit(db, "service.manifest.publish", "service", service.id,
+              {"menus": [m["id"] for m in manifest["menus"]], "widgets": [w["id"] for w in manifest.get("widgets", [])]})
     db.commit()
     view = manifest_view(service)
     return Result(view, etag=compute_etag(view))
@@ -275,3 +277,31 @@ def replace_assignments(db: Session, ctx: MachineContext, service_id: str, user_
               {"service_type": service.service_type, "before": before["roles"], "after": codes})
     db.commit()
     return Result(after, etag=compute_etag(after))
+
+
+# --------------------------------------------------------------------------
+# Виджеты главного экрана: уровень сервиса (WIDGETS_SPEC.md §4)
+# --------------------------------------------------------------------------
+
+def _widget_item(item: dict) -> dict:
+    return {"id": item["id"], "profiles": item["profiles"], "visibility": item["service_visibility"],
+            "admin_visibility": item["admin_visibility"]}
+
+
+def list_widgets(db: Session, ctx: MachineContext, service_id: str) -> Result:
+    service = own_service(db, ctx, service_id)
+    return Result({"items": [_widget_item(i) for i in widgets.states(db, service)], "next_cursor": None},
+                  etag=widgets.etag(db, service))
+
+
+def set_widget_visibility(db: Session, ctx: MachineContext, service_id: str, widget_id: str, payload,
+                          if_match: Optional[str]) -> Result:
+    service = own_service(db, ctx, service_id)
+    registry.lock_institution(db, ctx.institution_id)
+    require_if_match(if_match, widgets.etag(db, service))
+    _writable(service, "Виджеты")
+    change = widgets.set_visibility(db, service, widget_id, payload, "service")
+    ctx.audit(db, "widget.visibility", "widget", f"{service.id}:{widget_id}", {"layer": "service", **change})
+    db.commit()
+    item = next(i for i in widgets.states(db, service) if i["id"] == widget_id)
+    return Result(_widget_item(item), etag=widgets.etag(db, service))

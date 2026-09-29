@@ -5,3 +5,4 @@ GET /api/v1/profile/users/{user_id}
 PATCH /api/v1/profile/users/{user_id}
 GET /home
 GET /users
+GET /api/v1/profile/widgets/me

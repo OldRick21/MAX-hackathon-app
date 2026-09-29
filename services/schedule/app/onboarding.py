@@ -42,7 +42,7 @@ def sync(core, manifest: dict, roles: list, retired: tuple = ()) -> None:
         elif kept != list(have.get("permissions") or []):
             core.update_role(binding, code, {"permissions": kept})
     current, etag = core.manifest_with_etag(binding)
-    if {k: current.get(k) for k in ("titles", "menus")} != manifest:
+    if {k: current.get(k) for k in manifest} != manifest or set(current) - set(manifest) - {"titles", "menus"}:
         core.publish_manifest(binding, manifest, etag)
 
 

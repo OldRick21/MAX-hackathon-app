@@ -1,174 +1,107 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { IconServices } from '../../components/icons/figma';
-import { serviceEntries } from '../../components/layout/navigation';
-import type { ScheduleEvent } from '../../api/types';
-import { Avatar, Button, Skeleton, toast } from '../../components/ui';
+import type { WidgetView } from '../../api/types';
+import { serviceEntries, type ServiceEntry } from '../../components/layout/navigation';
+import { Button, Skeleton, toast } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
-import { useAvatar } from '../../hooks/useAvatar';
-import { useProfilesApi, useScheduleApi } from '../../hooks/useServices';
-import { PROFILE_LABEL, useInstitution } from '../../state/institution';
-import { useSession } from '../../state/session';
-import { addDays, dayKey, formatShort, formatTime, formatWeekday, now, startOfDay } from '../../utils/time';
+import { useInstitution } from '../../state/institution';
+import { useBackend, useSession } from '../../state/session';
+import { formatShort, formatWeekday, now } from '../../utils/time';
 import s from './home.module.css';
+import { WidgetCard } from './widgets';
 
+type Cell = { kind: 'widget'; widget: WidgetView } | { kind: 'filler'; entry: ServiceEntry };
 
-/** Группа студента: общая для всех его занятий (у студента максимум одна группа — spec расписания). */
-function studentGroupId(events: ScheduleEvent[]): string | null {
-  if (!events.length) return null;
-  const common = events.slice(1).reduce((acc, e) => acc.filter(g => e.group_ids.includes(g)), events[0].group_ids);
-  return common.length === 1 ? common[0] : null;
-}
-
-function useHomeSchedule() {
-  const schedule = useScheduleApi();
-  const { profile } = useInstitution();
-  return useAsync(async signal => {
-    if (!schedule) return null;
-    const today = startOfDay(now());
-    const events = await schedule.api.listEvents({ from: today.toISOString(), to: addDays(today, 14).toISOString() }, signal);
-    // День для карточки: сегодня, иначе ближайший учебный день в пределах недели.
-    const upcoming = events.filter(e => Date.parse(e.ends_at) > now().getTime() || dayKey(e.starts_at) === dayKey(today));
-    const firstDay = upcoming.find(e => Date.parse(e.starts_at) < addDays(today, 7).getTime());
-    const key = firstDay ? dayKey(firstDay.starts_at) : null;
-    const dayEvents = key ? events.filter(e => dayKey(e.starts_at) === key) : [];
-    let groupName: string | null = null;
-    if (profile === 'student') {
-      const gid = studentGroupId(events);
-      if (gid) groupName = (await schedule.api.listGroups(signal).catch(() => [])).find(g => g.id === gid)?.name ?? null;
+/**
+ * Раскладка главной (WIDGETS_SPEC.md §8): на широком экране две колонки, wide — во всю строку.
+ * Если small остаётся в строке один, свободную половину занимает ярлык облачного сервиса
+ * (только на десктопе; на телефоне одна колонка и ярлыков нет).
+ */
+function layout(widgets: WidgetView[], fillers: ServiceEntry[]): Cell[] {
+  const cells: Cell[] = [];
+  const spare = [...fillers];
+  let open = false;
+  const hole = () => { const entry = spare.shift(); if (entry) cells.push({ kind: 'filler', entry }); open = false; };
+  for (const widget of widgets) {
+    if (widget.size === 'wide') {
+      if (open) hole();
+      cells.push({ kind: 'widget', widget });
+    } else {
+      cells.push({ kind: 'widget', widget });
+      open = !open;
     }
-    return { day: key ? new Date(dayEvents[0].starts_at) : null, isToday: key === dayKey(today), events: dayEvents, groupName };
-  }, [schedule, profile]);
+  }
+  if (open) hole();
+  return cells;
 }
-
-/** Сколько плиток сервисов помещается на главную; остальные — на вкладке «Сервисы». */
-const HOME_TILES = 4;
 
 export function HomeScreen() {
+  const backend = useBackend();
   const { maxUser, user } = useSession();
   const { institution, profile, catalog } = useInstitution();
-  const profiles = useProfilesApi();
   const base = `/institution/${institution.id}`;
 
-  const me = useAsync(async signal => (profiles ? (await profiles.api.getMe(signal)).data : null), [profiles]);
-  const schedule = useHomeSchedule();
-  const scheduleApi = useScheduleApi();
-  const photo = useAvatar(user?.id);
+  // Обновление при открытии главной и возврате в приложение; периодического опроса нет.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') setTick(t => t + 1); };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => { document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh); };
+  }, []);
 
-  const displayName = me.data?.display_name
-    || [maxUser?.first_name, maxUser?.last_name].filter(Boolean).join(' ')
-    || 'Пользователь';
-  const firstName = maxUser?.first_name || displayName.split(' ')[0];
-  const catalogReady = catalog.status === 'ready';
-  const loadingCard = !catalogReady || me.status === 'loading';
-  const meta = [PROFILE_LABEL[profile], schedule.data?.groupName && `Группа ${schedule.data.groupName}`, me.data?.position]
-    .filter(Boolean).join(' · ');
+  const widgets = useAsync(signal => backend.listWidgets(institution.id, profile, signal), [backend, institution.id, profile, tick]);
+  const services = catalog.status === 'ready' ? catalog.value : [];
+  const entries = serviceEntries(base, services);
+  const routeOf = (w: WidgetView) => (w.open_menu ? entries.find(e => e.key === `${w.service_id}:${w.open_menu}`)?.to ?? null : null);
 
-  const cardInner = (
-    <>
-      <Avatar name={displayName} src={photo} size="var(--home-avatar)" className={s.photo} />
-      <div className={s.profileText}>
-        {loadingCard ? (
-          <>
-            <Skeleton width="60%" height="2.8rem" />
-            <Skeleton width="80%" height="2.6rem" className={s.meta} />
-            <Skeleton width="70%" height="2rem" className={s.uni} />
-          </>
-        ) : (
-          <>
-            <p className={s.name}>{displayName}</p>
-            <p className={s.meta}>{meta}</p>
-            <p className={s.uni}>{institution.display_name}</p>
-          </>
-        )}
-      </div>
-    </>
-  );
+  const list = widgets.data ?? [];
+  // Профиль — всегда первым (§8).
+  const ordered = [...list.filter(w => w.kind === 'profile').slice(0, 1), ...list.filter(w => w.kind !== 'profile')];
+  const onHome = new Set(ordered.map(w => w.service_id));
+  const cloud = new Set(services.filter(x => x.deployment === 'cloud').map(x => x.id));
+  const fillers = entries.filter(e => cloud.has(e.key.split(':')[0]) && !onHome.has(e.key.split(':')[0]));
 
-  const services = catalogReady ? serviceEntries(base, catalog.value) : [];
-  const day = schedule.data;
+  const firstName = maxUser?.first_name || 'Пользователь';
   const today = now();
 
   return (
     <div>
       <header className={s.head}>
         <h1 className={s.greeting}>Привет, {firstName}!</h1>
-        <p className={s.subtitle}>{formatWeekday(today)}, {formatShort(today)}</p>
+        <p className={s.subtitle}>{formatWeekday(today)}, {formatShort(today)} · {institution.display_name}</p>
       </header>
 
-      <div className={s.grid}>
-        {profiles
-          ? <Link to={`${base}/users/me`} className={s.profileCard} aria-label={`Мой профиль: ${displayName}`}>{cardInner}</Link>
-          : <div className={s.profileCard}>{cardInner}</div>}
-
-        {scheduleApi && (
-          <section className={s.dayCard} aria-label="Занятия">
-            <div className={s.dayHead}>
-              <h2 className={s.dayTitle}>{!day?.day ? 'Занятия' : day.isToday ? 'Сегодня' : `${formatWeekday(day.day)}, ${formatShort(day.day)}`}</h2>
-              <Link to={`${base}/schedule`} className={s.more}>Всё расписание</Link>
-            </div>
-            {schedule.status === 'loading' ? (
-              <div className={s.lessons}>{[0, 1, 2].map(i => <Skeleton key={i} height="2rem" />)}</div>
-            ) : schedule.status === 'error' ? (
-              <p className={s.dayCaption}>Не удалось загрузить расписание.</p>
-            ) : !day?.events.length ? (
-              <p className={s.dayCaption}>На ближайшую неделю занятий нет.</p>
-            ) : (
-              <ul className={s.lessons}>
-                {day.events.map(e => {
-                  const t = today.getTime();
-                  const current = e.status !== 'cancelled' && Date.parse(e.starts_at) <= t && t < Date.parse(e.ends_at);
-                  return (
-                    <li key={e.id} className={[s.lesson, e.status === 'cancelled' && s.cancelled, current && s.now].filter(Boolean).join(' ')}>
-                      <span className={s.time}>{formatTime(e.starts_at)}–{formatTime(e.ends_at)}</span>
-                      <span className={s.subject}>{e.title}</span>
-                      <span className={s.room}>{e.location || 'онлайн'}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        )}
-      </div>
-
-      {services.length > 0 && (
-        <section className={s.services} aria-label="Сервисы">
-          <div className={s.sectionHead}>
-            <h2 className={s.sectionTitle}>Сервисы</h2>
-            <Link to={`${base}/services`} className={s.more}>Все сервисы</Link>
-          </div>
-          <ul className={s.tiles}>
-            {/* На главной — первые HOME_TILES сервисов, остальные — на вкладке «Сервисы». */}
-            {(services.length > HOME_TILES ? services.slice(0, HOME_TILES - 1) : services).map(({ key, to, name, desc, Icon }) => (
-              <li key={key}>
-                <Link to={to} className={s.tile}>
-                  <span className={s.tileIcon}><Icon /></span>
-                  <span className={s.tileText}><span className={s.tileName}>{name}</span><span className={s.tileDesc}>{desc}</span></span>
-                </Link>
-              </li>
+      {widgets.status === 'loading' && !widgets.data ? (
+        <div className={s.widgets}>
+          <div className={`${s.widget} ${s.wide}`}><Skeleton width="40%" height="2.4rem" /><Skeleton width="70%" height="2rem" /></div>
+          <div className={s.widget}><Skeleton width="60%" height="2.4rem" /></div>
+          <div className={s.widget}><Skeleton width="60%" height="2.4rem" /></div>
+        </div>
+      ) : widgets.status === 'error' && !widgets.data ? (
+        <p className={s.caption}>Не удалось загрузить главную. <Button variant="ghost" size="small" onClick={widgets.reload}>Повторить</Button></p>
+      ) : ordered.length ? (
+        <div className={s.widgets}>
+          {layout(ordered, fillers).map(cell => cell.kind === 'widget'
+            ? <WidgetCard key={`${cell.widget.service_id}:${cell.widget.widget_id}`} widget={cell.widget} to={routeOf(cell.widget)} tick={tick} />
+            : (
+              <Link key={cell.entry.key} to={cell.entry.to} className={s.filler}>
+                <span className={s.tileIcon}><cell.entry.Icon /></span>
+                <span className={s.tileText}><span className={s.tileName}>{cell.entry.name}</span><span className={s.tileDesc}>{cell.entry.desc}</span></span>
+              </Link>
             ))}
-            {services.length > HOME_TILES && (
-              <li>
-                <Link to={`${base}/services`} className={s.tile}>
-                  <span className={s.tileIcon}><IconServices /></span>
-                  <span className={s.tileText}>
-                    <span className={s.tileName}>Ещё {services.length - HOME_TILES + 1}</span>
-                    <span className={s.tileDesc}>Все сервисы вуза</span>
-                  </span>
-                </Link>
-              </li>
-            )}
-          </ul>
-        </section>
-      )}
-
-      {/* Без сервиса «Люди» профиля нет — ID для администратора показываем здесь. */}
-      {catalogReady && !profiles && user && (
-        <p className={s.uni} style={{ marginTop: '1.2rem', wordBreak: 'break-all' }}>
-          Ваш ID: <code>{user.id}</code>{' '}
-          <Button variant="ghost" size="small" onClick={() => navigator.clipboard?.writeText(user.id)
-            .then(() => toast('ID скопирован'), () => toast('Не удалось скопировать', true))}>Скопировать</Button>
-        </p>
+        </div>
+      ) : (
+        <div className={s.empty}>
+          <p className={s.caption}>Виджетов на главной пока нет. Разделы вуза — на вкладке «Сервисы».</p>
+          {user && (
+            <p className={s.caption}>
+              Ваш ID: <code>{user.id}</code>{' '}
+              <Button variant="ghost" size="small" onClick={() => navigator.clipboard?.writeText(user.id)
+                .then(() => toast('ID скопирован'), () => toast('Не удалось скопировать', true))}>Скопировать</Button>
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

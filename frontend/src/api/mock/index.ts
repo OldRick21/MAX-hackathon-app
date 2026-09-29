@@ -9,8 +9,8 @@
 
 import type { Backend, CourseworkApi, ProfilesApi, ScheduleApi } from '../backend';
 import { ApiError } from '../http';
-import type { GroupEntry, JoinRequest, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission } from '../types';
-import { now, setClock } from '../../utils/time';
+import type { GroupEntry, JoinRequest, Profile, ProfileCard, ScheduleEvent, ServiceView, Submission, WidgetData, WidgetView } from '../types';
+import { dayKey, now, setClock } from '../../utils/time';
 import avatar from './assets/demo-avatar.webp';
 import * as D from './data';
 
@@ -18,6 +18,8 @@ const params = new URLSearchParams(location.search);
 const scenario = params.get('scenario');
 setClock(params.get('now'));
 
+const plural = (n: number, one: string, few: string, many: string) =>
+  n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many;
 const wait = (ms = 250 + Math.random() * 350) => new Promise(r => setTimeout(r, ms));
 const clone = <T,>(v: T): T => structuredClone(v);
 const failOnce = new Set(scenario === 'errors' ? ['schedule', 'coursework'] : []);
@@ -235,6 +237,52 @@ export function createMockBackend(): Backend {
     if (!canManageGroups(id, profile)) throw new ApiError('Нет доступа к этому действию.', 403);
   };
 
+  // Данные виджетов — из тех же тестовых данных, с правилами доступа сервисов.
+  async function mockWidgetData(svc: ServiceView, widget: WidgetView): Promise<WidgetData | null> {
+    const inst = svc.institution_id;
+    const day = (shift: number) => { const d = new Date(now()); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + shift); return d; };
+    if (widget.widget_id === 'me') {
+      const c = (await profiles(svc).getMe()).data;
+      const group = D.groups[inst]?.find(g => D.groupStudents[g.id]?.includes(D.ME));
+      const label = { student: 'Студент', teacher: 'Преподаватель', admin: 'Администратор' }[svc.profile];
+      // Как у сервиса «Люди»: учёная степень — только у преподавателя, должность — у преподавателя и администратора.
+      const fields: [keyof ProfileCard, string][] = [['display_name', 'имя'], ['about', 'о себе'],
+        ...(svc.profile !== 'student' ? [['position', 'должность'] as [keyof ProfileCard, string]] : []),
+        ...(svc.profile === 'teacher' ? [['academic_degree', 'учёную степень'] as [keyof ProfileCard, string]] : [])];
+      const missing = fields.filter(([k]) => !String(c[k] ?? '').trim()).map(([, l]) => l);
+      return { kind: 'profile', user_id: D.ME, title: c.display_name || 'Без имени',
+        lines: [svc.profile === 'student' && group ? `${label} · Группа ${group.name}` : label, ...[c.position, c.academic_degree].filter((x): x is string => !!x)],
+        progress: Math.round(100 * (fields.length - missing.length) / fields.length), ...(missing.length ? { hint: `Добавьте ${missing.join(', ')}` } : {}) };
+    }
+    if (widget.widget_id === 'today') {
+      const api = schedule(svc);
+      for (let shift = 0; shift < 7; shift++) {
+        const items = await api.listEvents({ from: day(shift).toISOString(), to: day(shift + 1).toISOString() });
+        if (items.length) return { kind: 'events', day: dayKey(day(shift)), items: items.slice(0, 10).map(e => ({
+          title: e.title, starts_at: e.starts_at, ends_at: e.ends_at, place: e.location || 'онлайн', status: e.status })) };
+      }
+      return { kind: 'events', day: null, items: [], empty_text: 'На ближайшую неделю занятий нет' };
+    }
+    if (widget.widget_id === 'today_admin') {
+      const today = events[inst].filter(e => Date.parse(e.starts_at) < day(1).getTime() && Date.parse(e.ends_at) > day(0).getTime());
+      const cancelled = today.filter(e => e.status === 'cancelled').length;
+      return { kind: 'stat', value: today.length, unit: plural(today.length, 'занятие', 'занятия', 'занятий'), caption: `сегодня в вузе${cancelled ? `, отменено ${cancelled}` : ''}`,
+        tone: cancelled ? 'warning' : 'normal' };
+    }
+    const works = (submissions[inst] ?? []);
+    if (widget.widget_id === 'my_work') {
+      const mine = works.filter(w => w.student_id === D.ME);
+      const text = { submitted: ['на проверке', 'accent'], accepted: ['принята', 'normal'], changes_requested: ['нужны правки', 'warning'] } as const;
+      return { kind: 'list', total: mine.length, empty_text: 'Работа ещё не загружена',
+        items: mine.slice(0, 3).map(w => ({ title: w.title, subtitle: `Версия ${w.version}`, badge: text[w.status][0], tone: text[w.status][1] })) };
+    }
+    if (widget.widget_id === 'to_review') {
+      const n = works.filter(w => w.teacher_id === D.ME && w.status === 'submitted').length;
+      return { kind: 'stat', value: n, unit: plural(n, 'работа', 'работы', 'работ'), caption: n ? 'ждут проверки' : 'новых работ нет', tone: n ? 'warning' : 'normal' };
+    }
+    return null;
+  }
+
   return {
     mode: 'mock',
     maxUser: () => ({ first_name: 'Геннадий', last_name: 'Лужин' }),
@@ -300,6 +348,21 @@ export function createMockBackend(): Backend {
         return [{ ...clone(rest), institution_id: id, profile, roles: a.roles, permissions: a.permissions,
           menus: seed.menus.filter(m => a.menus.includes(m.id)) }];
       });
+    },
+    async listWidgets(id, profile) {
+      await wait(150);
+      const services = await this.listServices(id, profile);
+      return services.flatMap(svc => D.widgetSeeds
+        .filter(w => w.type === svc.service_type && w.profiles.includes(profile) && w.perms.every(p => svc.permissions.includes(p)))
+        .map(w => ({ service_id: svc.id, service_type: svc.service_type, widget_id: w.id, display_name: w.title, locale: 'ru' as const,
+          kind: w.kind, size: w.size, data_url: `${svc.api_base_url}${w.path}`,
+          open_menu: svc.menus.some(m => m.id === w.open) ? w.open : null, order: w.order })));
+    },
+    async widgetData(id, profile, widget) {
+      await wait(200);
+      const svc = (await this.listServices(id, profile)).find(x => x.id === widget.service_id);
+      if (!svc) throw new ApiError('Нет доступа к этому действию.', 403);
+      return mockWidgetData(svc, widget);
     },
     async listGroups(id, profile) {
       await wait(150);

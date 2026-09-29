@@ -45,6 +45,13 @@ class Template(unittest.TestCase):
         view = self.c.get('/api/v1/service', headers=token()).json()
         self.assertEqual((view['service_type'], [x['id'] for x in view['menus']]), ('custom.my-service', ['main']))
 
+    def test_home_widget(self):
+        self.assertEqual(self.c.get('/api/v1/widgets/summary').status_code, 401)
+        data = self.c.get('/api/v1/widgets/summary', headers=token()).json()
+        self.assertEqual((data['kind'], data['items'][0]['subtitle']), ('list', 'Профиль: student'))
+        widget = m.MANIFEST['widgets'][0]
+        self.assertEqual((widget['kind'], widget['data_path'], widget['open_menu']), ('list', '/widgets/summary', 'main'))
+
     def test_client_page_for_iframe(self):
         page = self.c.get('/app')
         self.assertIn('frame-ancestors https://shell.test', page.headers['content-security-policy'])

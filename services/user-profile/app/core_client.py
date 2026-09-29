@@ -165,6 +165,14 @@ class CoreClient:
         data = self._json(response) or {}
         return data if data.get("profiles") else False
 
+    def groups(self, binding: Binding) -> list:
+        """Учебные группы вуза экземпляра из ядра (scope groups:read); сбой — 503."""
+        response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/groups")
+        if response.status_code != 200:
+            raise CoreUnavailable(f"groups read failed: {response.status_code}")
+        items = (self._json(response) or {}).get("items")
+        return [{"id": g["id"], "name": g["name"]} for g in items if isinstance(g, dict)] if isinstance(items, list) else []
+
     def members(self, binding) -> Dict[str, dict]:
         """Все участники вуза: user_id → {display_name, member_since}."""
         response = self._machine_request(binding, "GET", f"/api/v1/internal/service/{binding.service_id}/members")

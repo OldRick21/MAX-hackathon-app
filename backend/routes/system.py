@@ -18,13 +18,18 @@ def shell_csp(db: Session) -> str:
     """CSP HTML-оболочки: iframe только с зарегистрированных client origins включённых сервисов
     и origin облачного администрирования (CORE_API_SPEC.md §6)."""
     frames = {_origin(settings.ADMINISTRATION_PUBLIC_ORIGIN)}
-    for (url,) in db.query(ServiceInstance.client_base_url).filter(ServiceInstance.enabled == True,  # noqa: E712
-                                                                    ServiceInstance.deleted_at.is_(None)):
-        frames.add(_origin(url))
+    apis = set()
+    for client_url, api_url in db.query(ServiceInstance.client_base_url, ServiceInstance.api_base_url).filter(
+            ServiceInstance.enabled == True, ServiceInstance.deleted_at.is_(None)):  # noqa: E712
+        frames.add(_origin(client_url))
+        apis.add(_origin(api_url))  # экраны и виджеты оболочки обращаются к API сервисов
     frames.discard("")
+    apis.discard("")
     frame_src = " ".join(["'self'", *sorted(frames)])
+    connect_src = " ".join(["'self'", *sorted(apis)])
     return ("default-src 'self'; script-src 'self' https://st.max.ru; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; "
+            "img-src 'self' data: blob: https:; font-src 'self' data:; "
+            f"connect-src {connect_src}; "
             f"frame-src {frame_src}; object-src 'none'; base-uri 'self'; form-action 'self'")
 
 

@@ -279,8 +279,9 @@ def check_entrypoint(value, path: str) -> str:
 
 
 def check_manifest(manifest, type_code: str, supported_profiles: Iterable[str]) -> dict:
-    if not isinstance(manifest, dict) or set(manifest) - {"titles", "menus"} or not {"titles", "menus"} <= set(manifest):
-        raise validation("Manifest должен содержать только titles и menus", "manifest")
+    if not isinstance(manifest, dict) or set(manifest) - {"titles", "menus", "widgets"} \
+            or not {"titles", "menus"} <= set(manifest):
+        raise validation("Manifest: titles, menus и необязательные widgets", "manifest")
     t = service_type(type_code)
     titles = check_localized(manifest["titles"], "titles")
     menus_in = manifest["menus"]
@@ -309,7 +310,55 @@ def check_manifest(manifest, type_code: str, supported_profiles: Iterable[str]) 
                                                       f"{p}.required_permissions"),
             "order": order,
         })
-    return {"titles": titles, "menus": menus}
+    result = {"titles": titles, "menus": menus}
+    if "widgets" in manifest:
+        result["widgets"] = check_widgets(manifest["widgets"], t, supported_profiles, menus)
+    return result
+
+
+# Виджеты главного экрана (docs/services/sdk/WIDGETS_SPEC.md §3)
+WIDGET_KINDS = ("profile", "events", "list", "stat", "progress", "notice")
+WIDGET_SIZES = ("small", "wide")
+WIDGET_FIELDS = {"id", "titles", "kind", "size", "profiles", "required_permissions", "data_path", "open_menu", "order"}
+MAX_WIDGETS = 8
+
+
+def check_widgets(values, t: dict, supported_profiles: Iterable[str], menus: List[dict]) -> List[dict]:
+    if not isinstance(values, list) or len(values) > MAX_WIDGETS:
+        raise validation(f"widgets — список до {MAX_WIDGETS} элементов", "widgets")
+    menu_profiles = {m["id"]: set(m["profiles"]) for m in menus}
+    result: List[dict] = []
+    seen: Set[str] = set()
+    for i, w in enumerate(values):
+        p = f"widgets[{i}]"
+        if not isinstance(w, dict) or set(w) != WIDGET_FIELDS:
+            raise validation("Виджет: " + ", ".join(sorted(WIDGET_FIELDS)), p)
+        widget_id = check_code(w["id"], f"{p}.id")
+        if widget_id in seen:
+            raise validation("ID виджетов должны быть уникальны", f"{p}.id")
+        seen.add(widget_id)
+        if w["kind"] not in WIDGET_KINDS:
+            raise validation("kind: " + ", ".join(WIDGET_KINDS), f"{p}.kind")
+        if w["size"] not in WIDGET_SIZES:
+            raise validation("size: small или wide", f"{p}.size")
+        profiles = check_profiles(w["profiles"], f"{p}.profiles", supported_profiles)
+        perms = check_permissions(w["required_permissions"], t["permission_codes"], f"{p}.required_permissions")
+        if len(perms) > 16:
+            raise validation("required_permissions — до 16", f"{p}.required_permissions")
+        open_menu = w["open_menu"]
+        if open_menu is not None:
+            if open_menu not in menu_profiles:
+                raise validation("open_menu — id меню этого manifest или null", f"{p}.open_menu")
+            if not set(profiles) <= menu_profiles[open_menu]:
+                raise validation("Профили виджета должны входить в профили меню open_menu", f"{p}.profiles")
+        order = w["order"]
+        if not isinstance(order, int) or isinstance(order, bool) or not 0 <= order <= 10000:
+            raise validation("order — целое 0..10000", f"{p}.order")
+        result.append({"id": widget_id, "titles": check_localized(w["titles"], f"{p}.titles"), "kind": w["kind"],
+                       "size": w["size"], "profiles": profiles, "required_permissions": perms,
+                       "data_path": check_entrypoint(w["data_path"], f"{p}.data_path"), "open_menu": open_menu,
+                       "order": order})
+    return result
 
 
 ROLE_FIELDS = {"code", "titles", "allowed_profiles", "permissions"}

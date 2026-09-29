@@ -14,6 +14,8 @@ servers:
 security:
 - CoreBearer: []
 tags:
+- name: Widgets
+  description: Расширение реализации — виджеты главного экрана (docs/services/sdk/WIDGETS_SPEC.md).
 - name: Shell study groups
   description: Расширение реализации — учебные группы для оболочки (CORE_API_SPEC.md §7.1).
 - name: Private study groups
@@ -2908,6 +2910,261 @@ paths:
       security:
       - MachineBearer: []
       x-required-machine-scope: profiles:read
+  /api/v1/institution/{institution_id}/widgets:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    get:
+      tags:
+      - Widgets
+      summary: Виджеты главного экрана профиля
+      operationId: listShellWidgets
+      parameters:
+      - $ref: '#/components/parameters/ProfileQuery'
+      - $ref: '#/components/parameters/LocaleQuery'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShellWidgetList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Только видимые профилю: включены сервисом и администратором вуза, есть все required_permissions; не больше 12 (WIDGETS_SPEC.md §6).'
+      x-extension: widgets
+      security:
+      - CoreBearer: []
+  /api/v1/internal/service/{service_id}/widgets:
+    parameters:
+    - $ref: '#/components/parameters/service_id'
+    get:
+      tags:
+      - Widgets
+      summary: Виджеты своего экземпляра и их включение
+      operationId: listServiceWidgets
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceWidgetList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'visibility — уровень сервиса, admin_visibility — уровень вуза (чтение). ETag — версия набора.'
+      x-extension: widgets
+      security:
+      - MachineBearer: []
+      x-required-machine-scope: manifest:write
+  /api/v1/internal/service/{service_id}/widgets/{widget_id}/visibility:
+    parameters:
+    - $ref: '#/components/parameters/service_id'
+    - $ref: '#/components/parameters/widget_id'
+    put:
+      tags:
+      - Widgets
+      summary: Включить или выключить виджет для профилей (уровень сервиса)
+      operationId: setServiceWidgetVisibility
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetVisibilityInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceWidget'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'Все профили виджета, If-Match обязателен; administration — 403.'
+      x-extension: widgets
+      security:
+      - MachineBearer: []
+      x-required-machine-scope: manifest:write
+  /api/v1/institution/{institution_id}/internal/services/{service_id}/widgets:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/service_id'
+    get:
+      tags:
+      - Widgets
+      summary: Виджеты экземпляра для администратора вуза
+      operationId: listInstitutionWidgets
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminWidgetList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Право services.read. service_visibility — уровень сервиса (чтение), visibility — уровень вуза.'
+      x-extension: widgets
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/institution/{institution_id}/internal/services/{service_id}/widgets/{widget_id}/visibility:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/service_id'
+    - $ref: '#/components/parameters/widget_id'
+    put:
+      tags:
+      - Widgets
+      summary: Включить или выключить виджет для профилей (уровень вуза)
+      operationId: setInstitutionWidgetVisibility
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetVisibilityInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminWidgetList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'Право services.manage, If-Match обязателен. Включить виджет, выключенный сервисом, нельзя.'
+      x-extension: widgets
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
   /institution:
     get:
       tags:
@@ -2972,6 +3229,12 @@ components:
       description: 'JWT без префикса Bearer: service_access человека для экземпляра administration, профиль admin.
         AND с MachineBearer; актуальный RBAC из БД.'
   parameters:
+    widget_id:
+      name: widget_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Code'
     group_id:
       name: group_id
       in: path
@@ -3508,6 +3771,145 @@ components:
       examples:
       - items: []
         next_cursor: null
+    ProfileVisibility:
+      type: object
+      additionalProperties:
+        type: boolean
+      propertyNames:
+        $ref: '#/components/schemas/Profile'
+      description: Включение по профилям виджета; ключи — ровно profiles виджета.
+    WidgetVisibilityInput:
+      type: object
+      additionalProperties: false
+      required: [visibility]
+      properties:
+        visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+    WidgetDefinition:
+      type: object
+      additionalProperties: false
+      required: [id, titles, kind, size, profiles, required_permissions, data_path, open_menu, order]
+      properties:
+        id:
+          $ref: '#/components/schemas/Code'
+        titles:
+          $ref: '#/components/schemas/LocalizedText'
+        kind:
+          type: string
+          enum: [profile, events, list, stat, progress, notice]
+        size:
+          type: string
+          enum: [small, wide]
+        profiles:
+          $ref: '#/components/schemas/Profiles'
+        required_permissions:
+          $ref: '#/components/schemas/Permissions'
+        data_path:
+          type: string
+          description: Абсолютный путь от api_base_url экземпляра.
+        open_menu:
+          type: [string, 'null']
+        order:
+          type: integer
+          minimum: 0
+          maximum: 10000
+      description: Элемент manifest.widgets (docs/services/sdk/WIDGETS_SPEC.md §3), не больше 8 на экземпляр.
+    ServiceWidget:
+      type: object
+      additionalProperties: false
+      required: [id, profiles, visibility, admin_visibility]
+      properties:
+        id:
+          $ref: '#/components/schemas/Code'
+        profiles:
+          $ref: '#/components/schemas/Profiles'
+        visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+        admin_visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+    ServiceWidgetList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceWidget'
+        next_cursor:
+          type: 'null'
+    AdminWidget:
+      type: object
+      additionalProperties: false
+      required: [id, titles, kind, size, profiles, required_permissions, service_visibility, visibility]
+      properties:
+        id:
+          $ref: '#/components/schemas/Code'
+        titles:
+          $ref: '#/components/schemas/LocalizedText'
+        kind:
+          type: string
+        size:
+          type: string
+        profiles:
+          $ref: '#/components/schemas/Profiles'
+        required_permissions:
+          $ref: '#/components/schemas/Permissions'
+        service_visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+        visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+    AdminWidgetList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminWidget'
+        next_cursor:
+          type: 'null'
+    ShellWidget:
+      type: object
+      additionalProperties: false
+      required: [service_id, service_type, widget_id, display_name, locale, kind, size, data_url, open_menu, order]
+      properties:
+        service_id:
+          $ref: '#/components/schemas/UUID'
+        service_type:
+          $ref: '#/components/schemas/ServiceTypeCode'
+        widget_id:
+          $ref: '#/components/schemas/Code'
+        display_name:
+          type: string
+        locale:
+          $ref: '#/components/schemas/Locale'
+        kind:
+          type: string
+          enum: [profile, events, list, stat, progress, notice]
+        size:
+          type: string
+          enum: [small, wide]
+        data_url:
+          type: string
+          format: uri
+        open_menu:
+          type: [string, 'null']
+        order:
+          type: integer
+    ShellWidgetList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/ShellWidget'
+        next_cursor:
+          type: 'null'
     StudyGroupRef:
       type: object
       additionalProperties: false
@@ -3731,6 +4133,12 @@ components:
           items:
             $ref: '#/components/schemas/MenuDefinition'
           maxItems: 32
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WidgetDefinition'
+          maxItems: 8
+          description: Расширение — виджеты главного экрана (WIDGETS_SPEC.md §3); необязательно.
       description: ID меню уникальны внутри manifest. Профили и permissions проверяются по каталогу типа. Пустой
         manifest допустим до включения.
     ServiceView:

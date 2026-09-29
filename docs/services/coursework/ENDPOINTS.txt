@@ -6,3 +6,6 @@ PUT /api/v1/coursework/submissions/{submission_id}/file
 GET /api/v1/coursework/submissions/{submission_id}/file
 PUT /api/v1/coursework/submissions/{submission_id}/review
 GET /coursework
+GET /api/v1/coursework/widgets/my-work
+GET /api/v1/coursework/widgets/to-review
+GET /api/v1/coursework/widgets/all

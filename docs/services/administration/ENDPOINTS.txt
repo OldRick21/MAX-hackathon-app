@@ -25,3 +25,5 @@ POST /api/v1/administration/services/{service_id}/roles
 GET /api/v1/administration/services/{service_id}/roles/{role_code}
 PATCH /api/v1/administration/services/{service_id}/roles/{role_code}
 DELETE /api/v1/administration/services/{service_id}/roles/{role_code}
+GET /api/v1/administration/services/{service_id}/widgets
+PUT /api/v1/administration/services/{service_id}/widgets/{widget_id}/visibility

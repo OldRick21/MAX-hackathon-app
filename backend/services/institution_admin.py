@@ -26,7 +26,7 @@ from database.tables import (
     utc_now,
 )
 from auth.authorization import ActorContext
-from platform_core import catalog, registry
+from platform_core import catalog, registry, widgets
 from platform_core.concurrency import (
     check_idempotency_key,
     check_limit,
@@ -663,6 +663,7 @@ def replace_manifest(db: Session, ctx: ActorContext, service_id: str, payload, i
     if service.enabled and not manifest["menus"]:
         raise DomainError(409, "MANIFEST_REQUIRED", "У включённого сервиса должен остаться хотя бы один пункт меню")
     service.manifest = manifest
+    widgets.sync(db, service)
     after = service_view(service)
     ctx.audit(db, "service.manifest.replace", "service", service.id, {"menus": [m["id"] for m in manifest["menus"]]})
     db.commit()
@@ -886,3 +887,28 @@ def list_audit(db: Session, ctx: ActorContext, limit, cursor) -> Result:
     rows = rows[:limit]
     return Result({"items": [registry.audit_view(r) for r in rows],
                    "next_cursor": encode_cursor(settings.CURSOR_SECRET_KEY, scope, rows[-1].id) if has_more else None})
+
+
+# --------------------------------------------------------------------------
+# Виджеты главного экрана: уровень администратора вуза (WIDGETS_SPEC.md §5)
+# --------------------------------------------------------------------------
+
+def list_widgets(db: Session, ctx: ActorContext, service_id: str) -> Result:
+    ctx.require("services.read")
+    service = _service(db, ctx, service_id)
+    items = [{"id": i["id"], "titles": i["titles"], "kind": i["kind"], "size": i["size"], "profiles": i["profiles"],
+              "required_permissions": i["required_permissions"], "service_visibility": i["service_visibility"],
+              "visibility": i["admin_visibility"]} for i in widgets.states(db, service)]
+    return Result({"items": items, "next_cursor": None}, etag=widgets.etag(db, service))
+
+
+def set_widget_visibility(db: Session, ctx: ActorContext, service_id: str, widget_id: str, payload,
+                          if_match: Optional[str]) -> Result:
+    ctx.require("services.manage")
+    registry.lock_institution(db, ctx.institution_id)
+    service = _service(db, ctx, service_id)
+    require_if_match(if_match, widgets.etag(db, service))
+    change = widgets.set_visibility(db, service, widget_id, payload, "admin")
+    ctx.audit(db, "widget.visibility", "widget", f"{service.id}:{widget_id}", {"layer": "admin", **change})
+    db.commit()
+    return list_widgets(db, ctx, service_id)

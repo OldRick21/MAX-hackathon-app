@@ -47,6 +47,18 @@ MANIFEST = {
         {'id': 'coursework_admin', 'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'}, 'entrypoint_path': '/coursework',
          'profiles': ['admin'], 'required_permissions': [MANAGE], 'order': 0},
     ],
+    # Виджеты главного экрана (docs/services/sdk/WIDGETS_SPEC.md §9).
+    'widgets': [
+        {'id': 'my_work', 'titles': {'ru': 'Моя курсовая', 'en': 'My coursework'}, 'kind': 'list', 'size': 'small',
+         'profiles': ['student'], 'required_permissions': [], 'data_path': '/coursework/widgets/my-work',
+         'open_menu': 'coursework', 'order': 0},
+        {'id': 'to_review', 'titles': {'ru': 'На проверке', 'en': 'To review'}, 'kind': 'stat', 'size': 'small',
+         'profiles': ['teacher'], 'required_permissions': [], 'data_path': '/coursework/widgets/to-review',
+         'open_menu': 'coursework', 'order': 0},
+        {'id': 'all_works', 'titles': {'ru': 'Курсовые в вузе', 'en': 'Coursework'}, 'kind': 'stat', 'size': 'small',
+         'profiles': ['admin'], 'required_permissions': [MANAGE], 'data_path': '/coursework/widgets/all',
+         'open_menu': 'coursework_admin', 'order': 0},
+    ],
 }
 ROLES = [{'code': 'coursework_manager', 'titles': {'ru': 'Менеджер курсовых', 'en': 'Coursework manager'},
           'allowed_profiles': ['admin'], 'permissions': [MANAGE]}]
@@ -378,6 +390,59 @@ def list_submissions(status: Optional[Literal['submitted', 'accepted', 'changes_
         payload = json.dumps([page[-1]['created_at'], page[-1]['id'], int(time.time()) + CURSOR_TTL])
         next_cursor = payload + '.' + sign(scope + payload)
     return {'items': [row_json(r) for r in page], 'next_cursor': next_cursor}
+
+
+# --------------------------------------------------------------------------
+# Виджеты главного экрана (WIDGETS_SPEC.md §7): сводка с теми же правами, что у списка работ
+# --------------------------------------------------------------------------
+
+STATUS_TEXT = {'submitted': ('на проверке', 'accent'), 'accepted': ('принята', 'normal'),
+               'changes_requested': ('нужны правки', 'warning')}
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
+
+
+@app.get('/api/v1/coursework/widgets/my-work')
+def widget_my_work(ctx: sdk.Ctx = Depends(authenticate)):
+    """Свои работы студента: последние три, со статусом проверки."""
+    if ctx.profile != 'student':
+        raise Fail(403, 'FORBIDDEN', 'Виджет для студентов')
+    with database() as db:
+        rows = db.execute('SELECT * FROM submissions WHERE institution_id=? AND service_id=? AND deleted=0 AND student_id=? '
+                          'ORDER BY updated_at DESC, id DESC', (*ctx.tenant, ctx.user_id)).fetchall()
+    items = []
+    for r in rows[:3]:
+        badge, tone = STATUS_TEXT.get(r['status'], (r['status'], 'normal'))
+        items.append({'title': r['title'][:120], 'subtitle': f"Версия {r['version']}", 'badge': badge, 'tone': tone})
+    return JSONResponse({'kind': 'list', 'items': items, 'total': len(rows), 'empty_text': 'Работа ещё не загружена'})
+
+
+@app.get('/api/v1/coursework/widgets/to-review')
+def widget_to_review(ctx: sdk.Ctx = Depends(authenticate)):
+    """Работы, которые ждут проверки у преподавателя."""
+    if ctx.profile != 'teacher':
+        raise Fail(403, 'FORBIDDEN', 'Виджет для преподавателей')
+    with database() as db:
+        n = db.execute("SELECT COUNT(*) FROM submissions WHERE institution_id=? AND service_id=? AND deleted=0 "
+                       "AND teacher_id=? AND status='submitted'", (*ctx.tenant, ctx.user_id)).fetchone()[0]
+    return JSONResponse({'kind': 'stat', 'value': n, 'unit': plural(n, 'работа', 'работы', 'работ'),
+                         'caption': 'ждут проверки' if n else 'новых работ нет', 'tone': 'warning' if n else 'normal'})
+
+
+@app.get('/api/v1/coursework/widgets/all')
+def widget_all(ctx: sdk.Ctx = Depends(authenticate)):
+    """Все работы вуза (менеджер курсовых): сколько сдано и сколько ждут проверки."""
+    if not manages(ctx):
+        raise Fail(403, 'FORBIDDEN', 'Нужна роль «Менеджер курсовых»')
+    with database() as db:
+        total, waiting = db.execute("SELECT COUNT(*), COALESCE(SUM(status='submitted'), 0) FROM submissions "
+                                    "WHERE institution_id=? AND service_id=? AND deleted=0", ctx.tenant).fetchone()
+    return JSONResponse({'kind': 'stat', 'value': total, 'unit': plural(total, 'работа', 'работы', 'работ'),
+                         'caption': f'сдано, на проверке {waiting}', 'tone': 'normal'})
 
 
 @app.post('/api/v1/coursework/submissions', status_code=201)

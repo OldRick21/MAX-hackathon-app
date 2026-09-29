@@ -291,6 +291,98 @@ class CustomServices(unittest.TestCase):
             self.assertTrue(all(e.machine_credential_id for e in db.query(AuditEvent).filter(
                 AuditEvent.institution_id == inst, AuditEvent.actor_kind == 'service')))
 
+    def test_widgets_service_and_admin_layers(self):
+        """Виджеты: объявление в manifest, включение сервисом и администратором, права, список оболочки."""
+        from platform_core import registry
+        owner_id, owner = self.login('w_owner')
+        student_id, student = self.login('w_student')
+        teacher_id, teacher = self.login('w_teacher')
+        with session_local() as db:
+            inst = bare_institution(db, {'ru': 'Вуз виджетов'}).id
+            registry.assign_owner(db, inst, owner_id)
+            db.add(Membership(institution_id=inst, user_id=student_id, profiles=['student']))
+            db.add(Membership(institution_id=inst, user_id=teacher_id, profiles=['teacher', 'admin']))
+            svc = registry.create_local_instance(db, inst, 'schedule', 'https://s.university.ru/api/v1', 'https://s.university.ru',
+                                                 None, ['admin', 'teacher', 'student'])
+            svc.enabled = True
+            sid = svc.id
+            key, secret = registry.issue_credential(db, svc)
+            client_id = key.client_id
+            db.commit()
+        token = self.c.post('/api/v1/internal/auth/token', auth=(client_id, secret), json={'grant_type': 'client_credentials'}).json()
+        m = {'Authorization': 'Bearer ' + token['access_token']}
+        base = f'/api/v1/internal/service/{sid}'
+        menu = lambda i, profiles, perms: {'id': i, 'titles': {'ru': i}, 'entrypoint_path': '/schedule', 'profiles': profiles,
+                                           'required_permissions': perms, 'order': 0}
+        widget = lambda i, profiles, perms, open_menu: {
+            'id': i, 'titles': {'ru': 'Сегодня'}, 'kind': 'events', 'size': 'wide', 'profiles': profiles,
+            'required_permissions': perms, 'data_path': f'/schedule/widgets/{i}', 'open_menu': open_menu, 'order': 0}
+        manifest = {'titles': {'ru': 'Расписание'},
+                    'menus': [menu('schedule', ['student', 'teacher'], []), menu('schedule_admin', ['admin'], ['schedule.read_all'])],
+                    'widgets': [widget('today', ['student', 'teacher'], [], 'schedule'),
+                                widget('today_admin', ['admin'], ['schedule.read_all'], 'schedule_admin')]}
+        tag = self.c.get(f'{base}/manifest', headers=m).headers['ETag']
+        bad = {**manifest, 'widgets': [widget('x', ['admin'], [], 'schedule')]}  # профиль вне меню open_menu
+        self.assertEqual(self.c.put(f'{base}/manifest', headers={**m, 'If-Match': tag}, json=bad).status_code, 422)
+        r = self.c.put(f'{base}/manifest', headers={**m, 'If-Match': tag}, json=manifest)
+        self.assertEqual(r.status_code, 200, r.text)
+
+        def home(h, profile):
+            r = self.c.get(f'/api/v1/institution/{inst}/widgets', params={'profile': profile}, headers=h)
+            self.assertEqual(r.status_code, 200, r.text)
+            return [w['widget_id'] for w in r.json()['items']]
+        self.assertEqual(home(student, 'student'), ['today'])
+        self.assertEqual(home(teacher, 'teacher'), ['today'])
+        self.assertEqual(home(teacher, 'admin'), [])  # нет schedule.read_all
+        item = self.c.get(f'/api/v1/institution/{inst}/widgets', params={'profile': 'student'}, headers=student).json()['items'][0]
+        self.assertEqual((item['data_url'], item['open_menu'], item['kind']),
+                         ('https://s.university.ru/api/v1/schedule/widgets/today', 'schedule', 'events'))
+
+        # Уровень сервиса: выключить у преподавателей.
+        listed = self.c.get(f'{base}/widgets', headers=m)
+        self.assertEqual(listed.json()['items'][0]['visibility'], {'student': True, 'teacher': True})
+        vis = f'{base}/widgets/today/visibility'
+        self.assertEqual(self.c.put(vis, headers=m, json={'visibility': {'student': True, 'teacher': False}}).status_code, 428)
+        self.assertEqual(self.c.put(vis, headers={**m, 'If-Match': listed.headers['ETag']},
+                                    json={'visibility': {'student': True}}).status_code, 422)
+        r = self.c.put(vis, headers={**m, 'If-Match': listed.headers['ETag']}, json={'visibility': {'student': True, 'teacher': False}})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(home(teacher, 'teacher'), [])
+        self.assertEqual(home(student, 'student'), ['today'])
+        # Повторная публикация manifest выключение не сбрасывает.
+        tag = self.c.get(f'{base}/manifest', headers=m).headers['ETag']
+        self.assertEqual(self.c.put(f'{base}/manifest', headers={**m, 'If-Match': tag}, json=manifest).status_code, 200)
+        self.assertEqual(home(teacher, 'teacher'), [])
+
+        # Уровень администратора вуза (private API): выключить у студентов.
+        from services import institution_admin
+        from auth.authorization import ActorContext
+        with session_local() as db:
+            admin_sid = registry.admin_service_of(db, inst).id
+            ctx = ActorContext(institution_id=inst, admin_service_id=admin_sid, actor_id=owner_id, roles=['owner'],
+                               permissions=['services.read', 'services.manage'], credential_id=None, request_id=None)
+            listed = institution_admin.list_widgets(db, ctx, sid)
+            today = listed.body['items'][0]
+            self.assertEqual((today['service_visibility'], today['visibility']),
+                             ({'student': True, 'teacher': False}, {'student': True, 'teacher': True}))
+            institution_admin.set_widget_visibility(db, ctx, sid, 'today', {'visibility': {'student': False, 'teacher': True}},
+                                                    listed.etag)
+        self.assertEqual(home(student, 'student'), [])
+        self.assertEqual(home(teacher, 'teacher'), [])  # выключен сервисом — администратор не включит в обход
+
+        # Роль с schedule.read_all открывает виджет администратора.
+        with session_local() as db:
+            db.add(ServiceRole(service_id=sid, code='editor', titles={'ru': 'Р'}, allowed_profiles=['admin'],
+                               permissions=['schedule.read_all'], system=False))
+            db.add(RoleAssignment(service_id=sid, user_id=teacher_id, profile='admin', roles=['editor']))
+            db.commit()
+        self.assertEqual(home(teacher, 'admin'), ['today_admin'])
+        # Выключенный сервис — виджетов нет.
+        with session_local() as db:
+            db.get(ServiceInstance, sid).enabled = False
+            db.commit()
+        self.assertEqual(home(teacher, 'admin'), [])
+
     def test_rate_limits_and_auth_before_body(self):
         from platform_core import ratelimit
         from settings.config import settings

@@ -124,3 +124,18 @@ def replace_own_assignments(service_id: str, user_id: str, profile: str, ctx=Dep
     """Атомарно заменить набор ролей участника в профиле (If-Match обязателен)."""
     return mutate(db, ctx, "assignments.replace", f"{service_id}:{user_id}:{profile}",
                   lambda: svc.replace_assignments(db, ctx, service_id, user_id, profile, payload, if_match))
+
+
+@router.get(BASE + "/widgets")
+def list_own_widgets(service_id: str, ctx=Depends(machine("manifest:write")), db: Session = Depends(get_db)):
+    """Виджеты экземпляра и их включение по профилям на обоих уровнях; ETag набора."""
+    return respond(svc.list_widgets(db, ctx, service_id))
+
+
+@router.put(BASE + "/widgets/{widget_id}/visibility")
+def set_own_widget_visibility(service_id: str, widget_id: str, ctx=Depends(machine("manifest:write")),
+                              if_match: Optional[str] = Header(None, alias="If-Match"), db: Session = Depends(get_db),
+                              payload: Any = Depends(json_body)):
+    """Включить или выключить виджет для профилей (уровень сервиса)."""
+    return mutate(db, ctx, "widget.visibility", f"{service_id}:{widget_id}",
+                  lambda: svc.set_widget_visibility(db, ctx, service_id, widget_id, payload, if_match))

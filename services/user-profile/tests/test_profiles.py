@@ -96,6 +96,28 @@ class Profiles(unittest.TestCase):
                 state.update(info('admin',['profiles.manage']),institution_id=V)
                 self.assertEqual(c.get('/api/v1/profile/users',headers=admin).json()['items'],[])
 
+    def test_widget_me(self):
+        """Виджет «Мой профиль»: имя из регистрации, группа из ядра, заполненность анкеты."""
+        state={**info(),'group_ids':['g1']}
+        h=head()
+        registered={'profiles':['student'],'display_name':'Мария Ильина'}
+        with tempfile.TemporaryDirectory() as folder, patch.object(m,'DB',folder+'/w.db'), \
+             patch.object(m.core,'binding',return_value=BINDING), patch.object(m.core,'introspect',side_effect=lambda *a: state), \
+             patch.object(m.core,'member',return_value=registered), \
+             patch.object(m.core,'groups',return_value=[{'id':'g1','name':'ПИ-11'},{'id':'g2','name':'ПИ-12'}]), TestClient(m.app) as c:
+            w=c.get('/api/v1/profile/widgets/me',headers=h).json()
+            self.assertEqual((w['kind'],w['user_id'],w['title'],w['lines'],w['progress']),
+                             ('profile',U,'Мария Ильина',['Студент · Группа ПИ-11'],0))
+            self.assertEqual(w['hint'],'Добавьте имя, о себе')
+            me=c.get('/api/v1/profile/me',headers=h)
+            c.patch('/api/v1/profile/me',headers={**h,'If-Match':me.headers['etag']},json={'display_name':'Маша','about':'Люблю матан'})
+            w=c.get('/api/v1/profile/widgets/me',headers=h).json()
+            self.assertEqual((w['title'],w['progress'],'hint' in w),('Маша',100,False))
+            state.update(info('teacher'))
+            w=c.get('/api/v1/profile/widgets/me',headers=head('teacher')).json()
+            self.assertEqual((w['lines'],w['progress'],w['hint']),(['Преподаватель'],50,'Добавьте должность, учёную степень'))
+        self.assertEqual([x['id'] for x in m.MANIFEST['widgets']],['me'])
+
     def test_registered_name_without_card(self):
         """Имя из регистрации: участник сразу в «Людях», своя правка имени важнее."""
         state=info()

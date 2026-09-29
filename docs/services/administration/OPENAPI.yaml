@@ -1165,6 +1165,120 @@ paths:
               schema:
                 type: string
       security: []
+  /api/v1/administration/services/{service_id}/widgets:
+    servers:
+    - url: https://administration.platform.example
+    get:
+      tags:
+      - Administration
+      operationId: listAdministrationWidgets
+      summary: Виджеты сервиса на главной
+      description: 'Фасад GET .../internal/services/{service_id}/widgets ядра; право services.read. Для каждого виджета — service_visibility (чтение) и visibility (уровень вуза).'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  next_cursor:
+                    type: 'null'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      security:
+      - ServiceBearer: []
+  /api/v1/administration/services/{service_id}/widgets/{widget_id}/visibility:
+    servers:
+    - url: https://administration.platform.example
+    put:
+      tags:
+      - Administration
+      operationId: setAdministrationWidgetVisibility
+      summary: Включить или выключить виджет для профилей
+      description: 'Фасад PUT .../widgets/{widget_id}/visibility ядра; право services.manage, If-Match обязателен.'
+      parameters:
+      - name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [visibility]
+              properties:
+                visibility:
+                  type: object
+                  additionalProperties: {type: boolean}
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  next_cursor:
+                    type: 'null'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '428':
+          $ref: '#/components/responses/Error428'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      security:
+      - ServiceBearer: []
 components:
   securitySchemes:
     ServiceBearer:

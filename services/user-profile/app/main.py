@@ -38,7 +38,11 @@ MANIFEST = {'titles': {'ru': 'Люди', 'en': 'People'}, 'menus': [
     {'id': 'home', 'titles': {'ru': 'Главная', 'en': 'Home'}, 'entrypoint_path': '/home',
      'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 0},
     {'id': 'users', 'titles': {'ru': 'Пользователи', 'en': 'Users'}, 'entrypoint_path': '/users',
-     'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 10}]}
+     'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 10}],
+    # Карточка своего профиля на главном экране (docs/services/sdk/WIDGETS_SPEC.md §9).
+    'widgets': [{'id': 'me', 'titles': {'ru': 'Мой профиль', 'en': 'My profile'}, 'kind': 'profile', 'size': 'wide',
+                 'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'data_path': '/profile/widgets/me',
+                 'open_menu': 'home', 'order': 0}]}
 ROLES = [{'code': 'profile_editor', 'titles': {'ru': 'Редактор анкет', 'en': 'Profile editor'},
           'allowed_profiles': ['admin'], 'permissions': [MANAGE]}]
 STATE = {'onboarding': 'pending', 'error': None}
@@ -273,6 +277,41 @@ def service_view(locale:str|None=Query(None,max_length=8),ctx=Depends(authentica
 
 @app.get('/api/v1/profile/me')
 def me(ctx=Depends(authenticate)): return get_card(ctx,ctx[1]['sub'])
+
+PROFILE_LABEL = {'student': 'Студент', 'teacher': 'Преподаватель', 'admin': 'Администратор'}
+# Что должно быть заполнено в анкете, чтобы она считалась полной (по профилю).
+FILL_FIELDS = {'student': (('display_name', 'имя'), ('about', 'о себе')),
+               'teacher': (('display_name', 'имя'), ('about', 'о себе'), ('position', 'должность'),
+                           ('academic_degree', 'учёную степень')),
+               'admin': (('display_name', 'имя'), ('about', 'о себе'), ('position', 'должность'))}
+
+
+@app.get('/api/v1/profile/widgets/me')
+def widget_me(ctx=Depends(authenticate)):
+    """Виджет «Мой профиль»: имя, профиль и группа, должность, заполненность анкеты (WIDGETS_SPEC §7)."""
+    binding, info = ctx
+    user_id, profile = info['sub'], info['profile']
+    who = member(ctx, user_id)
+    with database() as db:
+        forget_stale(db, ctx, user_id, who.since)
+        row = db.execute('SELECT * FROM cards WHERE institution_id=? AND service_id=? AND user_id=?',
+                         (binding.institution_id, binding.service_id, user_id)).fetchone()
+        value, _, _ = card(db, ctx, user_id, who.name)
+    first = PROFILE_LABEL[profile]
+    group_ids = info.get('group_ids') or []
+    if profile == 'student' and group_ids:
+        names = [g['name'] for g in core.groups(binding) if g['id'] in group_ids]
+        if names:
+            first += ' · Группа ' + ', '.join(names)
+    lines = [first] + [x for x in (value.get('position'), value.get('academic_degree')) if x][:2]
+    own = dict(row) if row else {}
+    fields = FILL_FIELDS[profile]
+    missing = [label for key, label in fields if not (own.get(key) or '').strip()]
+    body = {'kind': 'profile', 'user_id': user_id, 'title': value.get('display_name') or 'Без имени', 'lines': lines,
+            'progress': round(100 * (len(fields) - len(missing)) / len(fields))}
+    if missing:
+        body['hint'] = 'Добавьте ' + ', '.join(missing)
+    return JSONResponse(body)
 
 @app.patch('/api/v1/profile/me')
 def update_me(patch:SelfPatch, if_match:str|None=Header(None),ctx=Depends(authenticate)):

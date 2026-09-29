@@ -163,6 +163,36 @@ class Schedule(unittest.TestCase):
         self.assertEqual(self.c.delete(f'/api/v1/schedule/events/{other["id"]}',
                                        headers={**editor, 'If-Match': other_tag}).status_code, 204)
 
+    def test_home_widgets(self):
+        """Виджеты главной: свои занятия дня, сводка администратора, права как в самом расписании."""
+        from datetime import datetime, timedelta
+        editor, t1, t2 = self.as_(EDITOR, 'admin', EDITOR_PERMS), self.as_(T1, 'teacher'), self.as_(T2, 'teacher')
+        st1, st2, plain_admin = self.as_(ST1, 'student'), self.as_(ST2, 'student'), self.as_(ADMIN, 'admin')
+        now = datetime.now(m.TIMEZONE)
+        def at(day_shift, hour):
+            local = datetime(now.year, now.month, now.day, hour, tzinfo=m.TIMEZONE) + timedelta(days=day_shift)
+            return local.astimezone(m.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        self.assertEqual(self.post(editor, self.event([GA], [T1], at(0, 9), at(0, 10), title='Сегодня А')).status_code, 201)
+        self.assertEqual(self.post(editor, self.event([GB], [T2], at(2, 9), at(2, 10), title='Послезавтра Б')).status_code, 201)
+        self.assertEqual(self.post(editor, self.event([GA], [T1], at(0, 12), at(0, 13), title='Отменено',
+                                                      status='cancelled')).status_code, 201)
+        today = self.c.get('/api/v1/schedule/widgets/today', headers=st1).json()
+        self.assertEqual((today['kind'], today['day'], [e['title'] for e in today['items']]),
+                         ('events', now.date().isoformat(), ['Сегодня А', 'Отменено']))
+        self.assertEqual(today['items'][1]['status'], 'cancelled')
+        # У студента без группы занятий нет; преподаватель Б видит ближайший день со своей парой.
+        self.assertEqual(self.c.get('/api/v1/schedule/widgets/today', headers=st2).json()['items'], [])
+        t2_day = self.c.get('/api/v1/schedule/widgets/today', headers=t2).json()
+        self.assertEqual((t2_day['day'], [e['title'] for e in t2_day['items']]),
+                         ((now.date() + timedelta(days=2)).isoformat(), ['Послезавтра Б']))
+        self.assertEqual(self.c.get('/api/v1/schedule/widgets/today', headers=editor).status_code, 403)
+        stat = self.c.get('/api/v1/schedule/widgets/today-admin', headers=editor).json()
+        self.assertEqual((stat['kind'], stat['value'], stat['tone']), ('stat', 2, 'warning'))
+        self.assertIn('отменено 1', stat['caption'])
+        self.assertEqual(self.c.get('/api/v1/schedule/widgets/today-admin', headers=plain_admin).status_code, 403)
+        self.assertEqual(self.c.get('/api/v1/schedule/widgets/today-admin', headers=t1).status_code, 403)
+        self.assertEqual({w['id'] for w in m.MANIFEST['widgets']}, {'today', 'today_admin'})
+
     def test_client_page(self):
         page = self.c.get('/schedule')
         self.assertEqual(page.status_code, 200)

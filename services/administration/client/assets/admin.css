@@ -57,3 +57,10 @@ dialog::backdrop { background: rgb(0 0 0 / .4); }
 .request { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; display: grid; gap: 8px; }
 .request-name { font-size: 1.1em; }
 .request .meta { margin: 0; }
+
+.widgets { margin-top: 12px; }
+.widgets h3 { font-size: 14px; margin: 0 0 6px; }
+.widget-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.widget-table th, .widget-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.widget-table th:not(:first-child), .widget-table td:not(:first-child) { text-align: center; width: 18%; }
+.widget-table input[type=checkbox] { width: 18px; height: 18px; }
