@@ -631,19 +631,6 @@ def tool(tool: str, payload: Any = Body(None), _: str = Depends(operator), db: S
         with contextlib.redirect_stdout(out):
             manage.import_groups(io.StringIO(json.dumps(payload)))
         message = out.getvalue().strip()
-    elif tool == "seed-demo":
-        import seed_demo
-        user_id = payload.get("user_id") if isinstance(payload, dict) else None
-        if not is_uuid(user_id):
-            raise validation("Выберите пользователя", "user_id")
-        try:
-            with contextlib.redirect_stdout(io.StringIO()):
-                seed_demo.seed(user_id)
-        except SystemExit:
-            raise DomainError(404, "RESOURCE_NOT_FOUND", "Пользователь не найден: он должен войти через MAX")
-        registry.ensure_platform_invariants(db)
-        db.commit()
-        message = "«Тестовый университет» с расписанием готов, пользователь добавлен студентом."
     else:
         raise not_found("Команда не найдена")
     return {"message": message}

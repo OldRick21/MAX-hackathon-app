@@ -97,6 +97,16 @@ export interface ServiceView {
   menus: MenuView[];
 }
 
+/** Итог проверки или загрузки файла расписания (POST /api/v1/schedule/import). */
+export interface ScheduleImportResult {
+  total: number;
+  to_create: number;
+  duplicates: number;
+  created: number;
+  errors: { row: number; message: string }[];
+  preview: Omit<ScheduleEvent, 'id'>[];
+}
+
 /** Виджет главного экрана из ядра (docs/services/sdk/WIDGETS_SPEC.md §6). */
 export type WidgetKind = 'profile' | 'events' | 'list' | 'stat' | 'progress' | 'notice';
 export interface WidgetView {

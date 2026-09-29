@@ -111,6 +111,18 @@ export function createMockBackend(): Backend {
         await wait(200);
         return clone(groupList());
       },
+      async importFile(file, dryRun) {
+        // Демо-режим: разбирается только JSON-список; настоящий разбор всех типов — в сервисе расписания.
+        await wait();
+        requireWrite();
+        if (!file.name.toLowerCase().endsWith('.json')) {
+          throw new ApiError('В демо-режиме проверяется только JSON; .xlsx, .csv, .txt и .xml разбирает сервис расписания.', 422, 'INVALID_FILE');
+        }
+        let rows: unknown;
+        try { rows = JSON.parse(await file.text()); } catch { throw new ApiError('Файл не является JSON', 422, 'INVALID_FILE'); }
+        const list = Array.isArray(rows) ? rows : [];
+        return { total: list.length, to_create: list.length, duplicates: 0, created: dryRun ? 0 : list.length, errors: [], preview: [] };
+      },
     };
   };
 

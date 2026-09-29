@@ -5,7 +5,8 @@ import { NotInMaxError } from '../backend';
 import { ApiError, newIdempotencyKey, request, toApiError } from '../http';
 import { loadBridge, maxUserInfo, openExternal, waitInitData } from '../max';
 import type {
-  Group, GroupDirectory, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent, ServiceView, Submission, User,
+  Group, GroupDirectory, InstitutionView, JoinOption, JoinRequest, Page, Profile, ProfileCard, ProfileList, ScheduleEvent,
+  ScheduleImportResult, ServiceView, Submission, User,
   WidgetData, WidgetView,
 } from '../types';
 import { CoreSession, listAll } from './core';
@@ -85,6 +86,12 @@ export function createRealBackend(): Backend {
           const params = new URLSearchParams({ limit: '100', ...(cursor ? { cursor } : {}) });
           return (await ss.call<Page<Group>>(`/api/v1/schedule/groups?${params}`, { signal })).data;
         }, g => g.id);
+      },
+      async importFile(file, dryRun) {
+        const params = new URLSearchParams({ name: file.name, dry_run: String(dryRun) });
+        return (await ss.call<ScheduleImportResult>(`/api/v1/schedule/import?${params}`, {
+          method: 'POST', blob: file, headers: { 'Content-Type': 'application/octet-stream' },
+        })).data;
       },
     };
   };

@@ -72,6 +72,18 @@ tsess=session(th,'schedule','teacher')
 r=sched.get('/api/v1/schedule/events', headers={'Authorization':'Bearer '+tsess.json()['access_token']}, params={'from':start.date().isoformat()+'T00:00:00Z','to':(start+dt.timedelta(days=1)).date().isoformat()+'T00:00:00Z'})
 check('преподаватель видит своё занятие', r.status_code==200 and len(r.json().get('items',[]))>=1, r.text[:200])
 
+imp_day=(start+dt.timedelta(days=1)).astimezone(dt.timezone(dt.timedelta(hours=3))).strftime('%d.%m.%Y')
+csv_file=('Дата;Начало;Конец;Дисциплина;Группы;Преподаватели;Аудитория\n'
+          f'{imp_day};09:00;10:30;Импорт: алгебра;ПИ-11;Пётр Преподов;Б-2\n').encode('cp1251')
+ah_s={'Authorization':'Bearer '+sa.json()['access_token'],'Content-Type':'application/octet-stream'}
+r=sched.post('/api/v1/schedule/import', params={'name':'1c.csv','dry_run':'true'}, headers=ah_s, content=csv_file)
+check('импорт 1С-CSV: проверка', r.status_code==200 and r.json()['to_create']==1 and not r.json()['errors'], r.text[:300])
+r=sched.post('/api/v1/schedule/import', params={'name':'1c.csv','dry_run':'false'}, headers=ah_s, content=csv_file)
+check('импорт 1С-CSV: загрузка', r.status_code==200 and r.json()['created']==1, r.text[:300])
+r=sched.get('/api/v1/schedule/events', headers={'Authorization':'Bearer '+tsess.json()['access_token']},
+            params={'from':start.date().isoformat()+'T00:00:00Z','to':(start+dt.timedelta(days=3)).date().isoformat()+'T00:00:00Z'})
+check('преподаватель видит импортированное занятие', any(e['title']=='Импорт: алгебра' for e in r.json().get('items',[])), r.text[:300])
+
 print('4. «Люди» через раннер')
 ps=session(sh,'user-profile','student'); people=httpx.Client(base_url=f"http://127.0.0.1:{PORT['user-profile']}/{svcs['user-profile']}", timeout=20)
 r=people.get('/api/v1/profile/me', headers={'Authorization':'Bearer '+ps.json()['access_token']})

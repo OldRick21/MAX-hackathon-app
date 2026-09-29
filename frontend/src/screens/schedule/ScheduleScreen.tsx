@@ -14,6 +14,7 @@ import { useBackend } from '../../state/session';
 import { addDays, dayKey, formatShort, formatWeekday, now, startOfWeek } from '../../utils/time';
 import p from '../pages.module.css';
 import { EventEditor } from './EventEditor';
+import { ImportDialog } from './ImportDialog';
 import { ScheduleCard } from './ScheduleCard';
 import s from './schedule.module.css';
 
@@ -37,6 +38,7 @@ function Schedule({ service }: { service: ServiceView }) {
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<ScheduleEvent | null>(null);
   const [opening, setOpening] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // Смотреть может любой участник; менять — администратор всегда, преподаватель — если ему включили.
   const isTeacher = service.profile === 'teacher';
@@ -101,6 +103,7 @@ function Schedule({ service }: { service: ServiceView }) {
         </div>
         <div className={p.headActions}>
           <Button variant="secondary" onClick={() => navigate('groups')}>Группы</Button>
+          {canWrite && <Button variant="secondary" onClick={() => setImporting(true)}>Импорт</Button>}
           {canWrite && <Button icon={<IconPlus width="1.2em" height="1.2em" />} onClick={() => void openEditor(null)} loading={opening}>Добавить занятие</Button>}
         </div>
       </div>
@@ -180,6 +183,8 @@ function Schedule({ service }: { service: ServiceView }) {
           onSaved={() => { setEditing(null); events.reload(); }}
         />
       )}
+      {importing && <ImportDialog api={api} groupName={groupName} onClose={() => setImporting(false)}
+        onDone={() => { setImporting(false); events.reload(); }} />}
       {deleting && <DeleteEvent api={api} event={deleting} onClose={() => setDeleting(null)} onDone={() => { setDeleting(null); events.reload(); }} />}
     </div>
   );

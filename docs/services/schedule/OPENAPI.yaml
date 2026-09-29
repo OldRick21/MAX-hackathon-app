@@ -703,6 +703,61 @@ paths:
           $ref: '#/components/responses/Error500'
       security:
       - ServiceBearer: []
+  /api/v1/schedule/import:
+    servers:
+    - url: https://schedule.platform.example
+    post:
+      tags:
+      - Schedule events
+      operationId: importScheduleEvents
+      summary: Импорт занятий из файла
+      description: 'Расширение реализации (SPEC.md §2.1). Один формат — таблица занятий; тип файла по расширению name: .json, .xlsx, .csv/.txt (1С), .xml. dry_run=true — проверка, false — загрузка всё или ничего; дубликаты пропускаются.'
+      parameters:
+      - name: name
+        in: query
+        required: true
+        schema:
+          type: string
+          maxLength: 255
+      - name: dry_run
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Итог проверки или загрузки.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      security:
+      - ServiceBearer: []
 components:
   securitySchemes:
     ServiceBearer:
@@ -949,6 +1004,30 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    ImportResult:
+      type: object
+      additionalProperties: false
+      required: [total, to_create, duplicates, created, errors, preview]
+      properties:
+        total: {type: integer, minimum: 0}
+        to_create: {type: integer, minimum: 0}
+        duplicates: {type: integer, minimum: 0}
+        created: {type: integer, minimum: 0}
+        errors:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [row, message]
+            properties:
+              row: {type: integer, minimum: 1}
+              message: {type: string}
+        preview:
+          type: array
+          maxItems: 20
+          items:
+            type: object
     WidgetTone:
       type: string
       enum: [normal, muted, accent, warning, danger]
@@ -1076,6 +1155,8 @@ components:
               - GROUP_IN_USE
               - STUDENT_ALREADY_GROUPED
               - INVALID_REFERENCE
+              - INVALID_FILE
+              - INVALID_IMPORT
               - INVALID_TIME_RANGE
               - INVALID_STATE
               - PAYLOAD_TOO_LARGE

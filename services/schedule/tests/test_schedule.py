@@ -193,6 +193,77 @@ class Schedule(unittest.TestCase):
         self.assertEqual(self.c.get('/api/v1/schedule/widgets/today-admin', headers=t1).status_code, 403)
         self.assertEqual({w['id'] for w in m.MANIFEST['widgets']}, {'today', 'today_admin'})
 
+    def test_import_one_format_many_file_types(self):
+        """Одна таблица занятий в JSON, CSV из 1С (cp1251, «;»), TXT (табуляция), XML и XLSX даёт один результат."""
+        import io, json, zipfile
+        from xml.sax.saxutils import escape
+        editor, teacher, student = self.as_(EDITOR, 'admin', EDITOR_PERMS), self.as_(T1, 'teacher'), self.as_(ST1, 'student')
+        header = ['Дата', 'Начало', 'Конец', 'Дисциплина', 'Группы', 'Преподаватели', 'Аудитория', 'Комментарий', 'Статус']
+        rows = [['01.10.2026', '08:30', '10:05', 'Матанализ', 'ИВТ-21', 'Пётр Преподов', '205', '', ''],
+                ['01.10.2026', '10:15', '11:50', 'Физика', 'ИВТ-21; ИВТ-22', T1, '', 'Лекция', 'отменено']]
+        def csv_bytes(table):
+            import csv
+            out = io.StringIO()
+            csv.writer(out, delimiter=';').writerows(table)  # 1С/Excel берут ячейку со «;» в кавычки
+            return out.getvalue().encode('cp1251')
+        def xlsx():
+            cells = lambda r, n: ''.join(f'<c r="{chr(65 + j)}{n}" t="inlineStr"><is><t>{escape(v)}</t></is></c>' for j, v in enumerate(r))
+            sheet = ('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+                     + ''.join(f'<row r="{n}">{cells(r, n)}</row>' for n, r in enumerate([header, *rows], 1)) + '</sheetData></worksheet>')
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, 'w') as z:
+                z.writestr('xl/worksheets/sheet1.xml', sheet)
+            return buf.getvalue()
+        files = {
+            'расписание.json': json.dumps([dict(zip(header, r)) for r in rows], ensure_ascii=False).encode(),
+            'выгрузка_1с.csv': csv_bytes([['Расписание на октябрь'], header, *rows]),
+            'выгрузка.txt': '\n'.join('\t'.join(r) for r in [header, *rows]).encode('utf-8'),
+            'расписание.xml': ('<Расписание>' + ''.join('<Занятие ' + ' '.join(f'{h}="{escape(v)}"' for h, v in zip(header, r)) + '/>'
+                                                       for r in rows) + '</Расписание>').encode('utf-8'),
+            'расписание.xlsx': xlsx(),
+        }
+        members = [{'user_id': T1, 'profiles': ['teacher'], 'display_name': 'Пётр Преподов'},
+                   {'user_id': ST1, 'profiles': ['student'], 'display_name': 'Анна'}]
+        with patch.object(m.core, 'members', return_value=members):
+            imp = lambda h, name, data, dry=True: self.c.post('/api/v1/schedule/import', params={'name': name, 'dry_run': dry},
+                                                              headers={**h, 'Content-Type': 'application/octet-stream'}, content=data)
+            previews = {}
+            for name, data in files.items():
+                r = imp(editor, name, data)
+                self.assertEqual(r.status_code, 200, (name, r.text))
+                body = r.json()
+                self.assertEqual((body['to_create'], body['errors'], body['created']), (2, [], 0), name)
+                previews[name] = body['preview']
+            first = next(iter(previews.values()))
+            self.assertTrue(all(p == first for p in previews.values()), previews)
+            self.assertEqual((first[0]['starts_at'], first[0]['teacher_ids'], first[1]['status'], sorted(first[1]['group_ids'])),
+                             ('2026-10-01T05:30:00Z', [T1], 'cancelled', sorted([GA, GB])))
+            # Загрузка — всё или ничего; повтор того же файла дублей не создаёт.
+            r = imp(editor, 'выгрузка_1с.csv', files['выгрузка_1с.csv'], dry=False)
+            self.assertEqual((r.status_code, r.json()['created']), (200, 2), r.text)
+            again = imp(editor, 'расписание.xlsx', files['расписание.xlsx'], dry=False).json()
+            self.assertEqual((again['created'], again['duplicates']), (0, 2))
+            week = self.c.get('/api/v1/schedule/events', headers=teacher,
+                              params={'from': '2026-10-01T00:00:00Z', 'to': '2026-10-02T00:00:00Z'}).json()['items']
+            self.assertEqual([e['title'] for e in week], ['Матанализ', 'Физика'])
+            # Ошибки по строкам: при загрузке ничего не записывается.
+            bad = json.dumps([{'Дата': '32.10.2026', 'Начало': '08:30', 'Конец': '10:05', 'Дисциплина': 'X', 'Группы': 'ИВТ-99',
+                               'Преподаватели': 'Никто'},
+                              {'date': '2026-10-02', 'start': '12:00', 'end': '11:00', 'title': 'Y', 'groups': 'ИВТ-21',
+                               'teachers': T1}]).encode()
+            check = imp(editor, 'bad.json', bad).json()
+            self.assertEqual([e['row'] for e in check['errors']], [1, 2])
+            self.assertIn('ИВТ-99', check['errors'][0]['message'])
+            self.assertIn('Никто', check['errors'][0]['message'])
+            self.assertIn('раньше начала', check['errors'][1]['message'])
+            r = imp(editor, 'bad.json', bad, dry=False)
+            self.assertEqual((r.status_code, r.json()['error']['code']), (422, 'INVALID_IMPORT'))
+            # Неподдерживаемые типы и права.
+            self.assertEqual(imp(editor, 'old.xls', b'x').json()['error']['code'], 'INVALID_FILE')
+            self.assertEqual(imp(editor, 'x.csv', b'a;b\n1;2').json()['error']['code'], 'INVALID_FILE')
+            self.assertEqual(imp(student, 'расписание.json', files['расписание.json']).status_code, 403)
+            self.assertEqual(imp(teacher, 'расписание.json', files['расписание.json']).status_code, 403)
+
     def test_client_page(self):
         page = self.c.get('/schedule')
         self.assertEqual(page.status_code, 200)

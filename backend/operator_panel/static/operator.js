@@ -706,8 +706,6 @@
     const area = h('textarea', { rows: 6, placeholder: '{"groups": [...]}' });
     const file = h('input', { type: 'file', accept: '.json,application/json', onchange: async () => { area.value = await file.files[0]?.text() || ''; } });
     const runTool = (name, body) => act(async () => (await api(`/tools/${name}`, { method: 'POST', body })).data.message);
-    let demoUser = null;
-    const demoPicker = userPicker(u => { demoUser = u; });
     view.append(head('Обслуживание', 'То, что раньше запускалось на сервере через docker compose exec backend python manage.py …'),
       h('div', { class: 'grid' },
         tool('Проверить платформу', 'У каждого вуза должен быть сервис администрирования с системными ролями; адреса и ключи облачных сервисов приводятся к настройкам сервера. Запускайте после смены адресов в .env.',
@@ -719,19 +717,12 @@
           file, area, h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => {
             let body; try { body = JSON.parse(area.value); } catch { showError(new ApiError('Это не JSON.')); return; }
             runTool('import-groups', body);
-          } }, 'Импортировать'))),
-        h('section', { class: 'card stack' }, h('h2', {}, 'Тестовый вуз'),
-          h('p', { class: 'muted m0' }, 'Создаёт «Тестовый университет» с расписанием и добавляет выбранного пользователя студентом. Повторный запуск ничего не дублирует.'),
-          field('Пользователь', demoPicker), h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => {
-            if (!demoUser) { showError(new ApiError('Выберите пользователя из списка.')); return; }
-            runTool('seed-demo', { user_id: demoUser.id });
-          } }, 'Создать')))),
+          } }, 'Импортировать')))),
       h('section', { class: 'card' }, h('h2', {}, 'Где остальные команды'), h('dl', { class: 'meta' },
         h('dt', {}, 'grant/revoke-platform-role'), h('dd', {}, 'Пользователи → «Сделать сотрудником поддержки»'),
         h('dt', {}, 'assign-owner'), h('dd', {}, 'Вузы → вуз → Обзор → «Владельцы»'),
         h('dt', {}, 'install-people / install-schedule'), h('dd', {}, 'Вузы → вуз → Обзор → «Сервисы платформы»'),
-        h('dt', {}, 'list-institutions'), h('dd', {}, 'Раздел «Вузы»'),
-        h('dt', {}, 'seed_demo.py'), h('dd', {}, 'Эта страница → «Тестовый вуз»'))));
+        h('dt', {}, 'list-institutions'), h('dd', {}, 'Раздел «Вузы»'))));
   }
 
   // ------------------------------------------------------------------

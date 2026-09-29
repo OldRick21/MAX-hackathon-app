@@ -28,9 +28,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse
 
-from app import onboarding
+from app import importer, onboarding
 from app.core_client import Binding, BindingMissing, CoreClient, CoreUnavailable
 
 # Как у любого сервиса вуза: адреса и ключ — из .env, строки выдаёт карточка сервиса («Выдать ключ»).
@@ -691,6 +692,135 @@ def plural(n: int, one: str, few: str, many: str) -> str:
     if n % 10 == 1 and n % 100 != 11:
         return one
     return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
+
+
+# --------------------------------------------------------------------------
+# Импорт расписания из файла: один формат (таблица занятий), типы .json, .xlsx, .csv/.txt (1С), .xml
+# --------------------------------------------------------------------------
+
+def import_plan(ctx: Ctx, name: str, data: bytes) -> dict:
+    """Разбирает файл и сверяет строки с вузом. Ничего не пишет: результат — занятия и ошибки по строкам."""
+    try:
+        rows = [importer.canonical(r) for r in importer.read_rows(name, data)]
+    except importer.ImportFailed as error:
+        raise Fail(422, 'INVALID_FILE', str(error))
+    groups = {}
+    for g in core.groups(ctx.binding):
+        groups.setdefault(g['name'].strip().casefold(), g['id'])
+    teachers_by_name, teacher_ids = {}, set()
+    for m in core.members(ctx.binding):
+        if 'teacher' in (m.get('profiles') or []):
+            teacher_ids.add(m['user_id'])
+            if m.get('display_name'):
+                teachers_by_name.setdefault(m['display_name'].strip().casefold(), []).append(m['user_id'])
+    offset = 1 if name.lower().endswith(('.json', '.xml')) else 2  # номер строки как в файле (с заголовком)
+    events, errors = [], []
+    for i, row in enumerate(rows):
+        line = i + offset
+        if all(not str(v).strip() for v in row.values()):
+            continue  # пустая строка таблицы
+        problems = [f'нет столбца «{field}»' for field in importer.REQUIRED if not str(row.get(field, '')).strip()]
+        try:
+            day = importer.parse_date(row.get('date'))
+            start, end = importer.parse_time(row.get('start')), importer.parse_time(row.get('end'))
+            status = importer.parse_status(row.get('status'))
+        except ValueError as error:
+            problems.append(str(error))
+            day = start = end = status = None
+        group_ids = []
+        for gname in importer.split_list(row.get('groups')):
+            gid = groups.get(gname.casefold())
+            if gid:
+                group_ids.append(gid)
+            else:
+                problems.append(f'группы «{gname}» нет в вузе')
+        teacher_list = []
+        for tname in importer.split_list(row.get('teachers')):
+            if tname in teacher_ids:
+                teacher_list.append(tname)
+                continue
+            found = teachers_by_name.get(tname.casefold(), [])
+            if len(found) == 1:
+                teacher_list.append(found[0])
+            elif found:
+                problems.append(f'преподавателей с именем «{tname}» несколько — укажите UUID')
+            else:
+                problems.append(f'преподаватель «{tname}» не найден среди преподавателей вуза')
+        title = str(row.get('title') or '').strip()
+        if len(title) > 200:
+            problems.append('название длиннее 200 символов')
+        if day and start and end:
+            starts = datetime.combine(day, start, TIMEZONE).astimezone(timezone.utc)
+            ends = datetime.combine(day, end, TIMEZONE).astimezone(timezone.utc)
+            if ends <= starts:
+                problems.append('конец занятия раньше начала')
+        if problems:
+            errors.append({'row': line, 'message': '; '.join(dict.fromkeys(problems))})
+            continue
+        fmt = '%Y-%m-%dT%H:%M:%SZ'
+        events.append({'row': line, 'title': title, 'starts_at': starts.strftime(fmt), 'ends_at': ends.strftime(fmt),
+                       'group_ids': unique(group_ids)[:50], 'teacher_ids': unique(teacher_list)[:10],
+                       'location': str(row.get('location') or '').strip()[:200],
+                       'description': str(row.get('description') or '').strip()[:2000], 'status': status})
+    return {'events': events, 'errors': errors}
+
+
+def event_key(title, starts_at, ends_at, group_ids) -> tuple:
+    return (title.casefold(), starts_at, ends_at, tuple(sorted(group_ids)))
+
+
+@app.post('/api/v1/schedule/import')
+async def import_schedule(request: Request, name: str = Query(..., min_length=1, max_length=255),
+                          dry_run: bool = Query(True), ctx: Ctx = Depends(authenticate)):
+    """Импорт занятий из файла (тело — содержимое файла, name — имя с расширением).
+
+    dry_run=true — только проверка: сколько занятий будет создано, дубликаты и ошибки по строкам.
+    dry_run=false — всё или ничего: при любой ошибке ничего не записывается (422). Занятия, которые уже
+    есть (то же название, время и группы), пропускаются — повторная загрузка файла не создаёт дублей.
+    """
+    need_writer(ctx)
+    data = await request.body()
+    return await run_in_threadpool(run_import, ctx, name, data, dry_run)
+
+
+def run_import(ctx: Ctx, name: str, data: bytes, dry_run: bool) -> dict:
+    plan = import_plan(ctx, name, data)
+    with database() as db:
+        if not dry_run:
+            db.execute('BEGIN IMMEDIATE')
+        existing = set()
+        if plan['events']:
+            lo = min(e['starts_at'] for e in plan['events'])
+            hi = max(e['ends_at'] for e in plan['events'])
+            rows = db.execute('SELECT * FROM events WHERE institution_id=? AND service_id=? AND starts_at >= ? AND starts_at <= ?',
+                              (*ctx.tenant, lo, hi)).fetchall()
+            links, _ = event_links(db, ctx, [r['id'] for r in rows])
+            existing = {event_key(r['title'], r['starts_at'], r['ends_at'], links[r['id']]) for r in rows}
+        new, duplicates = [], 0
+        for e in plan['events']:
+            key = event_key(e['title'], e['starts_at'], e['ends_at'], e['group_ids'])
+            if key in existing:
+                duplicates += 1
+                continue
+            existing.add(key)
+            new.append(e)
+        summary = {'total': len(plan['events']) + len(plan['errors']), 'to_create': len(new), 'duplicates': duplicates,
+                   'errors': plan['errors'][:200], 'preview': [{k: v for k, v in e.items() if k != 'row'} for e in new[:20]],
+                   'created': 0}
+        if dry_run:
+            return summary
+        if plan['errors']:
+            raise Fail(422, 'INVALID_IMPORT', f'В файле ошибок: {len(plan["errors"])}. Исправьте их — ничего не загружено',
+                       [{'path': f'row {e["row"]}', 'message': e['message']} for e in plan['errors'][:100]])
+        for e in new:
+            event_id = str(uuid.uuid4())
+            db.execute('INSERT INTO events (institution_id, service_id, id, title, starts_at, ends_at, location, description, status) '
+                       'VALUES (?,?,?,?,?,?,?,?,?)', (*ctx.tenant, event_id, e['title'], e['starts_at'], e['ends_at'],
+                                                       e['location'], e['description'], e['status']))
+            write_links(db, ctx, event_id, e)
+        db.commit()
+    summary['created'] = len(new)
+    return summary
 
 
 @app.post('/api/v1/schedule/events', status_code=201)

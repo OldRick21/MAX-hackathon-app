@@ -4,7 +4,7 @@
 import type {
   AcademicCardPatch, EventInput, Group, GroupDirectory, GroupEntry, InstitutionView, JoinOption, JoinRequest, JoinRequestItem, MaxUserInfo, Page,
   Profile, ProfileCard,
-  ReviewInput, ScheduleEvent, SelfCardPatch, ServiceView, Submission, SubmissionStatus, User, Versioned, WidgetData, WidgetView,
+  ReviewInput, ScheduleEvent, ScheduleImportResult, SelfCardPatch, ServiceView, Submission, SubmissionStatus, User, Versioned, WidgetData, WidgetView,
 } from './types';
 
 export interface ScheduleApi {
@@ -15,6 +15,8 @@ export interface ScheduleApi {
   updateEvent(id: string, input: EventInput, etag: string): Promise<ScheduleEvent>;
   deleteEvent(id: string, etag: string): Promise<void>;
   listGroups(signal?: AbortSignal): Promise<Group[]>;
+  /** Импорт из файла (.json, .xlsx, .csv/.txt из 1С, .xml): dryRun — только проверка, иначе всё или ничего. */
+  importFile(file: File, dryRun: boolean): Promise<ScheduleImportResult>;
 }
 
 export interface ProfilesApi {
