@@ -70,13 +70,15 @@ def assigned_roles(db: Session, service_id: str, user_id: str, profile: str) -> 
     return list(row.roles or []) if row else []
 
 
-def permissions_for(db: Session, service_id: str, roles: Iterable[str]) -> List[str]:
+def permissions_for(db: Session, service_id: str, roles: Iterable[str], profile: str) -> List[str]:
+    """Права ролей; учитываются только роли, допустимые для этого профиля (allowed_profiles)."""
     codes = list(roles)
     if not codes:
         return []
     perms: Set[str] = set()
     for role in db.query(ServiceRole).filter(ServiceRole.service_id == service_id, ServiceRole.code.in_(codes)).all():
-        perms.update(role.permissions or [])
+        if profile in (role.allowed_profiles or []):
+            perms.update(role.permissions or [])
     return sorted(perms)
 
 

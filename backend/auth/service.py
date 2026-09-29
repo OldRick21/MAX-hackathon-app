@@ -72,7 +72,7 @@ def pair(db, session, parent=None):
         common.update(context, parent_sid=parent.id)
         access = dict(common)
         roles = registry.assigned_roles(db, session.service_id, session.user_id, session.profile)
-        access.update(roles=roles, permissions=registry.permissions_for(db, session.service_id, roles))
+        access.update(roles=roles, permissions=registry.permissions_for(db, session.service_id, roles, session.profile))
         response.update(context, parent_session_id=parent.id)
     session.current_refresh_jti = generate_uuid()
     refresh = dict(common, family_id=session.family_id, jti=session.current_refresh_jti)
@@ -301,6 +301,6 @@ class AuthService:
         return {'active': True, 'sub': claims['sub'], 'session_id': claims['sid'],
                 'parent_session_id': claims['parent_sid'], 'institution_id': claims['institution_id'],
                 'service_id': claims['service_id'], 'profile': claims['profile'], 'exp': claims['exp'],
-                'roles': roles, 'permissions': registry.permissions_for(db, claims['service_id'], roles),
+                'roles': roles, 'permissions': registry.permissions_for(db, claims['service_id'], roles, claims['profile']),
                 # Учебные группы пользователя в вузе: сервису не нужен отдельный запрос за своей группой.
                 'group_ids': registry.user_group_ids(db, claims['institution_id'], claims['sub'])}

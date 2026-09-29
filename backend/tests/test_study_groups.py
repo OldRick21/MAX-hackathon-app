@@ -25,6 +25,7 @@ from tests.keys import issue_key, register_service  # noqa: E402
 import manage  # noqa: E402
 from database.create_tables import session_local  # noqa: E402
 from database.tables import Membership, PlatformStaff, RoleAssignment, ServiceInstance  # noqa: E402
+from platform_core import registry  # noqa: E402
 from main import app  # noqa: E402
 
 
@@ -99,9 +100,9 @@ class StudyGroups(unittest.TestCase):
         clash = self.c.put(f'{base}/{other}/members', headers={**p, 'If-Match': other_tag}, json={'user_ids': [s1, s2]})
         self.assertEqual(clash.json()['error']['code'], 'STUDENT_ALREADY_GROUPED')
 
-        # Приложение: любой участник видит все группы с составом; своя группа — в my_group_ids.
+        # Приложение: студенту — только своя группа с составом (CORE_API_SPEC.md §7.1).
         mine = self.c.get(f'/api/v1/institution/{inst}/groups', params={'profile': 'student'}, headers=s1_core).json()
-        self.assertEqual({g['name']: g['user_ids'] for g in mine['items']}, {'ИВТ-21': [s1], 'ИВТ-22': []})
+        self.assertEqual({g['name']: g['user_ids'] for g in mine['items']}, {'ИВТ-21': [s1]})
         self.assertEqual(mine['my_group_ids'], [group])
         self.assertFalse(mine['can_manage'])
         self.assertNotIn('students', mine)
@@ -165,6 +166,7 @@ class StudyGroups(unittest.TestCase):
         owner_id, owner = self.login('owner')
         support_id, support = self.login('support')
         admin, admin_core = self.login('admin')
+        plain, plain_core = self.login('plain')
         t1, t1_core = self.login('t1')
         s1, s1_core = self.login('s1')
         with session_local() as db:
@@ -174,13 +176,18 @@ class StudyGroups(unittest.TestCase):
                              json={'titles': {'ru': 'Вуз групп'}, 'contact': 'r@example.ru'}).json()['id']
         inst = self.c.post(f'/api/v1/platform/applications/{app_id}/approve', headers=support, json={}).json()['institution_id']
         with session_local() as db:
-            for uid, profiles in ((s1, ['student']), (t1, ['teacher']), (admin, ['admin'])):
+            for uid, profiles in ((s1, ['student']), (t1, ['teacher']), (admin, ['admin']), (plain, ['admin'])):
                 db.add(Membership(institution_id=inst, user_id=uid, profiles=profiles))
+            admin_service = registry.admin_service_of(db, inst).id
+            db.add(RoleAssignment(service_id=admin_service, user_id=admin, profile='admin', roles=['membership_admin']))
             db.commit()
         base = f'/api/v1/institution/{inst}/groups'
         q = {'profile': 'admin'}
 
-        # Любой администратор ведёт группы без ролей.
+        # Группы ведёт администратор с groups.manage (membership_admin); профиль admin без роли только смотрит.
+        view = self.c.get(base, params=q, headers=plain_core).json()
+        self.assertFalse(view['can_manage'])
+        self.assertEqual(self.c.post(base, params=q, headers=plain_core, json={'name': 'X'}).status_code, 403)
         view = self.c.get(base, params=q, headers=admin_core).json()
         self.assertTrue(view['can_manage'])
         self.assertEqual(view['students'], [s1])

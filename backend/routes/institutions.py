@@ -17,21 +17,16 @@ router = APIRouter()
 def service_card(db: Session, service: ServiceInstance, user_id: str, profile: str) -> dict:
     """ServiceView для shell: актуальные роли/permissions пользователя и меню, отфильтрованные по ним.
 
-    Меню с required_permissions показывается, только если у профиля есть все права: иначе
-    shell открывал бы раздел, в котором сервис ответит 403, и не видел бы прав на запись.
-    Исключение — администратор: он видит любой сервис вуза по умолчанию. Ему меню показываются
-    без учёта прав (что можно — решает сам сервис), а если меню для admin в манифесте нет,
-    показываются меню других профилей.
+    Меню показывается, если оно объявлено для профиля и у профиля есть все его required_permissions:
+    иначе shell открывал бы раздел, в котором сервис ответит 403 (CORE_API_SPEC.md §6 п.4).
+    Администратор не исключение: доступ к сервису ему дают роли этого сервиса.
     """
     roles = registry.assigned_roles(db, service.id, user_id, profile)
-    permissions = registry.permissions_for(db, service.id, roles)
+    permissions = registry.permissions_for(db, service.id, roles, profile)
     manifest = service.manifest or {}
     ordered = sorted(manifest.get("menus", []), key=lambda m: (m.get("order", 0), m.get("id", "")))
-    if profile == "admin":
-        chosen = [m for m in ordered if "admin" in [p.lower() for p in m.get("profiles", [])]] or ordered
-    else:
-        chosen = [m for m in ordered if profile in [p.lower() for p in m.get("profiles", [])]
-                  and set(m.get("required_permissions") or []) <= set(permissions)]
+    chosen = [m for m in ordered if profile in [p.lower() for p in m.get("profiles", [])]
+              and set(m.get("required_permissions") or []) <= set(permissions)]
     menus = [{
         "id": m["id"],
         "display_name": m.get("titles", {}).get("ru", m["id"]),
@@ -106,8 +101,14 @@ def _member(db: Session, institution_id: str, user_id: str, profile: str) -> Mem
 
 
 def manages_groups(db: Session, institution_id: str, user_id: str, profile: str) -> bool:
-    """Группы ведёт любой администратор вуза; остальные только смотрят."""
-    return profile == "admin"
+    """Группы ведёт администратор с правом groups.manage в администрировании (owner, membership_admin)."""
+    if profile != "admin":
+        return False
+    admin = registry.admin_service_of(db, institution_id)
+    if not admin:
+        return False
+    roles = registry.assigned_roles(db, admin.id, user_id, "admin")
+    return "groups.manage" in registry.permissions_for(db, admin.id, roles, "admin")
 
 
 @router.get("/api/v1/institution/{institution_id}/groups")
@@ -117,13 +118,18 @@ def list_my_groups(
     session_data=Depends(get_current_core_session),
     db: Session = Depends(get_db)
 ):
-    """Учебные группы для интерфейса: все группы вуза с составом — любому участнику.
+    """Учебные группы для интерфейса (CORE_API_SPEC.md §7.1): студенту — только своя группа,
+    преподавателю и администратору — все группы вуза с составом.
 
-    Администратору дополнительно: can_manage, ETag групп и список студентов вуза для выбора состава.
+    Тому, кто ведёт группы (groups.manage), дополнительно: can_manage, ETag групп и список студентов вуза для выбора состава.
     """
     user, _ = session_data
     _member(db, institution_id, user.id, profile)
-    groups = db.query(StudyGroup).filter(StudyGroup.institution_id == institution_id).order_by(StudyGroup.name_key).all()
+    mine = registry.user_group_ids(db, institution_id, user.id)
+    query = db.query(StudyGroup).filter(StudyGroup.institution_id == institution_id)
+    if profile == "student":
+        query = query.filter(StudyGroup.id.in_(mine))
+    groups = query.order_by(StudyGroup.name_key).all()
     members = {}
     for row in db.query(StudyGroupMember).filter(StudyGroupMember.institution_id == institution_id):
         members.setdefault(row.group_id, []).append(row.user_id)
@@ -135,7 +141,7 @@ def list_my_groups(
             item.update(etag=institution_admin._group_tag(g), members_etag=institution_admin._members_tag(g))
         items.append(item)
     body = {"items": items, "next_cursor": None, "can_manage": manage,
-            "my_group_ids": registry.user_group_ids(db, institution_id, user.id)}
+            "my_group_ids": mine}
     if manage:
         body["students"] = sorted(m.user_id for m in db.query(Membership).filter(Membership.institution_id == institution_id)
                                   if "student" in (m.profiles or []))
@@ -222,8 +228,10 @@ def list_my_services(
         ServiceInstance.enabled == True
     ).all()
 
-    items = [service_card(db, s, user.id, profile_norm) for s in services
+    cards = [service_card(db, s, user.id, profile_norm) for s in services
              if profile_norm in [p.lower() for p in s.supported_profiles]]
+    # В списке только экземпляры с доступными профилю меню; headless-сессия по-прежнему доступна по id.
+    items = [c for c in cards if c["menus"]]
 
     return {"items": items, "next_cursor": None}
 

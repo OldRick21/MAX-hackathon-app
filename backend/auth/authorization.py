@@ -110,7 +110,7 @@ def private_actor(
         raise DomainError(401, 'UNAUTHENTICATED', 'Actor session or membership inactive')
 
     roles = registry.assigned_roles(db, admin_service.id, user_id, "admin")
-    permissions = registry.permissions_for(db, admin_service.id, roles)
+    permissions = registry.permissions_for(db, admin_service.id, roles, "admin")
     request_id = getattr(request.state, "request_id", None)
     return ActorContext(
         institution_id=institution_id, admin_service_id=admin_service.id, actor_id=user_id, roles=roles,

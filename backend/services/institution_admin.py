@@ -95,7 +95,7 @@ def credential_view(c: ServiceCredential) -> dict:
 def assignment_view(db: Session, service: ServiceInstance, user_id: str, profile: str) -> dict:
     roles = registry.assigned_roles(db, service.id, user_id, profile)
     return {"institution_id": service.institution_id, "service_id": service.id, "user_id": user_id,
-            "profile": profile, "roles": roles, "permissions": registry.permissions_for(db, service.id, roles)}
+            "profile": profile, "roles": roles, "permissions": registry.permissions_for(db, service.id, roles, profile)}
 
 
 # --------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import os
 import tempfile
 import unittest
 import uuid
+from urllib.parse import urlsplit
 
 _tmp = tempfile.TemporaryDirectory()
 os.environ.update(
@@ -132,10 +133,16 @@ class CustomServices(unittest.TestCase):
         self.assertEqual((card['service_type'], card['display_name'], [m['id'] for m in card['menus']]),
                          ('custom.library', 'Библиотека', ['books']))
 
-        # Администратор видит любой сервис вуза, даже без меню для admin и без ролей.
+        # CSP оболочки разрешает iframe только зарегистрированных включённых сервисов.
+        csp = self.c.get('/api/v1/internal/shell-csp').headers['Content-Security-Policy']
+        frame_src = next(d for d in csp.split('; ') if d.startswith('frame-src'))
+        self.assertIn(urlsplit(service['client_base_url']).netloc, frame_src)
+        self.assertNotIn('*', frame_src)
+
+        # Меню фильтруются для всех профилей одинаково: у admin нет своего меню — сервиса нет в списке,
+        # но headless-сессия по-прежнему доступна (CORE_API_SPEC.md §6 п.4–5).
         admin_items = self.c.get(f'/api/v1/institution/{inst}/service', params={'profile': 'admin'}, headers=owner).json()['items']
-        admin_card = next(x for x in admin_items if x['id'] == service['id'])
-        self.assertEqual(([m['id'] for m in admin_card['menus']], admin_card['permissions']), (['books'], []))
+        self.assertNotIn(service['id'], [x['id'] for x in admin_items])
         opened = self.c.post(f'/api/v1/institution/{inst}/service/{service["id"]}/session', json={'profile': 'admin'}, headers=owner)
         self.assertEqual(opened.status_code, 201, opened.text)
 

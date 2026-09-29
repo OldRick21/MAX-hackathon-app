@@ -51,13 +51,16 @@ class RequestIdAndCacheMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIdAndCacheMiddleware)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Браузерные запросы оболочки к ядру same-origin: cross-origin CORS открыт только для локальной разработки.
+from settings.config import settings as _settings
+if _settings.ALLOW_DEV_LOGIN:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(router_auth)
 app.include_router(router_institutions)
