@@ -72,7 +72,7 @@ if [[ -z "$ADMIN_ORIGIN" || "$ADMIN_ORIGIN" == *sslip.io* ]]; then env_set ADMIN
 # --- 2. Каталоги и сертификат ядра ----------------------------------------
 step "Каталоги и сертификат ядра"
 mkdir -p services/connected /var/lib/max-miniapp/acme /var/lib/max-miniapp/letsencrypt
-chown 10001:10001 services/connected
+chown -R 10001:10001 services/connected
 chmod 750 services/connected
 [[ -e /var/lib/max-miniapp/letsencrypt/live/max-miniapp/fullchain.pem ]] || die "нет сертификата ядра в
 /var/lib/max-miniapp/letsencrypt/live/max-miniapp (раздел «Сертификаты» README): выпустите его и запустите скрипт снова"

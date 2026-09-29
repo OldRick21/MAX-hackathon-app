@@ -1,7 +1,12 @@
 """Процесс «сервиса» для теста раннера: отдаёт своё окружение."""
 import os
+import sys
 
 from fastapi import FastAPI, Request
+
+# Тест повтора запуска: пока файл есть, процесс падает при старте.
+if os.path.exists(os.path.join(os.environ['SERVICE_DATA'], 'fail-start')):
+    sys.exit(1)
 
 app = FastAPI()
 

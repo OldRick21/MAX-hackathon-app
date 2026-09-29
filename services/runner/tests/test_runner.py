@@ -107,6 +107,22 @@ class Runner(unittest.TestCase):
             self.assertTrue(wait(lambda: not Path(f'{_tmp.name}/data/{B}').exists()), 'data not purged')
             self.assertTrue(Path(f'{_tmp.name}/data/{A}').is_dir())
 
+    def test_failed_first_start_is_retried(self):
+        # Первый запуск упал (сервер не успел): раннер повторяет его сам, не дожидаясь запроса к сервису.
+        INSTANCES.clear()
+        PURGE.clear()
+        C = '44444444-4444-4444-8444-444444444444'
+        flag = Path(f'{_tmp.name}/data/{C}/fail-start')
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.touch()
+        INSTANCES[C] = binding(C)
+        with TestClient(runner.app):
+            self.assertTrue(wait(lambda: C in runner.instances))
+            time.sleep(2)  # несколько сверок: процесс падает каждый раз
+            self.assertFalse(runner.instances[C].running or runner.instances[C].started)
+            flag.unlink()
+            self.assertTrue(wait(lambda: runner.instances[C].started), 'failed start not retried')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,7 +5,8 @@
 (`uvicorn app.main:app`, ключ и адреса из окружения, свой файл БД), — и проксирует запросы
 `/<service_id>/…` в процесс этого вуза через unix-сокет.
 
-- Новый экземпляр запускается сразу: сервис публикует меню и роли.
+- Новый экземпляр запускается сразу: сервис публикует меню и роли. Не поднявшийся с первого раза
+  запускается снова при следующей сверке, пока не ответит; одновременно стартует не больше START_PARALLEL.
 - Остальные запускаются лениво, по первому запросу, и останавливаются после простоя (IDLE_SECONDS).
 - Упавший процесс поднимается следующим запросом; смена ключа (revision) перезапускает процесс.
 - Удалённый экземпляр останавливается; его данные остаются в /data/<service_id>.
@@ -49,6 +50,8 @@ APP_MODULE = os.environ.get("APP_MODULE", "app.main:app")
 IDLE_SECONDS = float(os.environ.get("IDLE_SECONDS", "900"))
 POLL_SECONDS = float(os.environ.get("POLL_SECONDS", "15"))
 START_TIMEOUT = float(os.environ.get("START_TIMEOUT", "30"))
+# Много вузов разом (тестовые данные, перезапуск) на слабом сервере не успевают стартовать все сразу.
+STARTS = asyncio.Semaphore(max(1, int(os.environ.get("START_PARALLEL", "2"))))
 PASS_ENV = os.environ.get("PASS_ENV", "").split()
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
@@ -61,6 +64,7 @@ class Instance:
     binding: dict
     proc: Optional[asyncio.subprocess.Process] = None
     last_used: float = field(default_factory=time.monotonic)
+    started: bool = False  # процесс хоть раз ответил на health: меню и роли он публикует сам
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     @property
@@ -99,24 +103,30 @@ async def start(inst: Instance) -> None:
     async with inst.lock:
         if inst.running:
             return
-        (DATA / inst.service_id).mkdir(parents=True, exist_ok=True)
-        with suppress(FileNotFoundError):
-            inst.sock.unlink()
-        inst.proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "uvicorn", APP_MODULE, "--uds", str(inst.sock), "--workers", "1",
-            "--no-access-log", "--proxy-headers", env=inst.env())
-        log.info("started %s (pid %s)", inst.service_id, inst.proc.pid)
-        deadline = time.monotonic() + START_TIMEOUT
-        async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds=str(inst.sock)), timeout=2) as client:
-            while time.monotonic() < deadline:
-                if inst.proc.returncode is not None:
-                    raise RuntimeError(f"process of {inst.service_id} exited with {inst.proc.returncode}")
-                with suppress(httpx.HTTPError):
-                    if (await client.get("http://svc/api/v1/health")).status_code == 200:
-                        return
-                await asyncio.sleep(0.2)
-        await stop(inst, locked=True)
-        raise RuntimeError(f"process of {inst.service_id} did not start in {START_TIMEOUT}s")
+        async with STARTS:
+            await _spawn(inst)
+
+
+async def _spawn(inst: Instance) -> None:
+    (DATA / inst.service_id).mkdir(parents=True, exist_ok=True)
+    with suppress(FileNotFoundError):
+        inst.sock.unlink()
+    inst.proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "uvicorn", APP_MODULE, "--uds", str(inst.sock), "--workers", "1",
+        "--no-access-log", "--proxy-headers", env=inst.env())
+    log.info("started %s (pid %s)", inst.service_id, inst.proc.pid)
+    deadline = time.monotonic() + START_TIMEOUT
+    async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds=str(inst.sock)), timeout=2) as client:
+        while time.monotonic() < deadline:
+            if inst.proc.returncode is not None:
+                raise RuntimeError(f"process of {inst.service_id} exited with {inst.proc.returncode}")
+            with suppress(httpx.HTTPError):
+                if (await client.get("http://svc/api/v1/health")).status_code == 200:
+                    inst.started = True
+                    return
+            await asyncio.sleep(0.2)
+    await stop(inst, locked=True)
+    raise RuntimeError(f"process of {inst.service_id} did not start in {START_TIMEOUT}s")
 
 
 async def stop(inst: Instance, locked: bool = False) -> None:
@@ -160,6 +170,8 @@ async def sync_instances(client: httpx.AsyncClient) -> None:
             if changed and inst.running:
                 await stop(inst)
                 asyncio.create_task(safe_start(inst))
+            elif not inst.started and not inst.running and not inst.lock.locked():
+                asyncio.create_task(safe_start(inst))  # первый запуск не удался: иначе меню ждёт первого запроса
     for sid in list(instances):
         if sid not in seen:
             await stop(instances.pop(sid))
