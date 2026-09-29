@@ -17,7 +17,7 @@ os.environ.update(
     OPERATOR_HEALTH_TARGETS='{}',
 )
 
-from fastapi.testclient import TestClient  # noqa: E402
+from testing_consent import TestClient  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
 from database.tables import AuditEvent, PlatformStaff  # noqa: E402
@@ -263,8 +263,8 @@ class OperatorPanel(unittest.TestCase):
         with engine.connect() as conn:
             for table in inspect(engine).get_table_names():
                 cols = {c['name'] for c in inspect(engine).get_columns(table)}
-                if table in ('audit_events', 'purged_instances'):
-                    continue  # журнал и список очистки остаются намеренно
+                if table in ('audit_events', 'purged_instances', 'privacy_disclosures', 'privacy_tasks'):
+                    continue  # history and unacknowledged cleanup survive institution deletion
                 if 'institution_id' in cols:
                     n = conn.execute(text(f'SELECT count(*) FROM {table} WHERE institution_id = :i'), {'i': inst}).scalar()
                     self.assertEqual(n, 0, table)

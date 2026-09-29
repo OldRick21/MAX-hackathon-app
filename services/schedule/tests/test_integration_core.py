@@ -25,7 +25,7 @@ os.environ.update(
     SCHEDULE_DB=f'{_tmp.name}/schedule.db',
 )
 
-from fastapi.testclient import TestClient  # noqa: E402
+from testing_consent import TestClient  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
 from database.base import utc_now  # noqa: E402

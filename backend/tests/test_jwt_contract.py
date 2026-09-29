@@ -17,7 +17,7 @@ os.environ.update(DATABASE_URL=f'sqlite:///{_tmp.name}/jwt.db', JWT_ISSUER='http
                   RATE_LIMIT_REFRESH='0', RATE_LIMIT_MACHINE_EXCHANGE='0', RATE_LIMIT_USER='0', RATE_LIMIT_CREDENTIAL='0')
 
 import jwt
-from fastapi.testclient import TestClient
+from testing_consent import TestClient
 from sqlalchemy.exc import OperationalError
 from main import app
 from auth.security import security, timestamp, COMMON, EXTRA

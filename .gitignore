@@ -12,6 +12,8 @@ node_modules/
 *.log
 
 .venv/
+.test-deps/
+.test-tmp/
 __pycache__/
 *.py[cod]
 

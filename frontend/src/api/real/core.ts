@@ -33,10 +33,10 @@ export class CoreSession {
     if (notify) this.onExpired();
   }
 
-  async login(initData: string) {
+  async login(initData: string, consent?: { consent_version: string; consent_challenge: string }) {
     this.clear();
     const generation = this.generation;
-    const { data } = await request<CoreTokenPair>('/api/v1/auth/token', { method: 'POST', body: { initData } });
+    const { data } = await request<CoreTokenPair>('/api/v1/auth/token', { method: 'POST', body: { initData, ...consent } });
     const pair = tokenPair(data);
     if (generation !== this.generation) throw cancelled();
     this.pair = pair;

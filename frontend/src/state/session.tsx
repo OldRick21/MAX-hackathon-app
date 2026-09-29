@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { loadBackend, type Backend } from '../api';
 import { NotInMaxError } from '../api/backend';
-import { humanMessage } from '../api/http';
+import { ApiError, humanMessage } from '../api/http';
 import type { InstitutionView, MaxUserInfo, User } from '../api/types';
 
 export type SessionPhase =
@@ -10,6 +10,8 @@ export type SessionPhase =
   | { kind: 'not-in-max' }
   | { kind: 'error'; message: string }
   | { kind: 'expired' }
+  | { kind: 'consent' }
+  | { kind: 'withdrawn'; receipt: string }
   | { kind: 'ready' };
 
 interface SessionValue {
@@ -19,6 +21,8 @@ interface SessionValue {
   maxUser: MaxUserInfo | null;
   institutions: InstitutionView[];
   retry: () => void;
+  accept: (consent: { consent_version: string; consent_challenge: string }) => Promise<void>;
+  withdrawn: (receipt: string) => void;
   /** Перечитать список вузов без повторного входа (после одобрения заявки). */
   reloadInstitutions: () => Promise<void>;
 }
@@ -33,6 +37,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    const receipt = sessionStorage.getItem('privacy-erasure-receipt');
+    if (receipt) { setPhase({ kind: 'withdrawn', receipt }); return; }
     let alive = true;
     setPhase({ kind: 'booting' });
     (async () => {
@@ -49,7 +55,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setPhase({ kind: 'ready' });
       } catch (e) {
         if (!alive) return;
-        if (e instanceof NotInMaxError) setPhase({ kind: 'not-in-max' });
+        if (e instanceof ApiError && e.code === 'CONSENT_REQUIRED') setPhase({ kind: 'consent' });
+        else if (e instanceof NotInMaxError) setPhase({ kind: 'not-in-max' });
         else setPhase({ kind: 'error', message: humanMessage(e, 'Не удалось войти. Попробуйте ещё раз.') });
       }
     })();
@@ -72,6 +79,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     <SessionContext.Provider value={{
       phase, backend, user, maxUser: backend?.maxUser() ?? null, institutions,
       retry: () => setAttempt(a => a + 1),
+      accept: async consent => {
+        if (!backend) return;
+        const u = await backend.login(consent);
+        setUser(u);
+        setInstitutions(await backend.listInstitutions());
+        setPhase({ kind: 'ready' });
+      },
+      withdrawn: receipt => {
+        sessionStorage.setItem('privacy-erasure-receipt', receipt);
+        backend?.releaseServices();
+        backend?.clearSession?.();
+        setUser(null);
+        setInstitutions([]);
+        window.dispatchEvent(new Event('vuzy:privacy-withdrawn'));
+        setPhase({ kind: 'withdrawn', receipt });
+      },
       reloadInstitutions,
     }}>
       {children}

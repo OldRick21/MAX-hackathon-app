@@ -391,3 +391,7 @@ def client_asset(name: str):
         raise HTTPException(status_code=404, detail='Файл не найден')
     return FileResponse(target, headers={'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff'})
 
+
+from app.privacy_protocol import PrivacyGuard
+from app.privacy_cleanup import erase as erase_personal_data
+app.add_middleware(PrivacyGuard, erase=erase_personal_data, client=lambda: core)

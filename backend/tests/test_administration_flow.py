@@ -13,7 +13,7 @@ os.environ.update(
     ALLOW_DEV_LOGIN="true", SEED_DEMO_DATA="false", ALLOW_FAKE_REDIS="true", RATE_LIMIT_LOGIN="0", RATE_LIMIT_REFRESH="0", RATE_LIMIT_MACHINE_EXCHANGE="0", RATE_LIMIT_USER="0", RATE_LIMIT_CREDENTIAL="0", REDIS_PORT="1",
     CLOUD_BINDING_KEY="b" * 48, ADMINISTRATION_PROVISIONING_TOKEN="p" * 48,
 )
-from fastapi.testclient import TestClient  # noqa: E402
+from testing_consent import TestClient  # noqa: E402
 
 from tests.keys import issue_key  # noqa: E402
 

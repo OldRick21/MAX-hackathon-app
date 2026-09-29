@@ -44,7 +44,8 @@ def delete_user(db: Session, user_id: str) -> None:
         raise DomainError(409, "USER_HAS_MEMBERSHIPS", "Пользователь состоит в вузе. Сначала удалите его из всех вузов")
     if db.get(PlatformStaff, user_id):
         raise DomainError(409, "USER_IS_STAFF", "Сначала отзовите права поддержки платформы")
-    db.delete(user)
+    from privacy import erase_user
+    erase_user(db, user)
     registry.audit(db, scope="platform", action="user.delete", actor_user_id=None, actor_kind="operator",
                    target_type="user", target_id=user_id)
 

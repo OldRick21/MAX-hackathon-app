@@ -33,7 +33,16 @@ async def lifespan(app: FastAPI):
     from auth.security import security
     security.keys.initialize()
     create_tables()
-    yield
+    import asyncio
+    import contextlib
+    from privacy import maintenance
+    task = asyncio.create_task(maintenance())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 app = FastAPI(lifespan=lifespan)
 
@@ -70,6 +79,8 @@ app.include_router(router_system)
 app.include_router(router_private)
 app.include_router(router_platform)
 app.include_router(router_avatars)
+from privacy import router as privacy_router
+app.include_router(privacy_router)
 
 # --- Обработчики ошибок по схеме ErrorResponse ---
 # Коды только из перечня ErrorResponse.code; код выбирает DomainError, а не текст исключения.

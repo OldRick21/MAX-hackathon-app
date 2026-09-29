@@ -335,3 +335,7 @@ def asset(asset_name: str):
             return Response(path.read_bytes(), media_type=f"{media}; charset=utf-8",
                             headers={"Cache-Control": "public, max-age=31536000, immutable"})
     return Response(status_code=404)
+
+from app.privacy_protocol import PrivacyGuard
+from app.privacy_cleanup import erase as erase_personal_data
+app.add_middleware(PrivacyGuard, erase=erase_personal_data, client=core)

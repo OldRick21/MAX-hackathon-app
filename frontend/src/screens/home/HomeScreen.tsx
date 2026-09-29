@@ -8,6 +8,7 @@ import { useBackend, useSession } from '../../state/session';
 import { formatShort, formatWeekday, now } from '../../utils/time';
 import s from './home.module.css';
 import { WidgetCard } from './widgets';
+import { PrivacySettings } from '../entry/Privacy';
 
 /** Колонки сетки главной: 4 на широком экране, 2 на среднем, 1 на телефоне (WIDGETS_SPEC.md §8). */
 const COLUMN_QUERIES: [string, number][] = [['(min-width: 1100px)', 4], ['(min-width: 768px)', 2]];
@@ -95,6 +96,8 @@ export function HomeScreen() {
           )}
         </div>
       )}
+
+      <PrivacySettings />
     </div>
   );
 }

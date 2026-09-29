@@ -63,7 +63,8 @@ export interface Backend {
   setAvatar(image: Blob): Promise<void>;
   deleteAvatar(): Promise<void>;
   /** Вход через MAX. Бросает NotInMaxError, если приложение открыто не из MAX. */
-  login(): Promise<User>;
+  login(consent?: { consent_version: string; consent_challenge: string }): Promise<User>;
+  clearSession?(): void;
   listInstitutions(signal?: AbortSignal): Promise<InstitutionView[]>;
   getInstitution(id: string, signal?: AbortSignal): Promise<InstitutionView>;
   /** Заявки на вступление: зарегистрированные вузы с группами, свои заявки, подача и отзыв. */

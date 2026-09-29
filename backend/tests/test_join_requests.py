@@ -18,7 +18,7 @@ os.environ.update(
     SERVICE_CONFIG_DIR='',
 )
 
-from fastapi.testclient import TestClient  # noqa: E402
+from testing_consent import TestClient  # noqa: E402
 
 from tests.keys import issue_key, register_service  # noqa: E402
 
