@@ -52,7 +52,8 @@ class PrivacyGuard:
                 raise
             except Exception as error:
                 log.warning('Privacy synchronization deferred: %s', type(error).__name__)
-            await asyncio.sleep(5)
+            # Раз в минуту: при опросе раз в 5 с десятки процессов вузов перегружали ядро на слабом сервере.
+            await asyncio.sleep(60)
 
     async def synchronize_async(self):
         task = asyncio.create_task(asyncio.to_thread(self.synchronize))

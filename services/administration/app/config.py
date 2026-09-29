@@ -28,7 +28,7 @@ class Config:
     public_client_base_url: str
     # Дополнительные родители для CSP frame-ancestors (например, MAX Web).
     frame_ancestors: tuple
-    core_timeout: float = 3.0
+    core_timeout: float = 10.0
 
     @property
     def public_origin(self) -> str:
@@ -47,5 +47,5 @@ def load() -> Config:
         public_api_base_url=_required("SERVICE_API_BASE_URL").rstrip("/"),
         public_client_base_url=_required("SERVICE_CLIENT_BASE_URL").rstrip("/"),
         frame_ancestors=(shell, *extra),
-        core_timeout=float(os.environ.get("CORE_TIMEOUT_SECONDS", "3")),
+        core_timeout=float(os.environ.get("CORE_TIMEOUT_SECONDS", "10")),
     )

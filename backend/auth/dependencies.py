@@ -1,6 +1,7 @@
 import json
 from typing import Any
 
+from starlette.requests import ClientDisconnect
 from fastapi import Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBasic
 from sqlalchemy.orm import Session
@@ -62,7 +63,11 @@ class RequireMachineScope:
 async def json_body(request: Request) -> Any:
     """Тело запроса JSON. Объявляется последним параметром маршрута: FastAPI решает зависимости
     по порядку, поэтому авторизация проверяется до разбора тела (CORE_API_SPEC.md §3)."""
-    raw = await request.body()
+    try:
+        raw = await request.body()
+    except ClientDisconnect:
+        # Клиент (например, фасад администрирования по таймауту) ушёл, не дождавшись ответа: не авария ядра.
+        raise DomainError(400, "BAD_REQUEST", "Запрос прерван клиентом")
     if not raw:
         return None
     try:

@@ -48,7 +48,7 @@ class CoreClient:
     TOKEN_MARGIN = 30.0
 
     def __init__(self, base_url: str, client_id: str, client_secret: str, api_base_url: str = "",
-                 client_base_url: str = "", timeout: float = 3.0, session=None):
+                 client_base_url: str = "", timeout: float = 10.0, session=None):
         """Ключ процесса — из .env (выдан в карточке сервиса), как у любого сервиса вуза."""
         self.base_url = base_url.rstrip("/")
         self.client_id = client_id
