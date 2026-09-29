@@ -31,6 +31,7 @@ os.environ.update(
 from fastapi.testclient import TestClient  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
+from database.base import utc_now  # noqa: E402
 from database.tables import InstitutionLocalHost, Membership, PlatformStaff, ServiceInstance  # noqa: E402
 from platform_core import registry  # noqa: E402
 from main import app as core_app  # noqa: E402
@@ -108,6 +109,10 @@ class PeopleAgainstCore(unittest.TestCase):
         # «Люди» — свой сервис вуза: одобренный хост, регистрация, ключ; меню и роль публикует сам сервис.
         with session_local() as db:
             db.add(InstitutionLocalHost(institution_id=inst_id, hostname=HOST, approved_by=support_id))
+            # Облачный экземпляр, созданный вместе с вузом, удаляется: тест подключает сервис локально.
+            auto = db.query(ServiceInstance).filter_by(institution_id=inst_id, service_type='user-profile', deleted_at=None).one()
+            auto.deleted_at, auto.enabled = utc_now(), False
+            db.flush()
             people_id = registry.create_local_instance(db, inst_id, 'user-profile', API, CLIENT, {'ru': 'Люди'},
                                                        ['student', 'teacher', 'admin']).id
             db.commit()
