@@ -47,6 +47,7 @@ SDK не должен превращаться в универсальную м�
 | Manifest | GET/PUT /api/v1/internal/service/{service_id}/manifest |
 | Профили известного участника | GET /api/v1/internal/service/{service_id}/users/{user_id}/profiles |
 | Определения и назначения ролей | Операции под /api/v1/internal/service/{service_id}/roles и /users/{user_id}/profiles/{profile}/roles |
+| Виджеты главного экрана (проект) | GET /api/v1/internal/service/{service_id}/widgets, PUT .../widgets/{widget_id}/visibility — [WIDGETS_SPEC.md](WIDGETS_SPEC.md) |
 
 Точные тела и заголовки исходящих вызовов определены в [CORE_API_OPENAPI.yaml](../../core/CORE_API_OPENAPI.yaml). Эти вызовы **не публикуются** как новые endpoints SDK. Machine scopes ограничивают backend, но не заменяют авторизацию человека перед операцией с ролью/manifest. У administration публичные write-scopes RBAC отсутствуют; SDK не пытается обойти это ограничение. Создание/изменение членства и профилей не относится к общему machine API.
 
