@@ -19,7 +19,7 @@ def run():
     # 2. Получение Machine Token сервиса
     r = requests.post(
         f"{BASE_URL}/api/v1/internal/auth/token",
-        auth=HTTPBasicAuth("user_profile_service_client", "service_super_secret_key_123"),
+        auth=HTTPBasicAuth("22370780-1c30-4de9-959e-b474475274c7", "service_super_secret_key_123"),  # демо-ключ SEED_DEMO_DATA
         json={"grant_type": "client_credentials"}
     )
     machine_token = r.json()["access_token"]
@@ -37,33 +37,32 @@ def run():
         "code": role_code,
         "titles": {"ru": "Редактор", "en": "Editor"},
         "allowed_profiles": ["student", "teacher"],
-        "permissions": ["profile.write"]
+        "permissions": ["profiles.manage"]
     }
     r = requests.post(f"{BASE_URL}/api/v1/internal/service/{service_id}/roles", json=new_role, headers=m_headers)
     assert r.status_code == 201
     print(f"  ✓ Service role '{role_code}' created")
 
     # 5. Назначение роли
-    r = requests.put(
-        f"{BASE_URL}/api/v1/internal/service/{service_id}/users/{user_id}/profiles/student/roles",
-        json={"roles": [role_code]},
-        headers=m_headers
-    )
-    assert r.status_code == 200 and "profile.write" in r.json()["permissions"]
+    assign_url = f"{BASE_URL}/api/v1/internal/service/{service_id}/users/{user_id}/profiles/student/roles"
+    r = requests.put(assign_url, json={"roles": [role_code]}, headers=m_headers)
+    assert r.status_code == 428  # If-Match обязателен
+    tag = requests.get(assign_url, headers=m_headers).headers["ETag"]
+    r = requests.put(assign_url, json={"roles": [role_code]}, headers={**m_headers, "If-Match": tag})
+    assert r.status_code == 200 and "profiles.manage" in r.json()["permissions"]
     print("  ✓ Role assigned and permissions calculated")
 
     # 6. Защита от удаления активной роли (409)
-    r = requests.delete(f"{BASE_URL}/api/v1/internal/service/{service_id}/roles/{role_code}", headers=m_headers)
-    assert r.status_code == 409
+    role_url = f"{BASE_URL}/api/v1/internal/service/{service_id}/roles/{role_code}"
+    role_tag = requests.get(role_url, headers=m_headers).headers["ETag"]
+    r = requests.delete(role_url, headers={**m_headers, "If-Match": role_tag})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "ROLE_IN_USE"
     print("  ✓ ROLE_IN_USE conflict check (409) OK")
 
     # 7. Снятие и удаление роли
-    requests.put(
-        f"{BASE_URL}/api/v1/internal/service/{service_id}/users/{user_id}/profiles/student/roles",
-        json={"roles": []},
-        headers=m_headers
-    )
-    r = requests.delete(f"{BASE_URL}/api/v1/internal/service/{service_id}/roles/{role_code}", headers=m_headers)
+    tag = requests.get(assign_url, headers=m_headers).headers["ETag"]
+    requests.put(assign_url, json={"roles": []}, headers={**m_headers, "If-Match": tag})
+    r = requests.delete(role_url, headers={**m_headers, "If-Match": role_tag})
     assert r.status_code == 204
     print("  ✓ Role deleted after unassignment (204) OK")
 
@@ -72,5 +71,5 @@ def run():
         f"{BASE_URL}/api/v1/internal/service/00000000-0000-0000-0000-000000000000/roles",
         headers=m_headers
     )
-    assert r.status_code == 403
-    print("  ✓ Cross-service isolation verified (403 Forbidden)")
+    assert r.status_code == 404  # чужой экземпляр не раскрывается
+    print("  ✓ Cross-service isolation verified (404)")

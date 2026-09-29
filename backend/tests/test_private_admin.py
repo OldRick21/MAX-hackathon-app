@@ -23,8 +23,9 @@ def run():
     # 2. Machine token сервиса администрирования через его binding
     services = requests.get(f"{BASE_URL}/api/v1/institution/{inst_id}/service?profile=admin", headers=admin_core_h).json()["items"]
     admin_srv_id = next(s["id"] for s in services if s["service_type"] == "administration")
-    binding = requests.get(f"{BASE_URL}/api/v1/internal/provisioning/bindings/{admin_srv_id}",
-                           headers={"Authorization": f"Bearer {os.environ['ADMINISTRATION_PROVISIONING_TOKEN']}"}).json()
+    listed = requests.get(f"{BASE_URL}/api/v1/internal/provisioning/instances",
+                          headers={"Authorization": f"Bearer {os.environ['ADMINISTRATION_PROVISIONING_TOKEN']}"}).json()
+    binding = next(i for i in listed["items"] if i["service_id"] == admin_srv_id)
     r = requests.post(
         f"{BASE_URL}/api/v1/internal/auth/token",
         auth=HTTPBasicAuth(binding["client_id"], binding["client_secret"]),

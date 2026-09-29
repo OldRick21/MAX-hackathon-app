@@ -47,7 +47,7 @@ def run():
     # 5. Получение Machine Token микросервисом
     r = requests.post(
         f"{BASE_URL}/api/v1/internal/auth/token",
-        auth=HTTPBasicAuth("user_profile_service_client", "service_super_secret_key_123"),
+        auth=HTTPBasicAuth("22370780-1c30-4de9-959e-b474475274c7", "service_super_secret_key_123"),
         json={"grant_type": "client_credentials"}
     )
     assert r.status_code == 200
