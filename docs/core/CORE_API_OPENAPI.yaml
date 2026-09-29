@@ -14,6 +14,10 @@ servers:
 security:
 - CoreBearer: []
 tags:
+- name: Shell study groups
+  description: Расширение реализации — учебные группы для оболочки (CORE_API_SPEC.md §7.1).
+- name: Private study groups
+  description: Расширение реализации — управление учебными группами (private API администрирования).
 - name: Health
 - name: Auth
 - name: Institutions
@@ -2132,6 +2136,778 @@ paths:
         ActorToken: []
       x-network-access: private-administration-only
       x-required-permission: credentials.manage
+  /api/v1/institution/{institution_id}/groups:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    get:
+      tags:
+      - Shell study groups
+      summary: Учебные группы для оболочки
+      operationId: listShellGroups
+      parameters:
+      - $ref: '#/components/parameters/ProfileQuery'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShellGroupList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Студенту — только своя группа; преподавателю и администратору — все группы вуза с составом. can_manage и ETag — при праве groups.manage в администрировании.'
+      x-extension: study-groups
+      security:
+      - CoreBearer: []
+    post:
+      tags:
+      - Shell study groups
+      summary: Создать группу (groups.manage)
+      operationId: createShellGroup
+      parameters:
+      - $ref: '#/components/parameters/ProfileQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyGroupInput'
+      responses:
+        '201':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Требует право groups.manage в administration для профиля admin.'
+      x-extension: study-groups
+      security:
+      - CoreBearer: []
+  /api/v1/institution/{institution_id}/groups/{group_id}:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/group_id'
+    patch:
+      tags:
+      - Shell study groups
+      summary: Переименовать группу
+      operationId: renameShellGroup
+      parameters:
+      - $ref: '#/components/parameters/ProfileQuery'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyGroupInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'Требует groups.manage и If-Match.'
+      x-extension: study-groups
+      security:
+      - CoreBearer: []
+    delete:
+      tags:
+      - Shell study groups
+      summary: Удалить пустую группу
+      operationId: deleteShellGroup
+      parameters:
+      - $ref: '#/components/parameters/ProfileQuery'
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'Требует groups.manage и If-Match; непустая группа — 409.'
+      x-extension: study-groups
+      security:
+      - CoreBearer: []
+  /api/v1/institution/{institution_id}/groups/{group_id}/members:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/group_id'
+    put:
+      tags:
+      - Shell study groups
+      summary: Заменить состав группы
+      operationId: replaceShellGroupMembers
+      parameters:
+      - $ref: '#/components/parameters/ProfileQuery'
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyGroupMembersInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupMembers'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'Требует groups.manage и If-Match; студент — максимум в одной группе.'
+      x-extension: study-groups
+      security:
+      - CoreBearer: []
+  /api/v1/institution/{institution_id}/internal/groups:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    get:
+      tags:
+      - Private study groups
+      summary: Группы вуза
+      operationId: listInstitutionGroups
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Private API администрирования; право groups.manage.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+    post:
+      tags:
+      - Private study groups
+      summary: Создать группу
+      operationId: createInstitutionGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyGroupInput'
+      responses:
+        '201':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Private API администрирования; право groups.manage.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/institution/{institution_id}/internal/groups/{group_id}:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/group_id'
+    get:
+      tags:
+      - Private study groups
+      summary: Группа и её ETag
+      operationId: getInstitutionGroup
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Private API администрирования; право groups.manage.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+    patch:
+      tags:
+      - Private study groups
+      summary: Переименовать группу
+      operationId: renameInstitutionGroup
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyGroupInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'If-Match обязателен.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+    delete:
+      tags:
+      - Private study groups
+      summary: Удалить пустую группу
+      operationId: deleteInstitutionGroup
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'If-Match обязателен; непустая группа — 409.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/institution/{institution_id}/internal/groups/{group_id}/members:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/group_id'
+    get:
+      tags:
+      - Private study groups
+      summary: Состав группы и его ETag
+      operationId: getInstitutionGroupMembers
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupMembers'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Private API администрирования.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+    put:
+      tags:
+      - Private study groups
+      summary: Заменить состав группы
+      operationId: replaceInstitutionGroupMembers
+      parameters:
+      - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudyGroupMembersInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupMembers'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+        '412':
+          $ref: '#/components/responses/Error412'
+        '428':
+          $ref: '#/components/responses/Error428'
+      description: 'If-Match обязателен.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/institution/{institution_id}/internal/members/{user_id}/group:
+    parameters:
+    - $ref: '#/components/parameters/institution_id'
+    - $ref: '#/components/parameters/user_id'
+    put:
+      tags:
+      - Private study groups
+      summary: Перевести студента в группу
+      operationId: setMemberGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemberGroupInput'
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberGroup'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'group_id: UUID группы или null.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+        ActorToken: []
+      x-network-access: private-administration-only
+  /api/v1/internal/service/{service_id}/groups:
+    parameters:
+    - $ref: '#/components/parameters/service_id'
+    get:
+      tags:
+      - Service RBAC
+      summary: Учебные группы вуза своего экземпляра
+      operationId: listServiceGroups
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Только чтение.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+      x-required-machine-scope: groups:read
+  /api/v1/internal/service/{service_id}/groups/{group_id}/members:
+    parameters:
+    - $ref: '#/components/parameters/service_id'
+    - $ref: '#/components/parameters/group_id'
+    get:
+      tags:
+      - Service RBAC
+      summary: Состав учебной группы
+      operationId: getServiceGroupMembers
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupMembers'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Только чтение.'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+      x-required-machine-scope: groups:read
+  /api/v1/internal/service/{service_id}/members:
+    parameters:
+    - $ref: '#/components/parameters/service_id'
+    get:
+      tags:
+      - Service RBAC
+      summary: Участники вуза своего экземпляра
+      operationId: listServiceMembers
+      responses:
+        '200':
+          description: Успешно.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceMemberList'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '422':
+          $ref: '#/components/responses/Error422'
+        '429':
+          $ref: '#/components/responses/Error429'
+        '503':
+          $ref: '#/components/responses/Error503'
+        '500':
+          $ref: '#/components/responses/Error500'
+      description: 'Профили и имя из регистрации (расширение для сервиса «Люди»).'
+      x-extension: study-groups
+      security:
+      - MachineBearer: []
+      x-required-machine-scope: profiles:read
   /institution:
     get:
       tags:
@@ -2196,6 +2972,12 @@ components:
       description: 'JWT без префикса Bearer: service_access человека для экземпляра administration, профиль admin.
         AND с MachineBearer; актуальный RBAC из БД.'
   parameters:
+    group_id:
+      name: group_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
     institution_id:
       name: institution_id
       in: path
@@ -2479,12 +3261,16 @@ components:
       pattern: ^[a-z][a-z0-9_.-]{0,63}$
       maxLength: 64
     ServiceTypeCode:
-      type: string
-      enum:
-      - administration
-      - schedule
-      - user-profile
-      - coursework
+      description: 'Типы контракта; расширение реализации — свои сервисы вуза custom.<код> (local).'
+      anyOf:
+      - type: string
+        enum:
+        - administration
+        - schedule
+        - user-profile
+        - coursework
+      - type: string
+        pattern: ^custom\.[a-z][a-z0-9-]{1,39}$
     Deployment:
       type: string
       enum:
@@ -2722,6 +3508,139 @@ components:
       examples:
       - items: []
         next_cursor: null
+    StudyGroupRef:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    StudyGroup:
+      $ref: '#/components/schemas/StudyGroupRef'
+    StudyGroupInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    StudyGroupList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudyGroupRef'
+        next_cursor:
+          type: [string, 'null']
+    StudyGroupMembers:
+      type: object
+      additionalProperties: false
+      required: [group_id, user_ids]
+      properties:
+        group_id:
+          $ref: '#/components/schemas/UUID'
+        name:
+          type: string
+        user_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUID'
+    StudyGroupMembersInput:
+      type: object
+      additionalProperties: false
+      required: [user_ids]
+      properties:
+        user_ids:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/UUID'
+    MemberGroupInput:
+      type: object
+      additionalProperties: false
+      required: [group_id]
+      properties:
+        group_id:
+          oneOf:
+          - $ref: '#/components/schemas/UUID'
+          - type: 'null'
+    MemberGroup:
+      type: object
+      properties:
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        group_id:
+          oneOf:
+          - $ref: '#/components/schemas/UUID'
+          - type: 'null'
+    ShellGroupList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor, can_manage, my_group_ids]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, name, user_ids]
+            properties:
+              id:
+                $ref: '#/components/schemas/UUID'
+              name:
+                type: string
+              user_ids:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UUID'
+              etag:
+                type: string
+              members_etag:
+                type: string
+        next_cursor:
+          type: [string, 'null']
+        can_manage:
+          type: boolean
+        my_group_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUID'
+        students:
+          type: array
+          description: Только при can_manage — студенты вуза для выбора состава.
+          items:
+            $ref: '#/components/schemas/UUID'
+    ServiceMemberList:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [user_id, profiles, display_name, member_since]
+            properties:
+              user_id:
+                $ref: '#/components/schemas/UUID'
+              profiles:
+                $ref: '#/components/schemas/Profiles'
+              display_name:
+                type: [string, 'null']
+              member_since:
+                type: string
+        next_cursor:
+          type: [string, 'null']
     ProfileList:
       type: object
       additionalProperties: false
@@ -2736,6 +3655,19 @@ components:
           $ref: '#/components/schemas/UUID'
         profiles:
           $ref: '#/components/schemas/Profiles'
+        groups:
+          type: array
+          description: 'Расширение (учебные группы): machine API — UUID групп, оболочке — объекты {id, name}.'
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/UUID'
+            - $ref: '#/components/schemas/StudyGroupRef'
+        display_name:
+          type: [string, 'null']
+          description: Расширение machine API — имя из заявки на вступление.
+        member_since:
+          type: string
+          description: Расширение machine API — время вступления в вуз.
     MenuDefinition:
       type: object
       additionalProperties: false
@@ -3003,6 +3935,7 @@ components:
       - profiles:read
       - tokens:introspect
       - institution:manage
+      - groups:read
     MachineTokenRequest:
       type: object
       additionalProperties: false
@@ -3146,6 +4079,11 @@ components:
           $ref: '#/components/schemas/RoleCodes'
         permissions:
           $ref: '#/components/schemas/Permissions'
+        group_ids:
+          type: array
+          description: Расширение (учебные группы) — группы пользователя в вузе.
+          items:
+            $ref: '#/components/schemas/UUID'
       description: Актуальные права из БД, а не только копия JWT claims.
     IntrospectionResult:
       oneOf:
@@ -3222,6 +4160,14 @@ components:
           $ref: '#/components/schemas/Profiles'
         created_at:
           $ref: '#/components/schemas/DateTime'
+        full_name:
+          type: [string, 'null']
+          description: Расширение — имя из заявки на вступление (в списке участников).
+        group_id:
+          description: Расширение (учебные группы) — группа студента.
+          oneOf:
+          - $ref: '#/components/schemas/UUID'
+          - type: 'null'
     MembershipPage:
       type: object
       additionalProperties: false
@@ -3516,6 +4462,20 @@ components:
               - RATE_LIMITED
               - SERVICE_UNAVAILABLE
               - INTERNAL_ERROR
+              - APPLICATION_LIMIT
+              - APPLICATION_NOT_PENDING
+              - EXPORT_FAILED
+              - GROUP_ALREADY_EXISTS
+              - GROUP_IN_USE
+              - INVALID_REFERENCE
+              - INVALID_STATE
+              - JOIN_REQUEST_PENDING
+              - NOT_CONFIGURED
+              - OWNER_EXISTS
+              - PAYLOAD_TOO_LARGE
+              - STUDENT_ALREADY_GROUPED
+              - USER_HAS_MEMBERSHIPS
+              - USER_IS_STAFF
             message:
               type: string
               maxLength: 500

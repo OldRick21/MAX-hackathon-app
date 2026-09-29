@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import time
 import jwt
-from fastapi import HTTPException
+from platform_core.errors import DomainError, validation
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from database.tables import (User, Institution, Membership, ServiceInstance, CoreSession,
@@ -17,7 +17,7 @@ from platform_core import registry
 
 
 def invalid_refresh():
-    return HTTPException(401, 'INVALID_REFRESH_TOKEN: Invalid, expired or reused refresh token')
+    return DomainError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token недействителен, истёк или уже использован')
 
 
 def decode_refresh(token, kind):
@@ -97,8 +97,13 @@ class AuthService:
         import random
         user = None
 
-        if not settings.ALLOW_DEV_LOGIN and (auth_data.username or auth_data.max_user_id or auth_data.password):
-            raise HTTPException(status_code=400, detail="Only MAX initData login is enabled")
+        if not settings.ALLOW_DEV_LOGIN:
+            # Контракт: единственное поле initData (1..16384); dev-поля вне режима разработки — 422.
+            dev = sorted(k for k in ("username", "password", "max_user_id") if getattr(auth_data, k) is not None)
+            if dev:
+                raise validation(f"Неизвестные поля: {', '.join(dev)}", dev[0])
+            if auth_data.initData is None:
+                raise validation("Нужен initData", "initData")
 
         # 1. Dev-вход по username или max_user_id
         if auth_data.username:
@@ -135,7 +140,7 @@ class AuthService:
                             assign_owner(db, demo_inst.id, user.id)
                 db.flush()
             elif auth_data.password and not verify_password(auth_data.password, user.hashed_password):
-                raise HTTPException(status_code=401, detail="Invalid credentials")
+                raise DomainError(401, "UNAUTHENTICATED", "Неверный логин или пароль")
 
         elif auth_data.max_user_id:
             user = max_user(db, auth_data.max_user_id)
@@ -143,14 +148,14 @@ class AuthService:
         elif auth_data.initData:
             bot_token = settings.MAX_BOT_TOKEN
             if not bot_token:
-                raise HTTPException(status_code=503, detail="MAX login is not configured")
+                raise DomainError(503, "SERVICE_UNAVAILABLE", "Вход через MAX не настроен")
             user_payload = validate_max_init_data(auth_data.initData, bot_token)
             max_id = str(user_payload.get("id"))
             
             user = max_user(db, max_id)
 
         else:
-            raise HTTPException(status_code=400, detail="Either initData or username/max_user_id must be provided")
+            raise validation("Нужен initData", "initData")
 
         now = utc_now().replace(microsecond=0)
         session = CoreSession(id=generate_uuid(), user_id=user.id, family_id=generate_uuid(),
@@ -198,19 +203,21 @@ class AuthService:
     def create_service_session(user, core_session, institution_id, service_id, profile, db):
         parent = lock_core(db, core_session.id)
         if not alive(parent) or parent.user_id != user.id:
-            raise HTTPException(401, 'Core session inactive')
+            raise DomainError(401, 'UNAUTHENTICATED', 'Сессия завершена')
         institution = registry.lock_institution(db, institution_id)
+        member = db.get(Membership, (institution_id, user.id), populate_existing=True)
+        if not institution or not member:
+            raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Вуз не найден')
+        if profile not in (member.profiles or []):
+            raise DomainError(403, 'FORBIDDEN', 'У вас нет этого профиля в вузе')
         db.refresh(institution)
         if institution.status != 'active':
-            raise HTTPException(409, 'RESOURCE_INACTIVE: Institution is not active')
+            raise DomainError(409, 'RESOURCE_INACTIVE', 'Вуз не активен')
         service = db.get(ServiceInstance, service_id, populate_existing=True)
         if not service or service.institution_id != institution_id or profile not in service.supported_profiles:
-            raise HTTPException(404, 'Service not found for this institution/profile')
+            raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Сервис не найден для этого профиля')
         if not service.enabled:
-            raise HTTPException(409, 'RESOURCE_INACTIVE: Service is disabled')
-        member = db.get(Membership, (institution_id, user.id), populate_existing=True)
-        if not member or profile not in member.profiles:
-            raise HTTPException(403, 'Profile is not assigned to user')
+            raise DomainError(409, 'RESOURCE_INACTIVE', 'Сервис отключён')
         deadline = min(timestamp(utc_now()) + 86400, timestamp(parent.expires_at))
         session = ServiceSession(id=generate_uuid(), parent_session_id=parent.id, user_id=user.id,
                                  institution_id=institution_id, service_id=service_id, profile=profile,
@@ -249,17 +256,17 @@ class AuthService:
     def revoke_service_session(session_id, core_session, user, db, institution_id, service_id):
         parent = lock_core(db, core_session.id)
         if not alive(parent) or parent.user_id != user.id:
-            raise HTTPException(401, 'Core session inactive')
+            raise DomainError(401, 'UNAUTHENTICATED', 'Сессия завершена')
         session = db.get(ServiceSession, session_id, populate_existing=True)
         if (not session or session.user_id != user.id or session.parent_session_id != parent.id
                 or session.institution_id != institution_id or session.service_id != service_id):
-            raise HTTPException(404, 'RESOURCE_NOT_FOUND: Service session not found')
+            raise DomainError(404, 'RESOURCE_NOT_FOUND', 'Сессия сервиса не найдена')
         session.is_revoked = True
         db.commit()
 
     @staticmethod
     def issue_machine_token(credentials, req_body, db):
-        failure = HTTPException(401, 'Invalid client credentials', headers={'WWW-Authenticate': 'Basic realm="core-service"'})
+        failure = DomainError(401, 'INVALID_CLIENT', 'Неверный ключ сервиса', headers={'WWW-Authenticate': 'Basic realm="core-service"'})
         if not credentials:
             raise failure
         cred = db.query(ServiceCredential).filter_by(client_id=credentials.username).first()
@@ -275,7 +282,7 @@ class AuthService:
         if cred.revoked_at is not None:
             raise failure
         if institution.status != 'active':
-            raise HTTPException(409, 'RESOURCE_INACTIVE: Institution is not active')
+            raise DomainError(409, 'RESOURCE_INACTIVE', 'Вуз не активен')
         scopes = machine_scopes(service)
         token = security.create_token(cred.client_id, 'machine_access', utc_now() + timedelta(seconds=300),
                                       {'institution_id': service.institution_id, 'service_id': service.id,
@@ -298,7 +305,7 @@ class AuthService:
         if claims['institution_id'] != machine_claims['institution_id'] or not service_state(db, claims):
             return {'active': False}
         roles = registry.assigned_roles(db, claims['service_id'], claims['sub'], claims['profile'])
-        return {'active': True, 'sub': claims['sub'], 'session_id': claims['sid'],
+        return {'active': True, 'sub': claims['sub'], 'aud': f"service:{claims['service_id']}", 'session_id': claims['sid'],
                 'parent_session_id': claims['parent_sid'], 'institution_id': claims['institution_id'],
                 'service_id': claims['service_id'], 'profile': claims['profile'], 'exp': claims['exp'],
                 'roles': roles, 'permissions': registry.permissions_for(db, claims['service_id'], roles, claims['profile']),

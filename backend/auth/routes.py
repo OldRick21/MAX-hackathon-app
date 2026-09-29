@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 from database.create_tables import get_db
 from auth.service import AuthService
+from platform_core import registry
 from auth.schemas import AuthTokenRequest, RefreshRequest, CreateServiceSession
 from auth.dependencies import get_current_core_session
 from auth.dependencies import basic_scheme, RequireMachineScope
@@ -35,7 +36,7 @@ def get_current_user(session_data=Depends(get_current_core_session)):
     return {
         "id": user.id,
         "max_user_id": user.max_user_id,
-        "created_at": user.created_at.isoformat()
+        "created_at": registry.iso(user.created_at)
     }
 
 

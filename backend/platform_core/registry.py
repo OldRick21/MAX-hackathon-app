@@ -414,7 +414,21 @@ def ensure_platform_invariants(db: Session) -> None:
         if "admin" not in (service.supported_profiles or []):
             logger.info("%s %s: admin profile added", service.service_type, service.id)
             service.supported_profiles = [*(service.supported_profiles or []), "admin"]
+    # Переводы без значения (titles.en: null от прежних версий) — по контракту ключа просто нет.
+    for role in db.query(ServiceRole).all():
+        if any(v is None for v in (role.titles or {}).values()):
+            role.titles = _clean_titles(role.titles)
+    for service in db.query(ServiceInstance).all():
+        manifest = service.manifest or {}
+        if manifest and (any(v is None for v in (manifest.get("titles") or {}).values())
+                         or any(v is None for m in manifest.get("menus") or [] for v in (m.get("titles") or {}).values())):
+            service.manifest = {**manifest, "titles": _clean_titles(manifest.get("titles")),
+                                "menus": [{**m, "titles": _clean_titles(m.get("titles"))} for m in manifest.get("menus") or []]}
     db.flush()
+
+
+def _clean_titles(titles) -> dict:
+    return {k: v for k, v in (titles or {}).items() if v is not None}
 
 
 def new_local_secret() -> str:

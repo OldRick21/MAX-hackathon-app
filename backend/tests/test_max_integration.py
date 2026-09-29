@@ -58,10 +58,13 @@ class MaxIntegration(unittest.TestCase):
 
     def test_unverified_and_malformed_data_rejected(self):
         for body in [{"max_user_id": "123456789"}, {"username": "ivan_admin"},
-                     {"initData": signed(), "username": "admin"}]:
-            self.assertEqual(self.client.post("/api/v1/auth/token", json=body).status_code, 400)
+                     {"initData": signed(), "username": "admin"}, {}, {"initData": "x" * 16385}, {"initData": 5}]:
+            # Форма тела нарушает схему (только initData, 1..16384) — 422.
+            self.assertEqual(self.client.post("/api/v1/auth/token", json=body).status_code, 422, body)
         for data in [signed() + "&hash=duplicate", signed(auth_date="bad"),
                      signed(auth_date=str(int(time.time()) - 400)), signed(auth_date=str(int(time.time()) + 120)),
                      signed(user='{"id":null}'), signed(user='{"id":true}'), signed(user='bad'),
-                     signed().replace("123456789", "123456788")]:
-            self.assertIn(self.client.post("/api/v1/auth/token", json={"initData": data}).status_code, [400, 401])
+                     signed().replace("123456789", "123456788"), "a=%FF&hash=" + "0" * 64, "не query"]:
+            # Любая ошибка содержимого — 401 INVALID_INIT_DATA.
+            r = self.client.post("/api/v1/auth/token", json={"initData": data})
+            self.assertEqual((r.status_code, r.json()["error"]["code"]), (401, "INVALID_INIT_DATA"), data)

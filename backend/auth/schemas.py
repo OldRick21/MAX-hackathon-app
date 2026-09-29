@@ -6,7 +6,8 @@ class RequestModel(BaseModel):
 
 
 class AuthTokenRequest(RequestModel):
-    initData: Optional[str] = None
+    # Контракт: только initData (обязателен вне режима разработки — проверка в AuthService).
+    initData: Optional[str] = Field(None, min_length=1, max_length=16384, strict=True)
     username: Optional[str] = None
     password: Optional[str] = None
     max_user_id: Optional[str] = None

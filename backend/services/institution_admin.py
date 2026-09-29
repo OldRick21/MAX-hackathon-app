@@ -484,12 +484,13 @@ def get_service(db: Session, ctx: ActorContext, service_id: str) -> Result:
     return Result(view, etag=compute_etag(view))
 
 
-def _replay(db: Session, ctx: ActorContext, record: IdempotencyRecord) -> Result:
-    service = db.get(ServiceInstance, record.resource_id) if record.resource_id else None
-    if not service or service.institution_id != ctx.institution_id:
-        raise not_found("Созданный по этому ключу экземпляр уже удалён")
-    view = service_view(service)
-    return Result(view, status=201, etag=compute_etag(view), location=f"{_base(ctx)}/services/{service.id}")
+def _replay(record: IdempotencyRecord) -> Result:
+    """Повтор возвращает сохранённый исходный ответ (статус, тело, ETag, Location), а не текущее
+    состояние ресурса: экземпляр мог быть изменён или удалён после создания (CORE_API_SPEC.md §3)."""
+    saved = record.response or {}
+    if "body" not in saved:
+        raise DomainError(409, "IDEMPOTENCY_CONFLICT", "Ключ использован до обновления ядра. Повторите с новым ключом")
+    return Result(saved["body"], status=saved.get("status", 201), etag=saved.get("etag"), location=saved.get("location"))
 
 
 def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Optional[str]) -> Result:
@@ -514,7 +515,7 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
         elif record.request_hash != digest:
             raise DomainError(409, "IDEMPOTENCY_CONFLICT", "Ключ уже использован с другим телом запроса")
         else:
-            return _replay(db, ctx, record)
+            return _replay(record)
 
     deployment = payload.get("deployment")
     service_type = payload.get("service_type")
@@ -556,14 +557,18 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
         service = registry.create_local_instance(db, ctx.institution_id, service_type, api_url, client_url,
                                                  titles, profiles)
     view = service_view(service)
+    result = Result(view, status=201, etag=compute_etag(view), location=f"{path}/{service.id}")
+    # Снимок исходного ответа для повтора; секретов в представлении экземпляра нет.
     db.add(IdempotencyRecord(actor_user_id=ctx.actor_id, institution_id=ctx.institution_id, method="POST",
                              path=path, key=key, request_hash=digest, resource_id=service.id,
-                             response={"id": service.id}, expires_at=now + registry.IDEMPOTENCY_TTL))
+                             response={"status": result.status, "body": view, "etag": result.etag,
+                                       "location": result.location},
+                             expires_at=now + registry.IDEMPOTENCY_TTL))
     ctx.audit(db, "service.install", "service", service.id,
               {"service_type": service_type, "deployment": deployment,
                "api_base_url": service.api_base_url, "client_base_url": service.client_base_url})
     db.commit()
-    return Result(view, status=201, etag=compute_etag(view), location=f"{path}/{service.id}")
+    return result
 
 
 def patch_service(db: Session, ctx: ActorContext, service_id: str, payload, if_match: Optional[str]) -> Result:

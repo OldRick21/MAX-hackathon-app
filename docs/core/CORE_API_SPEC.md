@@ -146,7 +146,7 @@ Permissions меню входят в словарь типа; профили м�
 
 ### 7.1. Учебные группы (дополнение реализации)
 
-Группа — сущность ядра: `(institution_id, id, name)`, состав — студенты вуза, максимум одна группа на студента. Управление — private API администрирования (`/groups`, `/groups/{id}/members`, `PUT /members/{user_id}/group`), право `groups.manage`. Чтение для сервисов — scope `groups:read` в стандартном наборе: `GET /api/v1/internal/service/{id}/groups`, `GET .../groups/{group_id}/members`; introspection дополнительно возвращает `group_ids`, ответ профилей участника — `groups`. Оболочке: `GET /api/v1/institution/{id}/groups?profile=` (студенту — своя группа, остальным — все с составом). Удалить можно только пустую группу; ссылки сервисов на группы ядро не отслеживает. OpenAPI ещё не обновлён.
+Группа — сущность ядра: `(institution_id, id, name)`, состав — студенты вуза, максимум одна группа на студента. Управление — private API администрирования (`/groups`, `/groups/{id}/members`, `PUT /members/{user_id}/group`), право `groups.manage`. Чтение для сервисов — scope `groups:read` в стандартном наборе: `GET /api/v1/internal/service/{id}/groups`, `GET .../groups/{group_id}/members`; introspection дополнительно возвращает `group_ids`, ответ профилей участника — `groups`. Оболочке: `GET /api/v1/institution/{id}/groups?profile=` (студенту — своя группа, остальным — все с составом). Удалить можно только пустую группу; ссылки сервисов на группы ядро не отслеживает. В OpenAPI операции помечены `x-extension: study-groups`.
 
 ## 8. Облачное размещение
 

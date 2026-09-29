@@ -149,7 +149,8 @@ class AdministrationFlow(unittest.TestCase):
         first = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=body)
         self.assertEqual(first.status_code, 201, first.text)
         again = self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": key}, json=body)
-        self.assertEqual(again.json()["id"], first.json()["id"])
+        self.assertEqual((again.status_code, again.json(), again.headers["ETag"], again.headers["Location"]),
+                         (201, first.json(), first.headers["ETag"], first.headers["Location"]))
         self.assertEqual(self.c.post(f"{base}/services", headers={**owner_h, "Idempotency-Key": str(uuid.uuid4())},
                                      json=body).json()["error"]["code"], "SERVICE_ALREADY_EXISTS")
         schedule_id = first.json()["id"]
