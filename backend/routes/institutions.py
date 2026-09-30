@@ -71,7 +71,8 @@ def service_card(db: Session, service: ServiceInstance, user_id: str, profile: s
         "profile": profile,
         "roles": roles,
         "permissions": permissions,
-        "menus": menus
+        "menus": menus,
+        "icon": service.effective_icon,
     }
 
 def institution_card(m: Membership, locale: str) -> dict:

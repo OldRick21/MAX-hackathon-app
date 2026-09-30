@@ -34,7 +34,8 @@ core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
 
 # Меню и роль сервиса публикует он сам (как курсовые). Экраны рисует оболочка по id меню.
 MANAGE = 'profiles.manage'
-MANIFEST = {'titles': {'ru': 'Люди', 'en': 'People'}, 'menus': [
+# icon — иконка по умолчанию из набора ядра (catalog.SERVICE_ICONS); администратор вуза может заменить.
+MANIFEST = {'titles': {'ru': 'Люди', 'en': 'People'}, 'icon': 'users', 'menus': [
     {'id': 'home', 'titles': {'ru': 'Главная', 'en': 'Home'}, 'entrypoint_path': '/home',
      'profiles': ['admin', 'teacher', 'student'], 'required_permissions': [], 'order': 0},
     {'id': 'users', 'titles': {'ru': 'Пользователи', 'en': 'Users'}, 'entrypoint_path': '/users',

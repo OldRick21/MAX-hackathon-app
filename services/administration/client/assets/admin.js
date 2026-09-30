@@ -29,6 +29,40 @@
     'role.delete': 'Удалена роль', 'assignments.replace': 'Изменены роли участника',
     'credential.issue': 'Выдан ключ сервиса', 'credential.revoke': 'Отозван ключ сервиса',
   };
+  // Иконки сервисов — тот же набор, что в оболочке (frontend/src/components/icons/services.tsx) и в
+  // catalog.SERVICE_ICONS ядра. Сервис объявляет свою в manifest.icon; здесь вуз может её заменить.
+  const SERVICE_ICONS = {
+    calendar: ['Календарь', '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17.5h3"/>'],
+    users: ['Люди', '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.4-3.6 3-6 6.5-6s6.1 2.4 6.5 6M15.5 4.8a3.5 3.5 0 0 1 0 6.4M17.5 14.4c2.3.7 3.7 2.8 4 5.6"/>'],
+    document: ['Документ', '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 12.5h6M9 16.5h6"/>'],
+    building: ['Здание', '<path d="M3 21h18M5 21V10l7-5 7 5v11M9.5 21v-5h5v5M9 12.5h.01M15 12.5h.01"/>'],
+    box: ['Сервис', '<path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>'],
+    book: ['Книга', '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5M8 7.5h8"/>'],
+    chat: ['Чат', '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12.5h5"/>'],
+    graduation: ['Выпускник', '<path d="M2 9.5 12 5l10 4.5-10 4.5z"/><path d="M6 11.3V16c1.7 1.6 3.7 2.4 6 2.4s4.3-.8 6-2.4v-4.7M22 9.5V15"/>'],
+    clipboard: ['Задания', '<rect x="5" y="4.5" width="14" height="17" rx="2.5"/><path d="M9 4.5V3h6v1.5M9 10.5l1.8 1.8L15 8.5M9 16h6"/>'],
+    chart: ['Статистика', '<path d="M4 20V4M4 20h16M8.5 16v-4M13 16V8M17.5 16v-6"/>'],
+    bell: ['Уведомления', '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 21h4"/>'],
+    star: ['Избранное', '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'],
+    folder: ['Папка', '<path d="M3.5 6.5A2 2 0 0 1 5.5 4.5H10l2 2.5h6.5a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'],
+    video: ['Видео', '<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="m16 10.5 5-3v9l-5-3"/>'],
+    flask: ['Лаборатория', '<path d="M9.5 3h5M10 3v6.5L4.8 18.3A1.8 1.8 0 0 0 6.4 21h11.2a1.8 1.8 0 0 0 1.6-2.7L14 9.5V3M7.5 14.5h9"/>'],
+    code: ['Код', '<path d="m8.5 7.5-5 4.5 5 4.5M15.5 7.5l5 4.5-5 4.5M13.5 4.5l-3 15"/>'],
+    globe: ['Интернет', '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.5 3.7 9s-1.2 6.5-3.7 9c-2.5-2.5-3.7-5.5-3.7-9S9.5 5.5 12 3z"/>'],
+    heart: ['Здоровье', '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 2.8C19.5 15.4 12 20 12 20z"/>'],
+    trophy: ['Достижения', '<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5v1.5A3.5 3.5 0 0 0 8 11M16 6h3.5v1.5A3.5 3.5 0 0 1 16 11M12 13v4M8.5 20.5h7M9.5 17h5v3.5h-5z"/>'],
+    map: ['Карта', '<path d="M9 4.5 3.5 6.5v13L9 17.5l6 2 5.5-2v-13L15 6.5z"/><path d="M9 4.5v13M15 6.5v13"/>'],
+    briefcase: ['Карьера', '<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/>'],
+    wallet: ['Оплата', '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3M4 7.5v10A2.5 2.5 0 0 0 6.5 20H20v-4.5"/><path d="M4 7.5A2.5 2.5 0 0 0 6.5 10H20v5.5h-4a2.8 2.8 0 0 1 0-5.5"/>'],
+  };
+  const DEFAULT_ICONS = { administration: 'building', schedule: 'calendar', 'user-profile': 'users', coursework: 'document' };
+  function iconSvg(key) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(k, v);
+    svg.innerHTML = (SERVICE_ICONS[key] || SERVICE_ICONS.box)[1];
+    return svg;
+  }
   const $ = (id) => document.getElementById(id);
 
   function h(tag, attrs = {}, ...children) {
@@ -516,7 +550,9 @@
       const card = h('section', { class: 'card' });
       const badges = [h('span', { class: `badge ${s.enabled ? 'ok' : ''}` }, s.enabled ? 'включён' : 'выключен'),
         s.protected ? h('span', { class: 'badge lock' }, 'защищён') : null];
-      card.append(h('div', { class: 'row-main' }, h('h2', {}, title(s.manifest.titles) || title(type?.titles)), ...badges),
+      card.append(h('div', { class: 'row-main' }, h('span', { class: 'svc-icon', title: SERVICE_ICONS[s.effective_icon]?.[0] || '' }, iconSvg(s.effective_icon)),
+        h('h2', {}, title(s.manifest.titles) || title(type?.titles)), ...badges,
+        manage ? h('button', { class: 'quiet', onclick: () => chooseIcon(s) }, 'Сменить иконку') : null),
         h('dl', { class: 'meta' },
           h('dt', {}, 'Тип'), h('dd', {}, s.service_type),
           h('dt', {}, 'API'), h('dd', {}, h('code', {}, s.api_base_url)),
@@ -589,6 +625,32 @@
       ? 'Снимите отметку, чтобы скрыть виджет с главной у этого профиля. Меню сервиса при этом остаётся.'
       : 'Менять виджеты может администратор с правом services.manage.'));
     return box;
+  }
+
+  /** Иконка сервиса у пользователей вуза: готовый набор или «как у сервиса» (manifest.icon, иначе по типу). */
+  async function chooseIcon(s) {
+    const own = s.manifest.icon || DEFAULT_ICONS[s.service_type] || 'box';
+    let selected = s.icon;  // null — как у сервиса
+    const options = [[null, own, `Как у сервиса · ${SERVICE_ICONS[own]?.[0] || own}`],
+      ...Object.entries(SERVICE_ICONS).map(([key, [label]]) => [key, key, label])];
+    const grid = h('div', { class: 'icon-grid', role: 'radiogroup', 'aria-label': 'Иконка сервиса' });
+    const buttons = options.map(([value, key, label]) => {
+      const button = h('button', { type: 'button', class: `icon-option${value === null ? ' own' : ''}`, role: 'radio', title: label,
+        'aria-checked': String(value === selected), onclick: () => {
+          selected = value;
+          buttons.forEach((b, i) => b.setAttribute('aria-checked', String(options[i][0] === selected)));
+        } }, iconSvg(key), h('span', {}, label));
+      return button;
+    });
+    grid.append(...buttons);
+    if (!await confirmDialog(`Иконка «${title(s.manifest.titles)}»`, [grid,
+      h('p', { class: 'hint' }, 'Иконку видят все пользователи вуза в меню и на странице «Все сервисы». «Как у сервиса» — иконка, которую выбрал сам сервис.')],
+      'Сохранить')) return;
+    await guarded(async () => {
+      const { etag } = await api(`/services/${s.id}`);
+      await api(`/services/${s.id}`, { method: 'PATCH', body: { icon: selected }, etag });
+      toast('Иконка сервиса обновлена. Пользователи увидят её, вернувшись в приложение.');
+    }, reload);
   }
 
   async function editUrls(s) {

@@ -61,6 +61,30 @@ ADMIN_SYSTEM_ROLES = [
 OWNER_ROLE = "owner"
 LEGACY_OWNER_ROLE = "admin_owner"
 
+# Иконки сервисов — готовый набор оболочки (frontend/src/components/icons/services.tsx и
+# services/administration/client/assets/admin.js рисуют те же ключи). Сервис объявляет свою иконку
+# в manifest.icon, администратор вуза может заменить её в администрировании (PATCH сервиса, поле icon).
+SERVICE_ICONS: Dict[str, str] = {
+    "calendar": "Календарь", "users": "Люди", "document": "Документ", "building": "Здание",
+    "box": "Сервис", "book": "Книга", "chat": "Чат", "graduation": "Выпускник",
+    "clipboard": "Задания", "chart": "Статистика", "bell": "Уведомления", "star": "Избранное",
+    "folder": "Папка", "video": "Видео", "flask": "Лаборатория", "code": "Код",
+    "globe": "Интернет", "heart": "Здоровье", "trophy": "Достижения", "map": "Карта",
+    "briefcase": "Карьера", "wallet": "Оплата",
+}
+DEFAULT_ICONS = {"administration": "building", "schedule": "calendar", "user-profile": "users", "coursework": "document"}
+
+
+def check_icon(value, path: str = "icon") -> str:
+    if not isinstance(value, str) or value not in SERVICE_ICONS:
+        raise validation("Иконка — один из ключей набора: " + ", ".join(SERVICE_ICONS), path)
+    return value
+
+
+def default_icon(service_type_code: str) -> str:
+    return DEFAULT_ICONS.get(service_type_code, "box")
+
+
 SERVICE_TYPES: Dict[str, dict] = {
     "administration": {
         "code": "administration",
@@ -148,7 +172,10 @@ def public_service_types() -> List[dict]:
 
 def default_manifest(code: str) -> dict:
     t = service_type(code)
-    return {"titles": copy.deepcopy(t["titles"]), "menus": copy.deepcopy(t["menus"])}
+    manifest = {"titles": copy.deepcopy(t["titles"]), "menus": copy.deepcopy(t["menus"])}
+    if code in DEFAULT_ICONS and t["menus"]:
+        manifest["icon"] = DEFAULT_ICONS[code]
+    return manifest
 
 
 # --------------------------------------------------------------------------
@@ -286,9 +313,9 @@ def check_entrypoint(value, path: str) -> str:
 
 
 def check_manifest(manifest, type_code: str, supported_profiles: Iterable[str]) -> dict:
-    if not isinstance(manifest, dict) or set(manifest) - {"titles", "menus", "widgets"} \
+    if not isinstance(manifest, dict) or set(manifest) - {"titles", "menus", "widgets", "icon"} \
             or not {"titles", "menus"} <= set(manifest):
-        raise validation("Manifest: titles, menus и необязательные widgets", "manifest")
+        raise validation("Manifest: titles, menus и необязательные widgets, icon", "manifest")
     t = service_type(type_code)
     titles = check_localized(manifest["titles"], "titles")
     menus_in = manifest["menus"]
@@ -318,6 +345,8 @@ def check_manifest(manifest, type_code: str, supported_profiles: Iterable[str]) 
             "order": order,
         })
     result = {"titles": titles, "menus": menus}
+    if "icon" in manifest:
+        result["icon"] = check_icon(manifest["icon"], "icon")
     if "widgets" in manifest:
         result["widgets"] = check_widgets(manifest["widgets"], t, supported_profiles, menus)
     return result

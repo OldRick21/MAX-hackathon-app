@@ -126,6 +126,25 @@ adm.put(f"/api/v1/administration/services/{svcs['schedule']}/widgets/today/visib
         headers={**ah,'If-Match':wl.headers.get('ETag')}, json={'visibility':{'student':True,'teacher':True}})
 check('вернули студентам', 'today' in home(sh,'student'))
 
+print('5b. Иконки сервисов')
+def icons(h, prof):
+    r=c.get(f'/api/v1/institution/{iid}/service', params={'profile':prof}, headers=h); return {s['service_type']:s.get('icon') for s in r.json()['items']}
+check('сервисы объявили свои иконки', wait(lambda: icons(sh,'student').get('schedule')=='calendar' and icons(sh,'student').get('user-profile')=='users'), icons(sh,'student'))
+check('у администрирования иконка по умолчанию', icons(oh,'admin').get('administration')=='building', icons(oh,'admin'))
+sp=f"/api/v1/administration/services/{svcs['schedule']}"
+r=adm.patch(sp, headers={**ah,'If-Match':adm.get(sp, headers=ah).headers.get('ETag')}, json={'icon':'book'})
+check('администратор выбрал расписанию иконку «Книга»', r.status_code==200 and r.json()['icon']=='book' and r.json()['effective_icon']=='book', r.text[:200])
+check('пользователи видят выбранную иконку', icons(sh,'student').get('schedule')=='book', icons(sh,'student'))
+check('иконки не из набора нет', adm.patch(sp, headers={**ah,'If-Match':adm.get(sp, headers=ah).headers.get('ETag')}, json={'icon':'rocket'}).status_code==422)
+ap=f"/api/v1/administration/services/{svcs['administration']}"
+r=adm.patch(ap, headers={**ah,'If-Match':adm.get(ap, headers=ah).headers.get('ETag')}, json={'icon':'star'})
+check('иконку администрирования тоже можно сменить', r.status_code==200 and r.json()['effective_icon']=='star', r.text[:200])
+r=adm.patch(ap, headers={**ah,'If-Match':adm.get(ap, headers=ah).headers.get('ETag')}, json={'enabled':False})
+check('остальное у администрирования по-прежнему защищено', r.json().get('error',{}).get('code')=='PROTECTED_RESOURCE', r.text[:200])
+adm.patch(ap, headers={**ah,'If-Match':adm.get(ap, headers=ah).headers.get('ETag')}, json={'icon':None})
+r=adm.patch(sp, headers={**ah,'If-Match':adm.get(sp, headers=ah).headers.get('ETag')}, json={'icon':None})
+check('«как у сервиса» возвращает иконку из manifest', r.status_code==200 and r.json()['icon'] is None and icons(sh,'student').get('schedule')=='calendar', r.text[:200])
+
 print('6. Выключение сервиса')
 sp=f"/api/v1/administration/services/{svcs['schedule']}"
 tag=adm.get(sp, headers=ah).headers.get('ETag')

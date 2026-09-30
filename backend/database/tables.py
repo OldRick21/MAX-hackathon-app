@@ -108,6 +108,19 @@ class StudyGroupMember(table_class):
     group_id = Column(String(36), ForeignKey("study_groups.id", ondelete="CASCADE"), nullable=False, index=True)
 
 
+class ServiceIcon(table_class):
+    """Иконка сервиса, выбранная администратором вуза (ключ набора catalog.SERVICE_ICONS).
+
+    Отдельная таблица: выбор вуза не смешивается с manifest, который публикует сам сервис,
+    и существующая таблица services не меняется. Нет строки — иконка из manifest или по типу.
+    """
+    __tablename__ = "service_icons"
+
+    service_id = Column(String(36), ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
+    icon = Column(String(32), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+
 class StudyGroupChat(table_class):
     """Ссылка-приглашение в групповой чат MAX для учебной группы.
 
@@ -190,6 +203,16 @@ class ServiceInstance(table_class):
     institution = relationship("Institution", back_populates="services")
     roles = relationship("ServiceRole", back_populates="service", cascade="all, delete-orphan")
     credentials = relationship("ServiceCredential", back_populates="service", cascade="all, delete-orphan")
+    icon_choice = relationship("ServiceIcon", uselist=False, cascade="all, delete-orphan")
+
+    @property
+    def effective_icon(self) -> str:
+        """Выбор администратора вуза, иначе иконка из manifest сервиса, иначе по типу."""
+        from platform_core import catalog
+        if self.icon_choice:
+            return self.icon_choice.icon
+        icon = (self.manifest or {}).get("icon")
+        return icon if icon in catalog.SERVICE_ICONS else catalog.default_icon(self.service_type)
 
     __table_args__ = (
         # Один действующий экземпляр типа на вуз; удалённые (tombstone) слот не занимают.

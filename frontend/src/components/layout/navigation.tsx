@@ -2,8 +2,8 @@
 import type { ComponentType, SVGProps } from 'react';
 import type { ServiceView } from '../../api/types';
 import { NATIVE_MENUS } from '../../state/institution';
-import { IconCoursework, IconHome, IconSchedule, IconServices, IconUsers } from '../icons/figma';
-import { IconBox, IconBuilding } from '../icons/ui';
+import { IconHome, IconServices } from '../icons/figma';
+import { serviceIcon } from '../icons/services';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -25,14 +25,15 @@ export interface ServiceEntry {
   Icon: Icon;
 }
 
-const NATIVE: Record<string, { section: string; name: string; short: string; desc: string; Icon: Icon }> = {
+// icon — запасная иконка, если ядро её не прислало; обычно берётся ServiceView.icon (выбор сервиса или вуза).
+const NATIVE: Record<string, { section: string; name: string; short: string; desc: string; icon: string }> = {
   // Один сервис — одна карточка: оба меню сервиса «Люди» ведут в «Люди», профиль открывается внутри.
-  home: { section: 'users', name: 'Люди', short: 'Люди', desc: 'Ваш профиль и участники вуза', Icon: IconUsers },
-  users: { section: 'users', name: 'Люди', short: 'Люди', desc: 'Ваш профиль и участники вуза', Icon: IconUsers },
-  schedule: { section: 'schedule', name: 'Расписание', short: 'Расписание', desc: 'Занятия на неделю', Icon: IconSchedule },
-  schedule_admin: { section: 'schedule', name: 'Расписание', short: 'Расписание', desc: 'Все группы и редактирование занятий', Icon: IconSchedule },
-  coursework: { section: 'coursework', name: 'Курсовые работы', short: 'Работы', desc: 'Загрузка и проверка работ', Icon: IconCoursework },
-  coursework_admin: { section: 'coursework', name: 'Курсовые работы', short: 'Работы', desc: 'Все работы вуза', Icon: IconCoursework },
+  home: { section: 'users', name: 'Люди', short: 'Люди', desc: 'Ваш профиль и участники вуза', icon: 'users' },
+  users: { section: 'users', name: 'Люди', short: 'Люди', desc: 'Ваш профиль и участники вуза', icon: 'users' },
+  schedule: { section: 'schedule', name: 'Расписание', short: 'Расписание', desc: 'Занятия на неделю', icon: 'calendar' },
+  schedule_admin: { section: 'schedule', name: 'Расписание', short: 'Расписание', desc: 'Все группы и редактирование занятий', icon: 'calendar' },
+  coursework: { section: 'coursework', name: 'Курсовые работы', short: 'Работы', desc: 'Загрузка и проверка работ', icon: 'document' },
+  coursework_admin: { section: 'coursework', name: 'Курсовые работы', short: 'Работы', desc: 'Все работы вуза', icon: 'document' },
 };
 
 /** Все сервисы каталога, по пункту на раздел: встроенные экраны и меню сервисов в iframe. */
@@ -43,7 +44,8 @@ export function serviceEntries(base: string, services: ServiceView[]): ServiceEn
     if (native) {
       if (seen.has(native.section)) return [];
       seen.add(native.section);
-      return [{ key: `${svc.id}:${menu.id}`, to: `${base}/${native.section}`, name: native.name, short: native.short, desc: native.desc, Icon: native.Icon }];
+      return [{ key: `${svc.id}:${menu.id}`, to: `${base}/${native.section}`, name: native.name, short: native.short, desc: native.desc,
+        Icon: serviceIcon(svc.icon ?? native.icon) }];
     }
     const admin = svc.service_type === 'administration';
     return [{
@@ -52,7 +54,7 @@ export function serviceEntries(base: string, services: ServiceView[]): ServiceEn
       name: menu.display_name,
       short: admin ? 'Админ' : menu.display_name,
       desc: svc.deployment === 'local' ? 'Сервис вуза' : svc.display_name !== menu.display_name ? svc.display_name : 'Сервис платформы',
-      Icon: admin ? IconBuilding : IconBox,
+      Icon: serviceIcon(svc.icon ?? (admin ? 'building' : 'box')),
     }];
   }));
 }

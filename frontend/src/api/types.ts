@@ -97,6 +97,8 @@ export interface ServiceView {
   roles: string[];
   permissions: string[];
   menus: MenuView[];
+  /** Иконка сервиса: ключ готового набора (components/icons/services.tsx), выбирает сервис или администратор вуза. */
+  icon?: string;
 }
 
 /** Итог проверки или загрузки файла расписания (POST /api/v1/schedule/import). */

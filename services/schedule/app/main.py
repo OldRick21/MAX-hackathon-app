@@ -48,7 +48,8 @@ core = CoreClient(CORE, CLIENT_ID, SECRET, API_BASE, CLIENT_BASE)
 
 # Меню и роль — по контракту (SPEC §1); сервис публикует их сам. groups.manage в роль не входит:
 # группы ведёт ядро (администрирование → «Группы»).
-MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'menus': [
+# icon — иконка по умолчанию из набора ядра (catalog.SERVICE_ICONS); администратор вуза может заменить.
+MANIFEST = {'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'icon': 'calendar', 'menus': [
     {'id': 'schedule', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',
      'profiles': ['student', 'teacher'], 'required_permissions': [], 'order': 0},
     {'id': 'schedule_admin', 'titles': {'ru': 'Расписание', 'en': 'Schedule'}, 'entrypoint_path': '/schedule',

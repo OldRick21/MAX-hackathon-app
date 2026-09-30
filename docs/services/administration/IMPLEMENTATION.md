@@ -62,6 +62,15 @@ GET  /api/v1/platform/audit
 GET  /api/v1/internal/provisioning/bindings/{service_id}   (private listener, токен deployment)
 ```
 
+## Иконки сервисов
+
+Отличие от контракта: у сервиса есть иконка из готового набора ядра (`catalog.SERVICE_ICONS`: `calendar`, `users`, `document`, `building`, `box`, `book`, `chat`, `graduation`, `clipboard`, `chart`, `bell`, `star`, `folder`, `video`, `flask`, `code`, `globe`, `heart`, `trophy`, `map`, `briefcase`, `wallet`).
+
+- **Сервис** объявляет свою иконку необязательным полем `icon` в manifest. Расписание — `calendar`, «Люди» — `users`, курсовые — `document`; у администрирования иконку задаёт каталог ядра (`building`).
+- **Администратор вуза** с `services.manage` меняет её в карточке сервиса («Сменить иконку»): PATCH `/services/{id}` с полем `icon` (ключ набора или `null` — «как у сервиса»). Выбор хранится в таблице ядра `service_icons` отдельно от manifest. Иконку можно менять и у защищённого администрирования; остальные его настройки по-прежнему менять нельзя.
+- **Итог** ядро отдаёт в `ServiceView.icon`: выбор вуза, иначе `manifest.icon`, иначе иконка типа (`box` для своих сервисов). В представлении сервиса администрирования — `icon` (выбор вуза или `null`) и `effective_icon`.
+- Контуры иконок одинаковые в оболочке (`frontend/src/components/icons/services.tsx`) и в администрировании (`client/assets/admin.js`); новый ключ добавляется во все три места.
+
 Новые коды ошибок: `APPLICATION_LIMIT`, `APPLICATION_NOT_PENDING`, `OWNER_EXISTS`, `INSTANCE_NOT_READY` (из SDK).
 
 ## Отличия от целевой архитектуры

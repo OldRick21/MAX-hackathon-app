@@ -41,6 +41,8 @@ SERVICE_CODE = 'coursework'
 MANAGE = f'{SERVICE_CODE}.manage'
 MANIFEST = {
     'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'},
+    # Иконка по умолчанию из набора ядра (catalog.SERVICE_ICONS); администратор вуза может заменить.
+    'icon': 'document',
     'menus': [
         {'id': 'coursework', 'titles': {'ru': 'Курсовые работы', 'en': 'Coursework'}, 'entrypoint_path': '/coursework',
          'profiles': ['student', 'teacher'], 'required_permissions': [], 'order': 0},

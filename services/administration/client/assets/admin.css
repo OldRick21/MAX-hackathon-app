@@ -94,3 +94,15 @@ dialog::backdrop { background: rgb(0 0 0 / .4); }
 .widget-toggle:has(input:checked) { border-color: var(--accent); }
 .widget-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .widget-toggle.off { color: var(--muted); cursor: default; border-style: dashed; }
+
+/* Иконка сервиса: в заголовке карточки и сетка выбора из готового набора. */
+.svc-icon { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--bg); color: var(--accent); }
+.svc-icon svg { width: 24px; height: 24px; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.icon-option {
+  display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border-radius: 12px; font-size: 12px; line-height: 1.2;
+  text-align: center; color: var(--text);
+}
+.icon-option svg { width: 26px; height: 26px; color: var(--accent); }
+.icon-option.own { grid-column: 1 / -1; grid-template-columns: auto 1fr; justify-items: start; align-items: center; font-size: 13px; }
+.icon-option[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--bg); }

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from database.tables import (
     CloudBinding,
+    ServiceIcon,
     StudyGroup,
     StudyGroupChat,
     StudyGroupMember,
@@ -80,6 +81,8 @@ def service_view(s: ServiceInstance) -> dict:
         "api_base_url": s.api_base_url, "client_base_url": s.client_base_url,
         "supported_profiles": list(s.supported_profiles or []),
         "manifest": s.manifest or {"titles": {"ru": s.service_type}, "menus": []},
+        # icon — выбор администратора (null — не выбран), effective_icon — что видят пользователи.
+        "icon": s.icon_choice.icon if s.icon_choice else None, "effective_icon": s.effective_icon,
         "created_at": registry.iso(s.created_at),
     }
 
@@ -664,15 +667,18 @@ def install_service(db: Session, ctx: ActorContext, payload, idempotency_key: Op
 
 def patch_service(db: Session, ctx: ActorContext, service_id: str, payload, if_match: Optional[str]) -> Result:
     ctx.require("services.manage")
-    body = _body(payload, {"enabled", "api_base_url", "client_base_url"}, min_fields=1)
+    body = dict(_body(payload, {"enabled", "api_base_url", "client_base_url", "icon"}, min_fields=1))
     if "enabled" in body and not isinstance(body["enabled"], bool):
         raise validation("enabled — true или false", "enabled")
+    icon = body.pop("icon", ...)
+    if icon is not ... and icon is not None:
+        catalog.check_icon(icon)
     registry.lock_institution(db, ctx.institution_id)
     service = _service(db, ctx, service_id)
     before = service_view(service)
     require_if_match(if_match, compute_etag(before))
     url_change = "api_base_url" in body or "client_base_url" in body
-    if service.protected:
+    if service.protected and body:
         raise protected("Сервис администрирования нельзя отключить или перенастроить")
     if url_change and service.deployment == "cloud":
         raise validation("Адреса облачного сервиса задаёт платформа", "api_base_url")
@@ -695,6 +701,16 @@ def patch_service(db: Session, ctx: ActorContext, service_id: str, payload, if_m
                           "Нельзя включить сервис без меню: backend сервиса ещё не опубликовал manifest")
     for key, value in changes.items():
         setattr(service, key, value)
+    if icon is not ...:
+        # Иконку можно менять у любого сервиса, в том числе у администрирования; null — как у сервиса.
+        if icon is None:
+            service.icon_choice = None
+        elif service.icon_choice:
+            service.icon_choice.icon = icon
+        else:
+            service.icon_choice = ServiceIcon(service_id=service.id, icon=icon)
+        changes["icon"] = icon
+        db.flush()
     if changes.get("enabled") is False:
         registry.revoke_service_sessions(db, service_id=service.id)
     after = service_view(service)
