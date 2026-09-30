@@ -30,3 +30,6 @@ services/instances.tsv
 
 # Local MAX-less deployment state (generated secrets, never commit)
 /.maxless/
+
+# Local submission notes (requirements screenshots), not part of the project
+/Format/
