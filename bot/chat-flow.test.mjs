@@ -15,7 +15,8 @@ test('one group immediately offers its link', () => {
   const view = chatView({ institutions: [{ id: first, name: 'Вуз', groups: [
     { id: groupA, name: 'ИВТ-1', chat_url: 'https://max.ru/join/one' },
   ] }] });
-  assert.deepEqual(view.buttons, [{ kind: 'link', text: 'Перейти в чат', url: 'https://max.ru/join/one' }]);
+  assert.match(view.text, /ИВТ-1 · Вуз/);
+  assert.deepEqual(view.buttons, [{ kind: 'link', text: 'Открыть чат', url: 'https://max.ru/join/one' }]);
 });
 
 test('multiple institutions and groups are selected in two steps', () => {
@@ -26,6 +27,7 @@ test('multiple institutions and groups are selected in two steps', () => {
   assert.deepEqual(chatView(data).buttons.map((button) => button.payload),
     [`institution:${first}`, `institution:${second}`]);
   assert.deepEqual(chatView(data, `institution:${second}`).buttons.map((button) => button.payload), [`group:${groupB}`]);
+  assert.match(chatView(data, `institution:${second}`).text, /Второй/);
   assert.equal(chatView(data, `group:${groupB}`).buttons[0].url, 'https://max.ru/b');
 });
 

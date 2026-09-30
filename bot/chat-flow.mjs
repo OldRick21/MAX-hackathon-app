@@ -10,9 +10,9 @@ export function chatView(response, selection = '') {
   if (selection.startsWith('institution:')) {
     const id = selection.slice('institution:'.length);
     const institution = UUID.test(id) ? institutions.find((item) => item.id === id) : null;
-    if (!institution) return { text: 'Этот вуз или доступ к нему больше недоступен.', buttons: [] };
+    if (!institution) return { text: 'Учебная организация недоступна или доступ к ней изменился.', buttons: [] };
     return {
-      text: `Выберите учебную группу в «${shortLabel(institution.name)}»:`,
+      text: `Учебная организация\n${shortLabel(institution.name)}\n\nВыберите группу.`,
       buttons: institution.groups.map((group) => ({
         kind: 'callback', text: shortLabel(group.name), payload: `group:${group.id}`,
       })),
@@ -22,33 +22,33 @@ export function chatView(response, selection = '') {
   if (selection.startsWith('group:')) {
     const id = selection.slice('group:'.length);
     const found = UUID.test(id) ? groups.find((item) => item.group.id === id) : null;
-    if (!found) return { text: 'Этот чат или доступ к нему больше недоступен.', buttons: [] };
+    if (!found) return { text: 'Чат недоступен или доступ к нему изменился.', buttons: [] };
     return {
-      text: `Чат учебной группы «${shortLabel(found.group.name)}» в «${shortLabel(found.institution.name)}»:`,
-      buttons: [{ kind: 'link', text: 'Перейти в чат', url: found.group.chat_url }],
+      text: `Чат учебной группы\n${shortLabel(found.group.name)} · ${shortLabel(found.institution.name)}\n\nИспользуйте кнопку ниже, чтобы перейти в чат.`,
+      buttons: [{ kind: 'link', text: 'Открыть чат', url: found.group.chat_url }],
     };
   }
 
   if (!groups.length) {
-    return { text: 'Для ваших учебных групп пока нет доступных чатов.', buttons: [] };
+    return { text: 'Для ваших учебных групп пока нет доступных чатов. Если это ошибка, обратитесь к администратору организации.', buttons: [] };
   }
   if (groups.length === 1) {
     const found = groups[0];
     return {
-      text: `Чат учебной группы «${shortLabel(found.group.name)}» в «${shortLabel(found.institution.name)}»:`,
-      buttons: [{ kind: 'link', text: 'Перейти в чат', url: found.group.chat_url }],
+      text: `Чат учебной группы\n${shortLabel(found.group.name)} · ${shortLabel(found.institution.name)}\n\nИспользуйте кнопку ниже, чтобы перейти в чат.`,
+      buttons: [{ kind: 'link', text: 'Открыть чат', url: found.group.chat_url }],
     };
   }
   if (institutions.length === 1) {
     return {
-      text: `Выберите учебную группу в «${shortLabel(institutions[0].name)}»:`,
+      text: `Учебная организация\n${shortLabel(institutions[0].name)}\n\nВыберите группу.`,
       buttons: institutions[0].groups.map((group) => ({
         kind: 'callback', text: shortLabel(group.name), payload: `group:${group.id}`,
       })),
     };
   }
   return {
-    text: 'Выберите вуз:',
+    text: 'Выберите учебную организацию.',
     buttons: institutions.map((institution) => ({
       kind: 'callback', text: shortLabel(institution.name), payload: `institution:${institution.id}`,
     })),
