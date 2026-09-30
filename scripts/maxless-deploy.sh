@@ -118,7 +118,7 @@ echo "Application:        $APP_URL"
 echo "Administration:     https://localhost:$ADMIN_PORT/ (opened from the application)"
 echo "Operator panel:     http://localhost:$OPERATOR_PORT/"
 echo 'The browser will warn once about the local self-signed certificate.'
-echo "Operator password:  grep '^OPERATOR_PASSWORD=' .maxless/maxless.env | cut -d= -f2-"
+echo "Operator password:  $(env_get OPERATOR_PASSWORD)"
 
 if [[ -n $USER_ID ]]; then
   echo

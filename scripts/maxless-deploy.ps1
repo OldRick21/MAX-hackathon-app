@@ -162,7 +162,7 @@ try {
     Write-Host "Administration:   $adminUrl (opened from the application)"
     Write-Host "Operator panel:   $operatorUrl"
     Write-Host 'The browser will warn once about the local self-signed certificate.' -ForegroundColor Yellow
-    Write-Host "Operator password: (Get-Content '$EnvFile' | Where-Object { `$_ -like 'OPERATOR_PASSWORD=*' }).Split('=',2)[1]"
+    Write-Host "Operator password: $($settings['OPERATOR_PASSWORD'])"
 
     if ($UserId) {
         $oldToken = $env:MAX_BOT_TOKEN
