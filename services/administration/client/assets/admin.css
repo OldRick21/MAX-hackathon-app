@@ -9,7 +9,8 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); }
-.app { max-width: 920px; margin: 0 auto; padding: 20px 16px 48px; }
+/* Во фрейме оболочки — на всю ширину (на десктопе 920px оставляли пустой половину экрана). */
+.app { padding: 20px clamp(16px, 2.5vw, 32px) 48px; }
 .eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
 h1 { margin: 4px 0; font-size: 24px; }
 h2 { margin: 0 0 10px; font-size: 18px; }
