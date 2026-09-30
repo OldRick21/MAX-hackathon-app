@@ -3,8 +3,9 @@
 @media (prefers-color-scheme: dark) { :root { --bg: #15161f; --card: #1f2130; --text: #eceef7; --muted: #a0a4b8; --line: #33364a; --accent: #8b7cf0; --danger: #ef6b77; --ok: #4cc488; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); }
-/* Во фрейме оболочки — на всю ширину (на десктопе 920px оставляли пустой половину экрана). */
-main { padding: 20px clamp(16px, 2.5vw, 32px) 48px; }
+/* Колонка по центру фрейма: 920px занимали пол-экрана десктопа, а на всю ширину короткое
+   содержимое прижималось к левому краю. */
+main { max-width: 1280px; margin: 0 auto; padding: 20px clamp(16px, 2.5vw, 32px) 48px; }
 h1 { margin: 0 0 8px; font-size: 24px; } h2 { margin: 0 0 10px; font-size: 18px; }
 .muted { color: var(--muted); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 0; }
