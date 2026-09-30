@@ -20,6 +20,8 @@ test('one group immediately offers its link and a way back', () => {
     { id: groupA, name: 'ИВТ-1', chat_url: 'https://max.ru/join/one' },
   ] }] });
   assert.match(view.text, /ИВТ-1 · Вуз/);
+  // Ссылка есть и в тексте сообщения, не только на кнопке.
+  assert.match(view.text, /https:\/\/max\.ru\/join\/one/);
   assert.deepEqual(view.rows[0], [{ kind: 'link', text: 'Открыть чат', url: 'https://max.ru/join/one' }]);
   assert.deepEqual(payloads(view), ['https://max.ru/join/one', 'menu']);
 });

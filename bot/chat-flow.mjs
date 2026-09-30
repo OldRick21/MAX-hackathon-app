@@ -64,7 +64,7 @@ export function chatView(response, selection = '') {
     const target = institution.groups.length > 1 ? `institution:${institution.id}`
       : institutions.length > 1 ? 'open' : 'menu';
     return {
-      text: `Чат учебной группы\n${shortLabel(group.name)} · ${shortLabel(institution.name)}\n\nНажмите «Открыть чат», чтобы перейти в него.`,
+      text: `Чат учебной группы\n${shortLabel(group.name)} · ${shortLabel(institution.name)}\n\nСсылка на чат: ${group.chat_url}`,
       rows: [[{ kind: 'link', text: 'Открыть чат', url: group.chat_url }], ...nav(target)],
     };
   };
