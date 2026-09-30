@@ -1,0 +1,196 @@
+services:
+  # One-shot local bootstrap: self-signed TLS certificate, operator plugins and writable service projection.
+  # All generated material is stored in named volumes, never in the repository.
+  bootstrap:
+    image: alpine:3.20
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if [ ! -s /certs/localhost.crt ] || [ ! -s /certs/localhost.key ]; then
+          apk add --no-cache openssl >/dev/null
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 3650 \
+            -subj '/CN=localhost' \
+            -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' \
+            -keyout /certs/localhost.key -out /certs/localhost.crt
+          chmod 600 /certs/localhost.key
+          chmod 644 /certs/localhost.crt
+        fi
+        rm -rf /plugins/*
+        for source in /plugin-source/*/plugin.py; do
+          [ -f "$$source" ] || continue
+          directory="$${source%/plugin.py}"
+          cp -R "$$directory" "/plugins/$${directory##*/}"
+        done
+        chown -R 10001:10001 /service-config
+    volumes:
+      - maxless-certs:/certs
+      - operator-plugins:/plugins
+      - service-config:/service-config
+      - ./test-data:/plugin-source:ro
+    restart: "no"
+
+  backend:
+    build: ./backend
+    environment: &core-env
+      DATABASE_URL: sqlite:////data/core-jwt.db
+      SERVICE_CONFIG_DIR: /srv/services/connected
+      CURSOR_SECRET_KEY: ${CURSOR_SECRET_KEY:?Missing CURSOR_SECRET_KEY in maxless env}
+      JWT_ISSUER: https://localhost:${MAXLESS_APP_PORT:-18443}
+      JWT_KEYRING_PATH: /data/jwt/keys.json
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:?Missing MAX_BOT_TOKEN in maxless env}
+      BOT_CORE_TOKEN: ${BOT_CORE_TOKEN:?Missing BOT_CORE_TOKEN in maxless env}
+      CLOUD_BINDING_KEY: ${CLOUD_BINDING_KEY:?Missing CLOUD_BINDING_KEY in maxless env}
+      ADMINISTRATION_PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN:?Missing ADMINISTRATION_PROVISIONING_TOKEN}
+      SCHEDULE_PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN:?Missing SCHEDULE_PROVISIONING_TOKEN}
+      USER_PROFILE_PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN:?Missing USER_PROFILE_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: https://localhost:${MAXLESS_APP_PORT:-18443}
+      ADMINISTRATION_PUBLIC_ORIGIN: https://localhost:${MAXLESS_ADMIN_PORT:-18444}
+      REDIS_HOST: redis
+      ALLOW_DEV_LOGIN: "false"
+      SEED_DEMO_DATA: "false"
+      ALLOW_FAKE_REDIS: "false"
+      RATE_LIMIT_LOGIN: "0"
+      RATE_LIMIT_REFRESH: "0"
+      RATE_LIMIT_MACHINE_EXCHANGE: "0"
+      RATE_LIMIT_USER: "0"
+      RATE_LIMIT_CREDENTIAL: "0"
+    volumes:
+      - core-data:/data
+      - service-config:/srv/services/connected
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 30
+
+  operator:
+    build: ./backend
+    command: ["uvicorn", "operator_panel.app:app", "--host", "0.0.0.0", "--port", "8500", "--workers", "1"]
+    environment:
+      <<: *core-env
+      BOT_CORE_TOKEN: ""
+      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:?Missing OPERATOR_PASSWORD in maxless env}
+      OPERATOR_COOKIE_SECURE: "false"
+      OPERATOR_PLUGINS_DIR: /srv/plugins
+      RUNNER_ADMINISTRATION_URL: http://administration:8000
+      RUNNER_SCHEDULE_URL: http://schedule:8000
+      RUNNER_USER_PROFILE_URL: http://user-profile:8000
+    volumes:
+      - core-data:/data
+      - operator-plugins:/srv/plugins:ro
+      - service-config:/srv/services/connected
+    ports:
+      - "127.0.0.1:${MAXLESS_OPERATOR_PORT:-18500}:8500"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8500/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  administration:
+    build: {context: ./services, dockerfile: administration/Dockerfile}
+    environment:
+      PROVISIONING_TOKEN: ${ADMINISTRATION_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: https://localhost:${MAXLESS_APP_PORT:-18443}
+      CORE_INTERNAL_URL: http://backend:8000
+    volumes:
+      - administration-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  schedule:
+    build: {context: ./services, dockerfile: schedule/Dockerfile}
+    environment:
+      PROVISIONING_TOKEN: ${SCHEDULE_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: https://localhost:${MAXLESS_APP_PORT:-18443}
+      CORE_INTERNAL_URL: http://backend:8000
+    volumes:
+      - schedule-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  user-profile:
+    build: {context: ./services, dockerfile: user-profile/Dockerfile}
+    environment:
+      PROVISIONING_TOKEN: ${USER_PROFILE_PROVISIONING_TOKEN}
+      SHELL_ORIGIN: https://localhost:${MAXLESS_APP_PORT:-18443}
+      CORE_INTERNAL_URL: http://backend:8000
+    volumes:
+      - profile-data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+
+  web:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${MAXLESS_APP_PORT:-18443}:443"
+      - "127.0.0.1:${MAXLESS_ADMIN_PORT:-18444}:8444"
+    volumes:
+      - ./web/configs/maxless-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - maxless-certs:/etc/nginx/maxless:ro
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+      administration:
+        condition: service_healthy
+      schedule:
+        condition: service_healthy
+      user-profile:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate -q -O /dev/null https://127.0.0.1/api/v1/health"]
+      interval: 5s
+      timeout: 5s
+      start_period: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  core-data:
+  operator-plugins:
+  service-config:
+  administration-data:
+  schedule-data:
+  profile-data:
+  redis-data:
+  maxless-certs:

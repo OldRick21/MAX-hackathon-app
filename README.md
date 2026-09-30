@@ -271,6 +271,10 @@ npm run build        # production-сборка: вход только через
 
 Демо-режим включается автоматически в `npm run dev`; сценарии состояний задаются параметрами адреса (`?scenario=single|none|errors`, `?now=...`, см. [api/mock](frontend/src/api/mock/index.ts)).
 
+Для полноценного локального стека без MAX-бота используйте [MAX-less деплой](docs/core/MAXLESS_DEPLOYMENT.md):
+PowerShell `./scripts/maxless-deploy.ps1 -UserId 123456789` или Linux
+`./scripts/maxless-deploy.sh --user-id 123456789`.
+
 Python-зависимости: [`backend/requirements.txt`](backend/requirements.txt) и `requirements.txt` каждого сервиса.
 
 ## Тесты
