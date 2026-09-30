@@ -61,7 +61,8 @@ SESSION_TTL = 12 * 3600
 OPERATOR = "operator"  # actor_id оператора в проверках и курсорах; в журнал пишется actor_kind=operator
 MIN_PASSWORD = 12
 
-app = FastAPI(title="Operator panel", docs_url=None, redoc_url=None, openapi_url=None)
+# Без редиректа «/путь/ → /путь»: за прокси он указывает на внутренний адрес (http, без порта, http://svc).
+app = FastAPI(title="Operator panel", docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
 
 
 # --------------------------------------------------------------------------
@@ -662,9 +663,20 @@ def tool(tool: str, payload: Any = Body(None), _: str = Depends(operator), db: S
         import manage
         if not isinstance(payload, dict) or not isinstance(payload.get("groups"), list):
             raise validation("Нужен JSON вида {\"groups\": [...]} из app.export_groups сервиса расписания", "groups")
+        # manage.import_groups написан для консоли (на плохом UUID — SystemExit), поэтому всё проверяется здесь.
+        for i, item in enumerate(payload["groups"]):
+            if not isinstance(item, dict) or not is_uuid(item.get("id")) or not is_uuid(item.get("institution_id")) \
+                    or not isinstance(item.get("name"), str) or not item["name"].strip():
+                raise validation("Группа: id и institution_id — UUID, name — непустая строка", f"groups[{i}]")
+            users = item.get("user_ids", [])
+            if not isinstance(users, list) or not all(is_uuid(u) for u in users):
+                raise validation("user_ids — список UUID", f"groups[{i}].user_ids")
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            manage.import_groups(io.StringIO(json.dumps(payload)))
+        try:
+            with contextlib.redirect_stdout(out):
+                manage.import_groups(io.StringIO(json.dumps(payload)))
+        except SystemExit as error:  # иначе SystemExit останавливает весь процесс пульта
+            raise validation(str(error), "groups")
         message = out.getvalue().strip()
     else:
         raise not_found("Команда не найдена")

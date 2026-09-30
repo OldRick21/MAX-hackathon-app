@@ -192,7 +192,8 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+# Без редиректа «/путь/ → /путь»: за прокси он указывает на внутренний адрес (http, без порта, http://svc).
+app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 
 # Экраны сервиса рисует оболочка на своём origin и ходит сюда напрямую.
 app.add_middleware(CORSMiddleware, allow_origins=[SHELL_ORIGIN] if SHELL_ORIGIN else [], allow_credentials=False,

@@ -55,7 +55,8 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+# Без редиректа «/путь/ → /путь»: за прокси он указывает на внутренний адрес (http, без порта, http://svc).
+app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 sdk.install(app, core, settings, MANIFEST, f"custom.{SERVICE_CODE}", state, CLIENT, ENTRYPOINTS)
 authenticate = app.state.authenticate
 

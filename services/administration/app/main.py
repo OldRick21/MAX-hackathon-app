@@ -32,7 +32,8 @@ PROFILES = ("admin", "teacher", "student")
 MAX_BODY = 64 * 1024
 FACADE = "/api/v1/administration"
 
-app = FastAPI(title="Administration service", docs_url=None, redoc_url=None, openapi_url=None)
+# Без редиректа «/путь/ → /путь»: за прокси он указывает на внутренний адрес (http, без порта, http://svc).
+app = FastAPI(title="Administration service", docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
 _state = {}
 
 

@@ -46,7 +46,8 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await task
 
-app = FastAPI(lifespan=lifespan)
+# Без редиректа «/путь/ → /путь»: за прокси он указывает на внутренний адрес (http, без порта, http://svc).
+app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 
 # --- Middleware сквозного X-Request-ID и Cache-Control ---
 class RequestIdAndCacheMiddleware(BaseHTTPMiddleware):

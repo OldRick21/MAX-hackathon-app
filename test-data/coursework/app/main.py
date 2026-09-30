@@ -185,7 +185,8 @@ async def lifespan(app):
     task.cancel()
 
 
-app = FastAPI(lifespan=lifespan)
+# Без редиректа «/путь/ → /путь»: за прокси он указывает на внутренний адрес (http, без порта, http://svc).
+app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 sdk.install(app, core, settings, MANIFEST, SERVICE_CODE, state, CLIENT, ['/coursework'])
 authenticate = app.state.authenticate
 

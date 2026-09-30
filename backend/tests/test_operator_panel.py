@@ -20,7 +20,7 @@ os.environ.update(
 from testing_consent import TestClient  # noqa: E402
 
 from database.create_tables import session_local  # noqa: E402
-from database.tables import AuditEvent, PlatformStaff  # noqa: E402
+from database.tables import AuditEvent, PlatformStaff, ServiceInstance  # noqa: E402
 from main import app as core_app  # noqa: E402
 from operator_panel.app import app as operator_app, _failures  # noqa: E402
 
@@ -68,6 +68,14 @@ class OperatorPanel(unittest.TestCase):
         # Изменения без X-Operator отклоняются (защита от CSRF).
         self.assertEqual(op.post('/api/tools/ensure-invariants').status_code, 403)
         self.assertEqual(op.post('/api/tools/ensure-invariants', headers=W).status_code, 200)
+        # Кривой импорт групп — 422, а не 500 или SystemExit, который останавливал процесс пульта.
+        uid = str(uuid.uuid4())
+        for groups in ([5], [{'nope': 1}], [{'id': 'bad', 'institution_id': 'bad', 'name': 'x'}],
+                       [{'id': uid, 'institution_id': uid, 'name': ' '}],
+                       [{'id': uid, 'institution_id': uid, 'name': 'x', 'user_ids': [{'a': 1}]}]):
+            response = op.post('/api/tools/import-groups', headers=W, json={'groups': groups})
+            self.assertEqual(response.status_code, 422, (groups, response.text))
+        self.assertEqual(op.get('/api/v1/health').status_code, 200)
         # Модулей нет (папки OPERATOR_PLUGINS_DIR нет) — пульт работает, список модулей пуст.
         self.assertEqual(op.get('/api/plugins').json(), {'items': []})
         # Подделанная cookie не проходит.
@@ -175,6 +183,38 @@ class OperatorPanel(unittest.TestCase):
         self.assertTrue(op.delete(f'/api/users/{student}/staff', headers=W).json()['changed'])
         self.assertTrue(op.get(f'/api/audit?institution_id={inst}').json()['items'])
 
+
+    def test_local_hosts_disable_only_local_services(self):
+        op = self.signed_in()
+        owner, _ = self.login_user('hosts')
+        inst = op.post('/api/institutions', headers=W, json={'titles': {'ru': 'Хосты'}, 'owner_user_id': owner}).json()['id']
+        base = f'/api/institutions/{inst}/manage'
+
+        def put_hosts(hostnames):
+            tag = op.get(f'/api/institutions/{inst}').headers['ETag']
+            response = op.put(f'/api/institutions/{inst}/local-hosts', headers={**W, 'If-Match': tag},
+                              json={'hostnames': hostnames})
+            self.assertEqual(response.status_code, 200, response.text)
+
+        def enabled():
+            return {s['service_type']: s['enabled'] for s in op.get(f'{base}/services').json()['items']}
+
+        put_hosts(['qa.university.ru'])
+        installed = op.post(f'{base}/services', headers={**W, 'Idempotency-Key': str(uuid.uuid4())}, json={
+            'service_type': 'custom.qa', 'deployment': 'local', 'api_base_url': 'https://qa.university.ru/api/v1',
+            'client_base_url': 'https://qa.university.ru', 'titles': {'ru': 'QA'}, 'supported_profiles': ['student']})
+        self.assertEqual(installed.status_code, 201, installed.text)
+        service = installed.json()['id']
+        with session_local() as db:  # включение требует manifest от сервиса — здесь не важно
+            db.get(ServiceInstance, service).enabled = True
+            db.commit()
+
+        # Облачные сервисы не зависят от списка хостов вуза: его правка их не выключает.
+        put_hosts(['qa.university.ru', 'other.university.ru'])
+        self.assertEqual(enabled(), {'administration': True, 'schedule': True, 'user-profile': True, 'custom.qa': True})
+        # Отзыв хоста выключает только локальный сервис на нём.
+        put_hosts(['other.university.ru'])
+        self.assertEqual(enabled(), {'administration': True, 'schedule': True, 'user-profile': True, 'custom.qa': False})
 
     def test_delete_institution_removes_everything(self):
         """Удаление вуза: в ядре не остаётся ни одной строки вуза и его сервисов, раннеры получают purge."""

@@ -355,11 +355,12 @@ def replace_local_hosts(db: Session, staff: StaffContext, institution_id: str, p
     for host in hosts:
         db.add(InstitutionLocalHost(institution_id=inst.id, hostname=host, approved_by=staff.user_id))
     db.flush()
-    # Экземпляры на хостах, у которых отозвано одобрение, выключаются. Администрирование — нет:
-    # его адреса задаёт оператор, и выключить его нельзя.
+    # Локальные экземпляры на хостах, у которых отозвано одобрение, выключаются. Облачные — нет:
+    # их адреса задаёт платформа, а не список хостов вуза.
     disabled = []
     allowed = set(hosts)
     for service in db.query(ServiceInstance).filter(ServiceInstance.institution_id == inst.id,
+                                                    ServiceInstance.deployment == "local",
                                                     ServiceInstance.protected.is_(False)).all():
         used = {(urlsplit(u).hostname or "").lower() for u in (service.api_base_url, service.client_base_url)}
         if not used <= allowed and service.enabled:
