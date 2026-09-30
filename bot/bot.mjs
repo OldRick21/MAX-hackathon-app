@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
 import { Bot, Keyboard } from '@maxhub/max-bot-api';
-import { chatView } from './chat-flow.mjs';
+import { chatView, errorView, helpView, menuView } from './chat-flow.mjs';
 
 const token = process.env.BOT_TOKEN?.trim();
 const coreToken = process.env.BOT_CORE_TOKEN?.trim();
@@ -24,13 +24,15 @@ if (!me.username) {
 
 const botLink = `https://max.ru/${me.username}`;
 
-function keyboard(buttons, withApp = false) {
-  const rows = buttons.map((button) => [button.kind === 'link'
+function keyboard(rows, withApp = false) {
+  const buttons = rows.map((row) => row.map((button) => (button.kind === 'link'
     ? Keyboard.button.link(button.text, button.url)
-    : Keyboard.button.callback(button.text, `study-chat:${button.payload}`)]);
-  if (withApp) rows.unshift([Keyboard.button.openApp('Открыть платформу', botLink, me.user_id)]);
-  return Keyboard.inlineKeyboard(rows);
+    : Keyboard.button.callback(button.text, `study-chat:${button.payload}`))));
+  if (withApp) buttons.unshift([Keyboard.button.openApp('Открыть платформу', botLink, me.user_id)]);
+  return Keyboard.inlineKeyboard(buttons);
 }
+
+const inDialog = (ctx) => !ctx.message?.recipient?.chat_type || ctx.message.recipient.chat_type === 'dialog';
 
 async function resolve(maxUserId) {
   const response = await fetch(`${coreUrl}/api/v1/internal/bot/group-chats/resolve`, {
@@ -46,7 +48,11 @@ async function resolve(maxUserId) {
 async function uploadWelcomeImage() {
   try {
     const source = await readFile(new URL('./assets/welcome.png', import.meta.url));
-    const image = await bot.api.uploadImage({ source });
+    // Зависший API MAX не должен задерживать запуск бота: через 10 секунд — без картинки.
+    const image = await Promise.race([
+      bot.api.uploadImage({ source }),
+      new Promise((_, reject) => { setTimeout(() => reject(new Error('таймаут 10 с')), 10000).unref(); }),
+    ]);
     return typeof image.toJson === 'function' ? image.toJson() : image;
   } catch (error) {
     console.error('Приветственная иллюстрация недоступна, продолжаю без неё:', error.message);
@@ -54,44 +60,52 @@ async function uploadWelcomeImage() {
   }
 }
 
-async function renderCallback(ctx, selection = '') {
-  try {
-    if (ctx.message?.recipient?.chat_type && ctx.message.recipient.chat_type !== 'dialog') {
-      return ctx.answerOnCallback({
-        message: { text: 'Чаты учебных групп доступны в личном диалоге с ботом.', attachments: [] },
-      });
-    }
-    const maxUserId = ctx.user?.user_id;
-    if (!maxUserId) throw new Error('callback without user id');
-    const view = chatView(await resolve(maxUserId), selection);
-    const attachments = view.buttons.length ? [keyboard(view.buttons)] : [];
-    return ctx.answerOnCallback({ message: { text: view.text, attachments } });
-  } catch (error) {
-    console.error('Не удалось получить чат учебной группы:', error.message);
-    return ctx.answerOnCallback({
-      message: { text: 'Сервис временно недоступен. Попробуйте ещё раз позднее.', attachments: [] },
-    });
-  }
-}
-
 const welcomeImage = await uploadWelcomeImage();
 
+// Отправка с картинкой; если MAX её не принял (например, вложение устарело), — то же без неё.
+async function withImageFallback(send, view, withApp, withImage) {
+  const buttons = keyboard(view.rows, withApp);
+  if (withImage && welcomeImage) {
+    try {
+      return await send({ text: view.text, attachments: [welcomeImage, buttons] });
+    } catch (error) {
+      console.error('Не удалось отправить картинку, отправляю без неё:', error.message);
+    }
+  }
+  return send({ text: view.text, attachments: [buttons] });
+}
+
 async function showMenu(ctx, { withImage = false } = {}) {
-  if (ctx.message?.recipient?.chat_type && ctx.message.recipient.chat_type !== 'dialog') return;
+  if (!inDialog(ctx)) return;
+  await withImageFallback(({ text, attachments }) => ctx.reply(text, { attachments }), menuView(), true, withImage);
+}
 
-  const attachments = [];
-  if (withImage && welcomeImage) attachments.push(welcomeImage);
-  attachments.push(keyboard([
-    { kind: 'callback', text: 'Найти чат группы', payload: 'open' },
-  ], true));
+// Ответ на нажатие кнопки заменяет текущее сообщение — так кнопка «Назад» возвращает предыдущий экран.
+const answer = (ctx, view, withApp = false, withImage = false) =>
+  withImageFallback((message) => ctx.answerOnCallback({ message }), view, withApp, withImage);
 
-  await ctx.reply('Добро пожаловать в «Вузы России».\n\nЗдесь можно открыть учебную платформу или перейти в чат своей группы.', {
-    attachments,
-  });
+async function renderCallback(ctx, selection = '') {
+  if (!inDialog(ctx)) {
+    return ctx.answerOnCallback({
+      message: { text: 'Чаты учебных групп доступны в личном диалоге с ботом.', attachments: [] },
+    });
+  }
+  let view;
+  try {
+    const maxUserId = ctx.user?.user_id;
+    if (!maxUserId) throw new Error('callback without user id');
+    view = chatView(await resolve(maxUserId), selection);
+  } catch (error) {
+    console.error('Не удалось получить чат учебной группы:', error.message);
+    view = errorView(selection);
+  }
+  return answer(ctx, view);
 }
 
 bot.on('bot_started', (ctx) => showMenu(ctx, { withImage: true }));
 bot.command('start', (ctx) => showMenu(ctx, { withImage: true }));
+bot.action('study-chat:menu', (ctx) => answer(ctx, menuView(), true, true));
+bot.action('study-chat:help', (ctx) => answer(ctx, helpView()));
 bot.action('study-chat:open', (ctx) => renderCallback(ctx));
 bot.action(/^study-chat:institution:([0-9a-f-]{36})$/, (ctx) => renderCallback(ctx, `institution:${ctx.match?.[1] || ''}`));
 bot.action(/^study-chat:group:([0-9a-f-]{36})$/, (ctx) => renderCallback(ctx, `group:${ctx.match?.[1] || ''}`));
