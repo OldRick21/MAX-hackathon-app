@@ -1,0 +1,178 @@
+# DATA-API 1.0 — обязательные проверки API ядра «Вузы России».
+# Секретов здесь нет: токены тестовых учётных записей передаются через защищённый канал оценки.
+#
+# Роли:
+#   public  — без аутентификации;
+#   student — Bearer access token ядра пользователя, который состоит хотя бы в одном активном вузе
+#             с профилем «Студент» (вход — POST /api/v1/auth/token с initData из MAX).
+
+schemaVersion: "1.0"
+
+solution:
+  name: "Вузы России"
+
+api:
+  baseUrl: "https://195.133.197.144"
+  openapi: "./openapi.yaml"
+  defaultHeaders:
+    Accept: "application/json"
+
+checks:
+  - id: "health"
+    name: "Доступность API ядра"
+    method: "GET"
+    path: "/api/v1/health"
+    role: "public"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["status"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "auth-required"
+    name: "Без токена данные пользователя недоступны"
+    description: "Защищённый метод без Authorization отвечает 401 в едином формате ошибки"
+    method: "GET"
+    path: "/api/v1/auth/me"
+    role: "public"
+    expected:
+      statusCodes: [401]
+      contentType: "application/json"
+      requiredFields: ["error"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "me"
+    name: "Текущий пользователь"
+    method: "GET"
+    path: "/api/v1/auth/me"
+    role: "student"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["id", "max_user_id"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "institutions"
+    name: "Вузы пользователя"
+    method: "GET"
+    path: "/api/v1/institution"
+    role: "student"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["items"]
+    timeoutMs: 5000
+    repeatable: true
+    extract:
+      institutionId: "$.items[0].id"
+
+  - id: "profiles"
+    name: "Профили и учебные группы пользователя в вузе"
+    method: "GET"
+    path: "/api/v1/institution/{institution_id}/profiles"
+    role: "student"
+    dependsOn: ["institutions"]
+    request:
+      path:
+        institution_id: "${institutionId}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["user_id", "institution_id", "profiles", "groups"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "services"
+    name: "Сервисы вуза для профиля «Студент»"
+    method: "GET"
+    path: "/api/v1/institution/{institution_id}/service"
+    role: "student"
+    dependsOn: ["institutions"]
+    request:
+      path:
+        institution_id: "${institutionId}"
+      query:
+        profile: "student"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["items"]
+    timeoutMs: 5000
+    repeatable: true
+    extract:
+      serviceId: "$.items[0].id"
+
+  - id: "widgets"
+    name: "Виджеты главного экрана"
+    method: "GET"
+    path: "/api/v1/institution/{institution_id}/widgets"
+    role: "student"
+    dependsOn: ["institutions"]
+    request:
+      path:
+        institution_id: "${institutionId}"
+      query:
+        profile: "student"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["items"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "groups"
+    name: "Учебные группы вуза"
+    method: "GET"
+    path: "/api/v1/institution/{institution_id}/groups"
+    role: "student"
+    dependsOn: ["institutions"]
+    request:
+      path:
+        institution_id: "${institutionId}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields: ["items"]
+    timeoutMs: 5000
+    repeatable: true
+
+  - id: "service-session"
+    name: "Вход в сервис вуза (сессия сервиса)"
+    description: "Выдаёт токены сервиса для выбранного профиля; сессия удаляется в cleanup"
+    method: "POST"
+    path: "/api/v1/institution/{institution_id}/service/{service_id}/session"
+    role: "student"
+    dependsOn: ["services"]
+    request:
+      path:
+        institution_id: "${institutionId}"
+        service_id: "${serviceId}"
+      headers:
+        Content-Type: "application/json"
+      body:
+        profile: "student"
+    expected:
+      statusCodes: [201]
+      contentType: "application/json"
+      requiredFields: ["session_id", "access_token", "refresh_token", "service_id", "profile"]
+    timeoutMs: 5000
+    repeatable: false
+    extract:
+      sessionId: "$.session_id"
+
+cleanup:
+  - id: "revoke-service-session"
+    method: "DELETE"
+    path: "/api/v1/institution/{institution_id}/service/{service_id}/session/{session_id}"
+    role: "student"
+    request:
+      path:
+        institution_id: "${institutionId}"
+        service_id: "${serviceId}"
+        session_id: "${sessionId}"
+    expected:
+      statusCodes: [204, 404]
+    timeoutMs: 5000

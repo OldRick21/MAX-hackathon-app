@@ -44,6 +44,7 @@
 - [Главный экран и виджеты](#главный-экран-и-виджеты)
 - [Разработка](#разработка)
 - [Тесты](#тесты)
+- [Сертификаты](#сертификаты)
 - [Эксплуатация](#эксплуатация)
 - [Документация](#документация)
 
@@ -62,21 +63,21 @@
 5. Администратор с ролью «Редактор расписания» загружает расписание файлом (Excel, CSV/1С, JSON, XML) — студенты группы сразу видят занятия.
 6. В боте кнопка «Чат моей группы» ведёт в чат учебной группы, если администратор добавил на него ссылку.
 
-### Запуск одной командой (локально, без MAX)
+### Запуск одной командой
 
 ```bash
-./scripts/maxless-deploy.sh --user-id 123456789      # Windows: .\scripts\maxless-deploy.ps1 -UserId 123456789
+git clone https://github.com/OldRick21/MAX-hackathon-app && cd MAX-hackathon-app
+cp .env.example .env        # JWT_ISSUER, SHELL_ORIGIN — https-адрес сервера; BOT_TOKEN — токен бота MAX
+sudo ./scripts/deploy.sh    # сборка и запуск всех компонентов из compose.yaml
 ```
 
-Скрипт генерирует локальные секреты в `.maxless/maxless.env` (в Git не попадает), собирает и поднимает все компоненты из [`compose.maxless.yaml`](compose.maxless.yaml): ядро, оболочку, пульт оператора, Redis и три облачных раннера. Вход через MAX заменяет эмулятор [`tools/max_auth_emulator`](tools/max_auth_emulator/README.md): в конце скрипт печатает ссылку входа (действует 5 минут), пароль пульта и адреса. Нужны Docker Engine + Compose v2, OpenSSL и Python 3. Подробно — [MAXLESS_DEPLOYMENT.md](docs/core/MAXLESS_DEPLOYMENT.md).
+[`scripts/deploy.sh`](scripts/deploy.sh) генерирует недостающие секреты в `.env` (спросит токен бота, если его нет), собирает образы и поднимает все компоненты [`compose.yaml`](compose.yaml): бот, ядро, пульт оператора, Redis, три облачных раннера и оболочку (Nginx). Нужны Docker Engine + Compose v2, OpenSSL и HTTPS-сертификат — [выпуск сертификата](#сертификаты). Повторный запуск безопасен и обновляет решение.
 
-Боевой сервер с ботом и HTTPS поднимается [`compose.yaml`](compose.yaml) через `sudo ./scripts/deploy.sh` — см. [Развёртывание](#развёртывание).
-
-| Порт (локально) | Что |
+| Порт | Что |
 | --- | --- |
-| `127.0.0.1:18443` | Приложение (оболочка), API ядра, `/schedule/…`, `/people/…` |
-| `127.0.0.1:18444` | Администрирование (отдельный origin для iframe) |
-| `127.0.0.1:18500` | Пульт оператора (HTTP) |
+| 80, 443 | Оболочка, API ядра, расписание и «Люди» (`/schedule/…`, `/people/…`) |
+| 8444 | Администрирование (отдельный origin для iframe) |
+| 8445 | Пульт оператора (на сервере также `127.0.0.1:8500`) |
 
 Переменные окружения — [таблица `.env`](#настройки-env) и [`.env.example`](.env.example) (без рабочих токенов и паролей). В каждом каталоге сборки есть `Dockerfile` и `.dockerignore`.
 
@@ -94,9 +95,9 @@
 
 | Сервис | Для чего | Внутри Docker |
 | --- | --- | --- |
-| MAX Bot API (`platform-api2.max.ru`) | Бот: меню, кнопка мини-приложения, чаты групп | нет — нужен токен бота; в локальном режиме бота нет |
-| MAX Web App (`st.max.ru`, `initData`) | Вход пользователя: ядро проверяет подпись `initData` токеном бота | нет — локально заменяется эмулятором с тем же форматом подписи |
-| Let's Encrypt (certbot) | HTTPS-сертификат боевого сервера | локально — самоподписанный сертификат |
+| MAX Bot API (`platform-api2.max.ru`) | Бот: меню, кнопка мини-приложения, чаты групп | нет — нужен токен бота `BOT_TOKEN` |
+| MAX Web App (`st.max.ru`, `initData`) | Вход пользователя: ядро проверяет подпись `initData` токеном бота | нет — вход только через мини-приложение в MAX |
+| Let's Encrypt (certbot) | HTTPS-сертификат сервера | certbot запускается контейнером из `compose.yaml` |
 
 ### Работа с данными
 
@@ -114,9 +115,9 @@
 
 | Шаг | Ожидаемый результат |
 | --- | --- |
-| 1. `./scripts/maxless-deploy.sh --user-id 123456789` | «Ready.», адреса, пароль пульта и ссылка входа |
-| 2. Пульт `http://localhost:18500` → «Тестовые данные» → создать | Появляются тестовые вузы, «Сводка» — сервисы зелёные |
-| 3. Открыть ссылку входа, принять согласие | Экран выбора вуза / заявки |
+| 1. `sudo ./scripts/deploy.sh` | «Готово», все контейнеры работают; адреса приложения, администрирования и пульта |
+| 2. Пульт `https://<сервер>:8445` → «Обслуживание» → «Тестовые данные» → создать | Появляются тестовые вузы, «Сводка» — сервисы зелёные |
+| 3. Бот в MAX → «Открыть платформу», принять согласие | Экран выбора вуза / заявки |
 | 4. Отправить заявку студента в группу | Заявка «ждёт решения»; повторная в тот же вуз — отказ `JOIN_REQUEST_PENDING` |
 | 5. Пульт → «Вузы» → вуз → «Добавить владельца» → себя | В приложении у вуза появляется профиль «Администратор» |
 | 6. «Администрирование» → «Заявки» → одобрить свою | Добавляется профиль «Студент» и группа; повторное одобрение — «Заявка уже рассмотрена» |
@@ -127,7 +128,7 @@
 
 ### Известные ограничения
 
-- Работа MVP в MAX требует токена бота; без MAX вход только через эмулятор (локально).
+- Вход только через MAX: ядро принимает лишь `initData`, подписанный токеном бота.
 - Ядро — один процесс uvicorn и SQLite: при десятках одновременных входов ответ растёт до нескольких секунд.
 - Политика безопасности страницы (CSP) общая для всех вузов: адрес своего сервиса одного вуза разрешён в оболочке у всех.
 - Одна ссылка входа (`initData`) действует 5 минут и может быть использована повторно в этот срок.
@@ -138,20 +139,16 @@
 ### Остановка и повторный запуск
 
 ```bash
-# Остановить, сохранив данные
-docker compose --project-name maxhack-maxless --env-file .maxless/maxless.env -f compose.maxless.yaml down
-# Запустить снова без пересборки (данные и секреты сохраняются)
-./scripts/maxless-deploy.sh --no-build --user-id 123456789
-# Полностью удалить локальный стенд вместе с данными
-docker compose --project-name maxhack-maxless --env-file .maxless/maxless.env -f compose.maxless.yaml down --volumes --rmi local && rm -rf .maxless
+sudo docker compose down        # остановить; данные остаются в томах (не используйте -v)
+sudo ./scripts/deploy.sh        # запустить снова / обновить после git pull
+sudo docker compose ps          # состояние контейнеров
 ```
-
-На сервере: `sudo docker compose down` (тома сохраняются, не используйте `-v`) и `sudo ./scripts/deploy.sh` для повторного запуска.
 
 ### Собственный API
 
+- Адрес: `https://195.133.197.144` (API ядра — `/api/v1/…`).
 - Спецификация — [`openapi.yaml`](openapi.yaml) (OpenAPI 3.1).
-- Проверки для жюри — [`DATA-API.yaml`](DATA-API.yaml).
+- Обязательные проверки — [`DATA-API.yaml`](DATA-API.yaml) (DATA-API 1.0). Роль `student` — access token ядра пользователя со студенческим профилем в активном вузе; токены передаются отдельно, в файле секретов нет.
 
 ## Возможности
 
@@ -378,10 +375,6 @@ npm run build        # production-сборка: вход только через
 
 Демо-режим включается автоматически в `npm run dev`; сценарии состояний задаются параметрами адреса (`?scenario=single|none|errors`, `?now=...`, см. [api/mock](frontend/src/api/mock/index.ts)).
 
-Для полноценного локального стека без MAX-бота используйте [MAX-less деплой](docs/core/MAXLESS_DEPLOYMENT.md):
-PowerShell `./scripts/maxless-deploy.ps1 -UserId 123456789` или Linux
-`./scripts/maxless-deploy.sh --user-id 123456789`.
-
 Python-зависимости: [`backend/requirements.txt`](backend/requirements.txt) и `requirements.txt` каждого сервиса.
 
 ## Тесты
@@ -409,6 +402,24 @@ npm test && npx tsc -b
 ```
 
 Интеграционные тесты сервисов (`tests/test_integration_core.py`) поднимают настоящее ядро в том же процессе; для них нужен `PYTHONPATH=../../backend` или установленные зависимости ядра.
+
+## Сертификаты
+
+`deploy.sh` ожидает сертификат Let's Encrypt в `/var/lib/max-miniapp/letsencrypt/live/max-miniapp/`. Первый выпуск — до первого запуска `deploy.sh`, пока порт 80 свободен:
+
+```bash
+sudo docker compose run --rm -p 80:80 certbot certonly --standalone --cert-name max-miniapp -d <домен>
+# для сервера без домена, по IP (certbot 5+):
+sudo docker compose run --rm -p 80:80 certbot certonly --standalone --cert-name max-miniapp \
+  --preferred-profile shortlived --ip-address <IP>
+```
+
+Продление, когда решение уже запущено (оболочка отдаёт `/.well-known/acme-challenge/`):
+
+```bash
+sudo docker compose run --rm certbot renew --webroot -w /var/www/acme
+sudo docker compose exec web nginx -s reload
+```
 
 ## Эксплуатация
 

@@ -1,11 +1,13 @@
 <!doctype html>
 <!--
-  Макет приветственной картинки бота (bot/assets/welcome.png), 1280×720.
-  Цвета и шрифты — из frontend/src/styles/global.css. Пересобрать (из корня репозитория, нужен
-  frontend/node_modules): chromium --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files \
-    --window-size=1280,808 --screenshot=raw.png "file://$PWD/bot/design/welcome.html"
-  Окно выше на 88 px: headless вычитает их из высоты. Затем обрезать до 1280×720:
-    python3 -c "from PIL import Image; Image.open('raw.png').crop((0,0,1280,720)).save('bot/assets/welcome.png')"
+  Макет приветственной картинки бота (bot/assets/welcome.png), 1280×960.
+  Минимализм: однородный фон и цвет текста из frontend/src/styles/global.css, логотип, название.
+  logo@3x.png — логотип frontend/src/assets/logo-buildings.png, увеличенный в 3 раза с резкими краями.
+  Пересобрать (из корня репозитория, нужен frontend/node_modules):
+    chromium --headless=new --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+      --window-size=1280,1048 --screenshot=raw.png "file://$PWD/bot/design/welcome.html"
+  Окно выше на 88 px: headless вычитает их из высоты. Затем обрезать до 1280×960:
+    python3 -c "from PIL import Image; Image.open('raw.png').crop((0,0,1280,960)).save('bot/assets/welcome.png')"
 -->
 <html lang="ru">
 <head>
@@ -14,54 +16,17 @@
   @font-face { font-family: Unbounded; font-weight: 500;
     src: url(../../frontend/node_modules/@fontsource/unbounded/files/unbounded-cyrillic-500-normal.woff2) format('woff2'),
          url(../../frontend/node_modules/@fontsource/unbounded/files/unbounded-latin-500-normal.woff2) format('woff2'); }
-  @font-face { font-family: Manrope; font-weight: 500;
-    src: url(../../frontend/node_modules/@fontsource/manrope/files/manrope-cyrillic-500-normal.woff2) format('woff2'); }
-  @font-face { font-family: Manrope; font-weight: 600;
-    src: url(../../frontend/node_modules/@fontsource/manrope/files/manrope-cyrillic-600-normal.woff2) format('woff2'); }
-
-  :root { --bg: #F6F7FB; --surface: #FFFFFF; --text: #111827; --text-2: #667085;
-          --accent: #6D4AFF; --accent-dark: #3D2CC9; --accent-soft: rgba(109, 74, 255, .12); --line-soft: #E4E7EF; }
   * { box-sizing: border-box; margin: 0; }
-  html, body { width: 1280px; height: 720px; overflow: hidden; }
-  body {
-    background:
-      radial-gradient(640px 520px at 92% 8%, rgba(109, 74, 255, .20), transparent 70%),
-      radial-gradient(560px 460px at 4% 100%, rgba(189, 239, 245, .75), transparent 70%),
-      var(--bg);
-    font-family: Manrope, sans-serif; color: var(--text);
-    display: grid; place-items: center; -webkit-font-smoothing: antialiased;
-  }
-  .card {
-    width: 1136px; height: 576px; border-radius: 30px; background: rgba(255, 255, 255, .78);
-    border: 1px solid var(--line-soft); box-shadow: 0 12px 32px rgba(109, 74, 255, .12);
-    display: grid; grid-template-columns: 380px 1fr; align-items: center; padding: 0 72px 0 56px;
-  }
-  .logo { width: 278px; height: auto; justify-self: center; }  /* исходный размер PNG — без размытия */
-  .eyebrow { display: inline-block; font-weight: 600; font-size: 22px; color: var(--accent-dark);
-             background: var(--accent-soft); border-radius: 999px; padding: 10px 22px; }
-  h1 { font-family: Unbounded, Manrope, sans-serif; font-weight: 500; font-size: 76px; line-height: 1.12;
-       letter-spacing: -.01em; margin: 28px 0 22px; }
-  p { font-weight: 500; font-size: 29px; line-height: 1.4; color: var(--text-2); max-width: 600px; }
-  .chips { display: flex; gap: 14px; margin-top: 40px; }
-  .chip { font-weight: 600; font-size: 22px; color: var(--text); background: var(--surface);
-          border: 1px solid var(--line-soft); border-radius: 16px; padding: 12px 20px;
-          display: flex; align-items: center; gap: 10px; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  html, body { width: 1280px; height: 960px; overflow: hidden; }
+  body { background: #F6F7FB; color: #111827; display: grid; place-content: center; justify-items: center;
+         -webkit-font-smoothing: antialiased; }
+  img { width: 560px; height: auto; display: block; }
+  h1 { font-family: Unbounded, sans-serif; font-weight: 500; font-size: 88px; line-height: 1;
+       letter-spacing: -.01em; margin-top: 64px; }
 </style>
 </head>
 <body>
-  <main class="card">
-    <img class="logo" src="../../frontend/src/assets/logo-buildings.png" alt="">
-    <section>
-      <span class="eyebrow">Учебная платформа в MAX</span>
-      <h1>Вузы России</h1>
-      <p>Расписание, люди и чаты групп вашего вуза — в одном месте.</p>
-      <div class="chips">
-        <span class="chip"><i class="dot" style="background:#1570EF"></i>Расписание</span>
-        <span class="chip"><i class="dot" style="background:#22A06B"></i>Люди</span>
-        <span class="chip"><i class="dot" style="background:#6D4AFF"></i>Чаты групп</span>
-      </div>
-    </section>
-  </main>
+  <img src="logo@3x.png" alt="">
+  <h1>Вузы России</h1>
 </body>
 </html>
