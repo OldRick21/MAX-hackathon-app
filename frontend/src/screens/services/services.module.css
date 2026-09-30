@@ -1,5 +1,5 @@
 /* 40rem: карточка с иконкой вмещает «Пользователи» шрифтом Unbounded 2.4rem без переноса */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(40rem, 100%), 1fr)); gap: 2.4rem; max-width: 110rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(40rem, 100%), 1fr)); gap: 2.4rem; }
 
 /* ServiceCard */
 .card {

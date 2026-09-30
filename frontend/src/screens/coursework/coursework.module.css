@@ -1,4 +1,4 @@
-.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4rem; max-width: 110rem; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4rem; } /* на всю ширину, как расписание и «Люди» */
 .layout > * { min-width: 0; }
 .sectionHead { display: flex; align-items: center; justify-content: space-between; gap: 1.6rem; flex-wrap: wrap; margin-bottom: 2rem; }
 
